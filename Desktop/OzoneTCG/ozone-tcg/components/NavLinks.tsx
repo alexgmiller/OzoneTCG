@@ -7,7 +7,9 @@ import { Button } from "./ui/button";
 const links = [
   { href: "/protected/dashboard", label: "Dashboard" },
   { href: "/protected/inventory", label: "Inventory" },
+  { href: "/protected/buy", label: "Buy" },
   { href: "/protected/sold", label: "Sold" },
+  { href: "/protected/consigners", label: "Consigners" },
   { href: "/protected/expenses", label: "Expenses" },
   { href: "/protected/payout", label: "Payout" },
 ];
