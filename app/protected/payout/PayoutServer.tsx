@@ -124,7 +124,7 @@ export default async function PayoutServer() {
   const soloSales = (soloData ?? []) as SoloSaleEntry[];
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-4">
+    <div className="p-4 space-y-4">
       <h1 className="text-xl font-semibold">Payout</h1>
       <PayoutClient
         alexExpenses={expenses.filter((e) => e.paid_by === "alex")}
