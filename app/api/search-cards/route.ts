@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchBaseNames, nameVariants, isJapaneseName } from "@/lib/cardNameUtils";
+import { searchBaseNames, nameVariants, isJapaneseName, extractEmbeddedNumber } from "@/lib/cardNameUtils";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
 const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
@@ -66,9 +66,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
-  const num = baseNumber(cardNumber);
+  // Use explicit card number, or fall back to a number embedded in the name like "Gengar (20)"
+  const num = baseNumber(cardNumber) ?? extractEmbeddedNumber(name.trim()) ?? undefined;
   const sn = setName?.trim() || undefined;
-  const tcgdexBase = isJapaneseName(name) ? TCGDEX_JA : TCGDEX_EN;
+  const isJP = isJapaneseName(name);
 
   // Build queries across all candidate base names × case variants, most specific first
   const queries: string[] = [];
@@ -91,21 +92,26 @@ export async function POST(req: NextRequest) {
   }
 
   const yearFilter = year?.trim().match(/^\d{4}$/) ? year.trim() : undefined;
-  const allResults = await Promise.all(queries.map((q) => fetchTcgDex(q, tcgdexBase, yearFilter)));
+  // For JP cards: try JP endpoint first, then EN as fallback to surface any available images
+  const endpoints = isJP ? [TCGDEX_JA, TCGDEX_EN] : [TCGDEX_EN];
 
-  // Merge and deduplicate results, cap at 24
   const seen = new Set<string>();
   const merged: SearchResult[] = [];
-  for (const results of allResults) {
-    for (const r of results) {
-      const key = `${r.name}|${r.setName}|${r.cardNumber}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        merged.push(r);
-        if (merged.length >= 24) break;
-      }
-    }
+
+  for (const endpoint of endpoints) {
     if (merged.length >= 24) break;
+    const allResults = await Promise.all(queries.map((q) => fetchTcgDex(q, endpoint, yearFilter)));
+    for (const results of allResults) {
+      for (const r of results) {
+        const key = `${r.name}|${r.setName}|${r.cardNumber}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(r);
+          if (merged.length >= 24) break;
+        }
+      }
+      if (merged.length >= 24) break;
+    }
   }
 
   return NextResponse.json({ cards: merged });

@@ -12,6 +12,17 @@ export function isJapaneseName(name: string): boolean {
 }
 
 /**
+ * Extract a standalone card number embedded in parentheses in the name.
+ *   "Victini EX (131 Full Art)" → "131"
+ *   "Gengar (20)" → "20"
+ *   "Umbreon (Master Ball Pattern)" → null  (not a number)
+ */
+export function extractEmbeddedNumber(name: string): string | null {
+  const m = name.match(/\((\d+)\b/);
+  return m ? m[1] : null;
+}
+
+/**
  * Generate all candidate base names to search TCGdex with for a given raw card name.
  * Handles Collectr-style naming conventions:
  *   - Parenthetical suffixes: "(Full art promo)", "(Secret)", "(Prime)", "(199)", "(JP)"
@@ -56,6 +67,14 @@ export function searchBaseNames(raw: string): string[] {
       const mh = n.replace(/\s+(EX|GX|V|VMAX|VSTAR)(?=\s|$)/g, (_, t) => `-${t}`);
       if (mh !== n) names.add(mh);
     }
+  }
+
+  // 7. Delta species: "Raichu delta species" → "Raichu δ" (TCGdex uses the δ symbol)
+  const deltaMatch = base.match(/^(.+?)\s+delta\s+species$/i);
+  if (deltaMatch) {
+    const baseDelta = deltaMatch[1].trim();
+    names.add(`${baseDelta} δ`);
+    names.add(baseDelta);
   }
 
   return [...names].filter(Boolean);
