@@ -1,6 +1,7 @@
-import { searchBaseNames, nameVariants } from "./cardNameUtils";
+import { searchBaseNames, nameVariants, isJapaneseName, extractEmbeddedNumber } from "./cardNameUtils";
 
-const TCGDEX_BASE = "https://api.tcgdex.net/v2/en";
+const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
+const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
 const FETCH_TIMEOUT_MS = 8000;
 
 type LookupResult = {
@@ -32,7 +33,9 @@ async function lookupImageFromTcgDex(
   setName?: string | null,
   cardNumber?: string | null
 ): Promise<string | null> {
-  const num = baseNumber(cardNumber);
+  // Use explicit card number, or fall back to a number embedded in the name like "Gengar (20)"
+  const num = baseNumber(cardNumber) ?? extractEmbeddedNumber(name) ?? undefined;
+  const isJP = isJapaneseName(name);
 
   // Build queries across all candidate base names × case variants — most specific first
   const queries: string[] = [];
@@ -47,24 +50,31 @@ async function lookupImageFromTcgDex(
     }
   }
 
-  // Run all queries in parallel, return the most specific hit
-  const results = await Promise.all(
-    queries.map(async (q) => {
-      try {
-        const res = await makeFetchWithTimeout(`${TCGDEX_BASE}/cards?${q}`, { cache: "no-store" });
-        if (!res.ok) return null;
-        const data = await res.json();
-        const card = Array.isArray(data) ? data[0] : null;
-        if (!card?.image) return null;
-        console.log(`[PriceTracker] TCGdex found "${card.name}" (query: ${q})`);
-        return `${card.image}/high.webp`;
-      } catch {
-        return null;
-      }
-    })
-  );
+  // For JP cards: try JP endpoint first (to get the Japanese card art), then EN as fallback.
+  // For EN cards: EN only.
+  const endpoints = isJP ? [TCGDEX_JA, TCGDEX_EN] : [TCGDEX_EN];
 
-  return results.find((r) => r != null) ?? null;
+  for (const endpoint of endpoints) {
+    const results = await Promise.all(
+      queries.map(async (q) => {
+        try {
+          const res = await makeFetchWithTimeout(`${endpoint}/cards?${q}`, { cache: "no-store" });
+          if (!res.ok) return null;
+          const data = await res.json();
+          const card = Array.isArray(data) ? data[0] : null;
+          if (!card?.image) return null;
+          console.log(`[PriceTracker] TCGdex found "${card.name}" (${endpoint}, query: ${q})`);
+          return `${card.image}/high.webp`;
+        } catch {
+          return null;
+        }
+      })
+    );
+    const found = results.find((r) => r != null);
+    if (found) return found;
+  }
+
+  return null;
 }
 
 export async function lookupCard(
