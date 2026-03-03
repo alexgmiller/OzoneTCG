@@ -234,18 +234,21 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
 
       if (inserted.length > 0) {
         setPhase("refreshing");
-        try {
-          await refreshItemPrices(
-            inserted.map((it) => ({
-              id: it.id,
-              name: it.name,
-              category: it.category as "single" | "slab" | "sealed",
-              setName: it.set_name,
-              cardNumber: it.card_number,
-            }))
-          );
-        } catch {
-          // Images can be refreshed manually later
+        // Refresh images in small client-side batches to avoid Vercel's serverless timeout
+        const REFRESH_BATCH = 4;
+        const refreshItems = inserted.map((it) => ({
+          id: it.id,
+          name: it.name,
+          category: it.category as "single" | "slab" | "sealed",
+          setName: it.set_name,
+          cardNumber: it.card_number,
+        }));
+        for (let i = 0; i < refreshItems.length; i += REFRESH_BATCH) {
+          try {
+            await refreshItemPrices(refreshItems.slice(i, i + REFRESH_BATCH));
+          } catch {
+            // Continue — images can be synced manually later
+          }
         }
       }
 
