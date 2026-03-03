@@ -3,6 +3,16 @@
 import { useState } from "react";
 import { createConsigner, updateConsigner, deleteConsigner } from "./actions";
 
+export type SoldItem = {
+  id: string;
+  name: string;
+  sold_price: number | null;
+  consigner_payout: number | null;
+  sold_at: string | null;
+  set_name: string | null;
+  card_number: string | null;
+};
+
 export type Consigner = {
   id: string;
   name: string;
@@ -13,6 +23,7 @@ export type Consigner = {
   created_at: string;
   item_count: number;
   pending_payout: number;
+  sales: SoldItem[];
 };
 
 type Form = { name: string; rate: string; phone: string; notes: string };
@@ -32,6 +43,16 @@ function portalUrl(token: string) {
   return `${typeof window !== "undefined" ? window.location.origin : ""}/consigner/${token}`;
 }
 
+function fmt(v: number | null) {
+  if (v == null) return "—";
+  return `$${v.toFixed(2)}`;
+}
+
+function fmtDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function ConsignersClient({ consigners }: { consigners: Consigner[] }) {
   const [busy, setBusy] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -39,6 +60,7 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Form>(blank());
   const [copied, setCopied] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState<string | null>(null);
 
   async function onAdd() {
     if (!addForm.name.trim()) return;
@@ -139,59 +161,125 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
       )}
 
       <div className="space-y-3">
-        {consigners.map((c) => (
-          <div key={c.id} className="border rounded-xl p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold">{c.name}</div>
-                <div className="text-xs opacity-60 mt-0.5 space-x-2">
-                  <span>{Math.round(c.rate * 100)}% consigner rate</span>
-                  {c.phone && <span>• {c.phone}</span>}
-                </div>
-                {c.notes && <div className="text-xs opacity-50 mt-1">{c.notes}</div>}
-              </div>
-              <div className="flex gap-1 shrink-0">
-                <button
-                  className="text-xs px-2 py-1 rounded-lg border"
-                  onClick={() => { setEditingId(c.id); setEditForm(consignerToForm(c)); }}
-                  disabled={busy}
-                >Edit</button>
-                <button
-                  className="text-xs px-2 py-1 rounded-lg border border-red-300 text-red-600"
-                  onClick={() => onDelete(c.id)}
-                  disabled={busy}
-                >Del</button>
-              </div>
-            </div>
+        {consigners.map((c) => {
+          const totalSold = c.sales.reduce((s, it) => s + (it.sold_price ?? 0), 0);
+          const totalPayout = c.sales.reduce((s, it) => s + (it.consigner_payout ?? 0), 0);
+          const totalOurs = totalSold - totalPayout;
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="border rounded-lg px-3 py-2">
-                <div className="opacity-60">Active items</div>
-                <div className="font-semibold">{c.item_count}</div>
-              </div>
-              <div className="border rounded-lg px-3 py-2">
-                <div className="opacity-60">Pending payout</div>
-                <div className="font-semibold text-green-600">
-                  {c.pending_payout > 0 ? `$${c.pending_payout.toFixed(2)}` : "—"}
+          return (
+            <div key={c.id} className="border rounded-xl p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold">{c.name}</div>
+                  <div className="text-xs opacity-60 mt-0.5 space-x-2">
+                    <span>{Math.round(c.rate * 100)}% consigner rate</span>
+                    {c.phone && <span>• {c.phone}</span>}
+                  </div>
+                  {c.notes && <div className="text-xs opacity-50 mt-1">{c.notes}</div>}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    className="text-xs px-2 py-1 rounded-lg border"
+                    onClick={() => { setEditingId(c.id); setEditForm(consignerToForm(c)); }}
+                    disabled={busy}
+                  >Edit</button>
+                  <button
+                    className="text-xs px-2 py-1 rounded-lg border border-red-300 text-red-600"
+                    onClick={() => onDelete(c.id)}
+                    disabled={busy}
+                  >Del</button>
                 </div>
               </div>
-            </div>
 
-            {/* Portal link */}
-            <div className="flex items-center gap-2">
-              <div className="flex-1 text-xs opacity-50 truncate">
-                Portal: /consigner/{c.token.slice(0, 8)}…
+              {/* Stats */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="border rounded-lg px-3 py-2">
+                  <div className="opacity-60">Active items</div>
+                  <div className="font-semibold">{c.item_count}</div>
+                </div>
+                <div className="border rounded-lg px-3 py-2">
+                  <div className="opacity-60">Pending payout</div>
+                  <div className="font-semibold text-green-600">
+                    {c.pending_payout > 0 ? `$${c.pending_payout.toFixed(2)}` : "—"}
+                  </div>
+                </div>
               </div>
-              <button
-                className="text-xs px-3 py-1 rounded-lg border shrink-0"
-                onClick={() => copyLink(c.token)}
-              >
-                {copied === c.token ? "Copied!" : "Copy link"}
-              </button>
+
+              {/* Sales history toggle */}
+              {c.sales.length > 0 && (
+                <div>
+                  <button
+                    className="w-full flex items-center justify-between text-xs font-medium px-3 py-2 border rounded-lg hover:bg-muted/40 transition-colors"
+                    onClick={() => setHistoryOpen(historyOpen === c.id ? null : c.id)}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>{historyOpen === c.id ? "▾" : "▸"}</span>
+                      Sales history ({c.sales.length})
+                    </span>
+                    <span className="opacity-60">{fmt(totalSold)} total sold</span>
+                  </button>
+
+                  {historyOpen === c.id && (
+                    <div className="mt-2 border rounded-lg overflow-hidden">
+                      {/* Header */}
+                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 bg-muted/30 text-xs opacity-60 font-medium">
+                        <span>Item</span>
+                        <span className="text-right">Sold</span>
+                        <span className="text-right">Their cut</span>
+                        <span className="text-right">Our cut</span>
+                      </div>
+
+                      {/* Rows */}
+                      {c.sales.map((sale, i) => {
+                        const ours = (sale.sold_price ?? 0) - (sale.consigner_payout ?? 0);
+                        return (
+                          <div
+                            key={sale.id}
+                            className={`grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2 text-xs ${i > 0 ? "border-t" : ""}`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">{sale.name}</div>
+                              <div className="opacity-50 truncate">
+                                {[sale.set_name, sale.card_number ? `#${sale.card_number}` : ""].filter(Boolean).join(" · ") || fmtDate(sale.sold_at)}
+                              </div>
+                              {(sale.set_name || sale.card_number) && (
+                                <div className="opacity-40">{fmtDate(sale.sold_at)}</div>
+                              )}
+                            </div>
+                            <div className="text-right font-medium">{fmt(sale.sold_price)}</div>
+                            <div className="text-right text-green-600 font-medium">{fmt(sale.consigner_payout)}</div>
+                            <div className="text-right opacity-70">{fmt(ours)}</div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Totals */}
+                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2 border-t bg-muted/20 text-xs font-semibold">
+                        <span>Total</span>
+                        <span className="text-right">{fmt(totalSold)}</span>
+                        <span className="text-right text-green-600">{fmt(totalPayout)}</span>
+                        <span className="text-right">{fmt(totalOurs)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Portal link */}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 text-xs opacity-50 truncate">
+                  Portal: /consigner/{c.token.slice(0, 8)}…
+                </div>
+                <button
+                  className="text-xs px-3 py-1 rounded-lg border shrink-0"
+                  onClick={() => copyLink(c.token)}
+                >
+                  {copied === c.token ? "Copied!" : "Copy link"}
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

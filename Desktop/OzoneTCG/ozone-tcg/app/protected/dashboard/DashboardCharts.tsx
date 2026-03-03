@@ -17,7 +17,7 @@ import {
 export type ChartItem = {
   created_at: string;
   updated_at: string;
-  status: "inventory" | "listed" | "sold";
+  status: "inventory" | "sold";
   cost: number | null;
   market: number | null;
   sold_price: number | null;

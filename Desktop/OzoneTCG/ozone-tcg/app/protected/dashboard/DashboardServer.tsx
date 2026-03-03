@@ -27,7 +27,7 @@ export default async function DashboardServer() {
   ] = await Promise.all([
     supabase
       .from("items")
-      .select("category,owner,status,cost,market,sell_price,current_sale,sold_price,previous_sales")
+      .select("category,owner,status,cost,market,sell_price,current_sale,sold_price,previous_sales,consigner_payout")
       .eq("workspace_id", workspaceId),
     supabase
       .from("expenses")
@@ -69,10 +69,10 @@ export default async function DashboardServer() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="border rounded-xl p-3">
-          <div className="text-xs opacity-70">Active Market (Inv+Listed)</div>
+          <div className="text-xs opacity-70">Active Market</div>
           <div className="text-lg font-semibold">{money(totals.market.active_total)}</div>
           <div className="text-xs opacity-60 mt-1">
-            Inv {money(totals.market.inventory)} • Listed {money(totals.market.listed)}
+            {totals.counts.inventory} items in inventory
           </div>
         </div>
 
@@ -80,7 +80,7 @@ export default async function DashboardServer() {
           <div className="text-xs opacity-70">Cost Basis (All)</div>
           <div className="text-lg font-semibold">{money(totals.cost.total_all)}</div>
           <div className="text-xs opacity-60 mt-1">
-            Inv {money(totals.cost.inventory)} • Listed {money(totals.cost.listed)} • Sold {money(totals.cost.sold)}
+            Inv {money(totals.cost.inventory)} • Sold {money(totals.cost.sold)}
           </div>
         </div>
 
@@ -96,7 +96,7 @@ export default async function DashboardServer() {
           <div className="text-xs opacity-70">Items</div>
           <div className="text-lg font-semibold">{totals.counts.total}</div>
           <div className="text-xs opacity-60 mt-1">
-            Inv {totals.counts.inventory} • Listed {totals.counts.listed} • Sold {totals.counts.sold}
+            Inv {totals.counts.inventory} • Sold {totals.counts.sold}
           </div>
         </div>
       </div>

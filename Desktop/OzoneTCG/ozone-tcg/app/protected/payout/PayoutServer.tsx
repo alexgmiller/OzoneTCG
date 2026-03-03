@@ -25,6 +25,14 @@ export type SharedSaleEntry = {
   sold_at: string | null;
 };
 
+export type ConsignerSaleEntry = {
+  id: string;
+  name: string;
+  sold_price: number;
+  consigner_payout: number;
+  sold_at: string | null;
+};
+
 export type SoloSaleEntry = {
   id: string;
   name: string;
@@ -99,11 +107,22 @@ export default async function PayoutServer() {
     .neq("solo_confirmed", true)
     .order("sold_at", { ascending: true });
 
+  let consignerSalesQuery = supabase
+    .from("items")
+    .select("id,name,sold_price,consigner_payout,sold_at")
+    .eq("workspace_id", workspaceId)
+    .eq("owner", "consigner")
+    .eq("status", "sold")
+    .not("consigner_payout", "is", null)
+    .not("sold_price", "is", null)
+    .order("sold_at", { ascending: true });
+
   if (lastEnd) {
     expQuery = expQuery.gt("created_at", lastEnd);
     itemCostQuery = itemCostQuery.gt("created_at", lastEnd);
     salesQuery = salesQuery.gt("sold_at", lastEnd);
     soloSalesQuery = soloSalesQuery.gt("sold_at", lastEnd);
+    consignerSalesQuery = consignerSalesQuery.gt("sold_at", lastEnd);
   }
 
   const [
@@ -111,17 +130,20 @@ export default async function PayoutServer() {
     { data: itemData, error: itemError },
     { data: salesData, error: salesError },
     { data: soloData, error: soloError },
-  ] = await Promise.all([expQuery, itemCostQuery, salesQuery, soloSalesQuery]);
+    { data: consignerData, error: consignerError },
+  ] = await Promise.all([expQuery, itemCostQuery, salesQuery, soloSalesQuery, consignerSalesQuery]);
 
   if (expError) throw new Error(expError.message);
   if (itemError) throw new Error(itemError.message);
   if (salesError) throw new Error(salesError.message);
   if (soloError) throw new Error(soloError.message);
+  if (consignerError) throw new Error(consignerError.message);
 
   const expenses = (expData ?? []) as ExpenseEntry[];
   const itemCosts = (itemData ?? []) as ItemCostEntry[];
   const sharedSales = (salesData ?? []) as SharedSaleEntry[];
   const soloSales = (soloData ?? []) as SoloSaleEntry[];
+  const consignerSales = (consignerData ?? []) as ConsignerSaleEntry[];
 
   return (
     <div className="p-4 space-y-4">
@@ -133,6 +155,7 @@ export default async function PayoutServer() {
         milaItems={itemCosts.filter((i) => i.owner === "mila")}
         sharedSales={sharedSales}
         soloSales={soloSales}
+        consignerSales={consignerSales}
         history={history}
         periodStart={lastEnd}
       />

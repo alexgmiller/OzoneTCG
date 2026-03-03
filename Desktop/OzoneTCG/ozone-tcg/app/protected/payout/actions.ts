@@ -43,18 +43,29 @@ export async function settlePeriod(notes?: string) {
     .eq("status", "sold")
     .not("sold_price", "is", null);
 
+  let consignerSalesQuery = supabase
+    .from("items")
+    .select("sold_price,consigner_payout,sold_at")
+    .eq("workspace_id", workspaceId)
+    .eq("owner", "consigner")
+    .eq("status", "sold")
+    .not("consigner_payout", "is", null)
+    .not("sold_price", "is", null);
+
   if (lastEnd) {
     expQuery = expQuery.gt("created_at", lastEnd);
     itemCostQuery = itemCostQuery.gt("created_at", lastEnd);
     salesQuery = salesQuery.gt("sold_at", lastEnd);
+    consignerSalesQuery = consignerSalesQuery.gt("sold_at", lastEnd);
   }
 
-  const [{ data: expData }, { data: itemData }, { data: salesData }] =
-    await Promise.all([expQuery, itemCostQuery, salesQuery]);
+  const [{ data: expData }, { data: itemData }, { data: salesData }, { data: consignerData }] =
+    await Promise.all([expQuery, itemCostQuery, salesQuery, consignerSalesQuery]);
 
   const expenses = expData ?? [];
   const items = itemData ?? [];
   const sales = salesData ?? [];
+  const consignerSales = consignerData ?? [];
 
   const alexPaid =
     expenses.filter((e) => e.paid_by === "alex").reduce((s, e) => s + (e.cost ?? 0), 0) +
@@ -64,7 +75,12 @@ export async function settlePeriod(notes?: string) {
     expenses.filter((e) => e.paid_by === "mila").reduce((s, e) => s + (e.cost ?? 0), 0) +
     items.filter((i) => i.owner === "mila").reduce((s, i) => s + (i.cost ?? 0), 0);
 
-  const sharedSales = sales.reduce((s, i) => s + (i.sold_price ?? 0), 0);
+  const sharedSalesTotal = sales.reduce((s, i) => s + (i.sold_price ?? 0), 0);
+  const consignerCut = consignerSales.reduce(
+    (s, i) => s + ((i.sold_price ?? 0) - (i.consigner_payout ?? 0)),
+    0
+  );
+  const sharedSales = sharedSalesTotal + consignerCut;
 
   // net > 0 = Alex pays Mila; net < 0 = Mila pays Alex
   const netPayout = (0.5 * sharedSales + 0.5 * milaPaid) - 0.5 * alexPaid;
@@ -74,6 +90,7 @@ export async function settlePeriod(notes?: string) {
     ...expenses.map((e) => e.created_at),
     ...items.map((i) => i.created_at),
     ...sales.map((s) => s.sold_at).filter(Boolean),
+    ...consignerSales.map((s) => s.sold_at).filter(Boolean),
   ]
     .filter(Boolean)
     .sort() as string[];
