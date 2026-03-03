@@ -130,13 +130,13 @@ const CHART_H = 200;
 /* ── component ── */
 
 export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[] }) {
-  const [range, setRange] = useState<Range>("30d");
-
-  const cutoff = getCutoff(range);
-  const useWeeks = range === "90d" || range === "all";
+  const [rangeRevenue, setRangeRevenue] = useState<Range>("30d");
+  const [rangeActivity, setRangeActivity] = useState<Range>("30d");
 
   /* Chart 1 – Sales Revenue per bucket */
   const salesData = useMemo(() => {
+    const cutoff = getCutoff(rangeRevenue);
+    const useWeeks = rangeRevenue === "90d" || rangeRevenue === "all";
     const map: Record<string, number> = {};
     for (const it of chartItems) {
       if (it.status !== "sold") continue;
@@ -148,10 +148,12 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
     return Object.entries(map)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, revenue]) => ({ date: fmtLabel(k), revenue }));
-  }, [chartItems, cutoff, useWeeks]);
+  }, [chartItems, rangeRevenue]);
 
   /* Chart 2 – Buys vs Sales per bucket */
   const activityData = useMemo(() => {
+    const cutoff = getCutoff(rangeActivity);
+    const useWeeks = rangeActivity === "90d" || rangeActivity === "all";
     const map: Record<string, { bought: number; sold: number }> = {};
     const ensure = (k: string) => { if (!map[k]) map[k] = { bought: 0, sold: 0 }; };
 
@@ -177,7 +179,7 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
     return Object.entries(map)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => ({ date: fmtLabel(k), bought: v.bought, sold: v.sold }));
-  }, [chartItems, cutoff, useWeeks]);
+  }, [chartItems, rangeActivity]);
 
   /* Chart 3 – Running Portfolio Market Value (always full history) */
   const { marketData, marketWeeks } = useMemo(() => {
@@ -217,7 +219,7 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
   }, [chartItems]);
 
   /* Range selector buttons */
-  const RangeBar = () => (
+  const RangeBar = ({ range, setRange }: { range: Range; setRange: (r: Range) => void }) => (
     <div className="flex gap-1">
       {RANGES.map((r) => (
         <button
@@ -245,7 +247,7 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
       <div className="border rounded-xl p-3">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-medium">Sales Revenue</div>
-          <RangeBar />
+          <RangeBar range={rangeRevenue} setRange={setRangeRevenue} />
         </div>
         {salesData.length === 0 || salesData.every((d) => d.revenue === 0) ? (
           <Empty msg="No sales in this period" />
@@ -272,7 +274,7 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
       <div className="border rounded-xl p-3">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-medium">Buys vs Sales</div>
-          <RangeBar />
+          <RangeBar range={rangeActivity} setRange={setRangeActivity} />
         </div>
         {activityData.length === 0 ? (
           <Empty msg="No activity in this period" />
