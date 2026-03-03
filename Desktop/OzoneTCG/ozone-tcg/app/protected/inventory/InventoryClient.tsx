@@ -972,6 +972,12 @@ export default function InventoryClient({
 
                 <div className="font-semibold text-sm leading-tight line-clamp-2">{it.name}</div>
 
+                {(it.set_name || it.card_number) && (
+                  <div className="text-xs opacity-50 truncate">
+                    {[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+
                 {it.category === "slab" && it.grade && (
                   <span className={`self-start text-xs px-2 py-0.5 rounded-full ${gradeStyle(it.grade)}`}>
                     {it.grade}
