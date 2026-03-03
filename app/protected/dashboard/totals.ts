@@ -1,6 +1,6 @@
 export type Owner = "alex" | "mila" | "shared";
 export type Category = "single" | "slab" | "sealed";
-export type Status = "inventory" | "listed" | "sold";
+export type Status = "inventory" | "sold";
 
 export type ItemRow = {
   category: Category;
@@ -14,6 +14,7 @@ export type ItemRow = {
   current_sale?: number | null;
   sold_price?: number | null;
   previous_sales?: number | null;
+  consigner_payout?: number | null;
 };
 
 export type ExpenseRow = {
@@ -45,21 +46,18 @@ export function computeDashboardTotals(items: ItemRow[], expenses: ExpenseRow[],
   const counts = {
     total: items.length,
     inventory: 0,
-    listed: 0,
     sold: 0,
   };
 
   // -------- market totals --------
   const market = {
     inventory: 0,
-    listed: 0,
     active_total: 0,
   };
 
   // -------- cost totals --------
   const cost = {
     inventory: 0,
-    listed: 0,
     sold: 0,
     total_all: 0,
   };
@@ -101,23 +99,20 @@ export function computeDashboardTotals(items: ItemRow[], expenses: ExpenseRow[],
     const c = n(it.cost);
     const m = n(it.market);
 
-    counts[it.status] += 1;
+    if (it.status in counts) counts[it.status as Status] += 1;
 
     // cost basis
     cost.total_all += c;
-    cost[it.status] += c;
+    if (it.status in cost) cost[it.status as Status] += c;
 
-    // active market (inventory + listed)
+    // active market
     if (it.status === "inventory") market.inventory += m;
-    if (it.status === "listed") market.listed += m;
 
-    // sold revenue (we only count explicit sold fields; fallback to 0)
+    // sold revenue — subtract consigner payout so we only count our cut
     let revenue = 0;
     if (it.status === "sold") {
-      revenue =
-        n(it.sold_price) ||
-        n(it.previous_sales) ||
-        0;
+      const gross = n(it.sold_price) || n(it.previous_sales) || 0;
+      revenue = gross - n(it.consigner_payout);
       sold.revenue += revenue;
     }
 
@@ -129,11 +124,11 @@ export function computeDashboardTotals(items: ItemRow[], expenses: ExpenseRow[],
       if (it.status === "sold") b.revenue_sold += revenue;
     };
 
-    addBreakdown(owners[it.owner]);
+    if (it.owner in owners) addBreakdown(owners[it.owner as Owner]);
     addBreakdown(categories[it.category]);
   }
 
-  market.active_total = market.inventory + market.listed;
+  market.active_total = market.inventory;
   sold.profit = sold.revenue - cost.sold;
 
   // -------- who owes who (50/50 split for personal-paid) --------

@@ -2,6 +2,9 @@
 
 import { useState, useMemo } from "react";
 import { finalizeBuy, finalizeTrade, type CustomerCard } from "./actions";
+import CardScanner, { type ScanResult } from "@/components/CardScanner";
+import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
+import BuyCSVImport from "./BuyCSVImport";
 
 type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
 type PaidBy = "alex" | "mila" | "shared";
@@ -29,18 +32,33 @@ const CONDITIONS: Condition[] = [
 
 export default function BuyClient({ inventoryItems }: { inventoryItems: InventoryItem[] }) {
   const [mode, setMode] = useState<"buy" | "trade">("buy");
-  const [buyPct, setBuyPct] = useState(60);
-  const [tradePct, setTradePct] = useState(75);
+  const [buyPct, setBuyPct] = useState(70);
+  const [tradePct, setTradePct] = useState(80);
+  const [customBuyOffer, setCustomBuyOffer] = useState("");
+  const [customTradeValue, setCustomTradeValue] = useState("");
 
-  // Customer card input
+  // Customer card input fields
   const [cardName, setCardName] = useState("");
+  const [cardSetName, setCardSetName] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
   const [cardCondition, setCardCondition] = useState<Condition>("Near Mint");
   const [cardMarket, setCardMarket] = useState("");
+  const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
+
+  // Lookup state
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupConfirmed, setLookupConfirmed] = useState<{ name: string; setName: string; cardNumber: string } | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
   const [customerCards, setCustomerCards] = useState<CustomerCard[]>([]);
 
   // Trade — my inventory picker
   const [mySearch, setMySearch] = useState("");
   const [selectedMyIds, setSelectedMyIds] = useState<Set<string>>(new Set());
+
+  // Modals
+  const [scanOpen, setScanOpen] = useState(false);
+  const [cardSearchOpen, setCardSearchOpen] = useState(false);
 
   // Finalize modal
   const [finalizeOpen, setFinalizeOpen] = useState(false);
@@ -52,15 +70,23 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
 
   // Derived values
   const customerTotal = customerCards.reduce((s, c) => s + c.market, 0);
-  const customerOffer = customerTotal * (buyPct / 100);
-  const customerTradeValue = customerTotal * (tradePct / 100);
+  const parsedCustomBuy = parseFloat(customBuyOffer);
+  const customerOffer = customBuyOffer !== "" && Number.isFinite(parsedCustomBuy)
+    ? parsedCustomBuy
+    : customerTotal * (buyPct / 100);
+  const effectiveBuyPct = customerTotal > 0 ? (customerOffer / customerTotal) * 100 : buyPct;
+
+  const parsedCustomTrade = parseFloat(customTradeValue);
+  const customerTradeValue = customTradeValue !== "" && Number.isFinite(parsedCustomTrade)
+    ? parsedCustomTrade
+    : customerTotal * (tradePct / 100);
+  const effectiveTradePct = customerTotal > 0 ? (customerTradeValue / customerTotal) * 100 : tradePct;
 
   const selectedMyItems = useMemo(
     () => inventoryItems.filter((it) => selectedMyIds.has(it.id)),
     [inventoryItems, selectedMyIds]
   );
   const myTradeValue = selectedMyItems.reduce((s, it) => s + it.market, 0);
-  // positive = customer owes us cash, negative = we owe customer cash
   const tradeBalance = myTradeValue - customerTradeValue;
 
   const filteredInventory = useMemo(() => {
@@ -68,15 +94,105 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
     return q ? inventoryItems.filter((it) => it.name.toLowerCase().includes(q)) : inventoryItems;
   }, [inventoryItems, mySearch]);
 
+  function clearCardForm() {
+    setCardName("");
+    setCardSetName("");
+    setCardNumber("");
+    setCardMarket("");
+    setCardCondition("Near Mint");
+    setPendingImageUrl(null);
+    setLookupConfirmed(null);
+    setLookupError(null);
+  }
+
+  function onScanResult(data: ScanResult) {
+    setCardName(data.name);
+    setCardSetName(data.setName ?? "");
+    setCardNumber(data.cardNumber ?? "");
+    setCardCondition(data.condition);
+    setCardMarket(data.market != null ? String(data.market) : "");
+    setPendingImageUrl(data.imageUrl ?? null);
+    setLookupConfirmed(
+      data.name ? { name: data.name, setName: data.setName ?? "", cardNumber: data.cardNumber ?? "" } : null
+    );
+    setLookupError(null);
+  }
+
+  function onCardSearchResult(data: CardSearchResult) {
+    setCardName(data.name);
+    setCardSetName(data.setName ?? "");
+    setCardNumber(data.cardNumber ?? "");
+    setCardMarket(data.market != null ? String(data.market) : "");
+    setPendingImageUrl(data.imageUrl ?? null);
+    setLookupConfirmed({ name: data.name, setName: data.setName ?? "", cardNumber: data.cardNumber ?? "" });
+    setLookupError(null);
+  }
+
+  async function handleLookUp() {
+    if (!cardName.trim()) return;
+    setLookupBusy(true);
+    setLookupError(null);
+    setLookupConfirmed(null);
+    try {
+      const res = await fetch("/api/search-cards", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: cardName.trim(),
+          setName: cardSetName.trim() || undefined,
+          cardNumber: cardNumber.trim() || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setLookupError("Lookup failed");
+        return;
+      }
+      const cards = json.cards ?? [];
+      if (cards.length === 0) {
+        // No exact match — open the picker so the user can try different search terms
+        setCardSearchOpen(true);
+        return;
+      }
+      if (cards.length === 1) {
+        const card = cards[0];
+        setCardName(card.name);
+        setCardSetName(card.setName ?? "");
+        setCardNumber(card.cardNumber ?? "");
+        if (card.market != null) setCardMarket(String(card.market));
+        setPendingImageUrl(card.imageUrl ?? null);
+        setLookupConfirmed({ name: card.name, setName: card.setName ?? "", cardNumber: card.cardNumber ?? "" });
+      } else {
+        // Multiple results — open picker
+        setCardSearchOpen(true);
+      }
+    } catch {
+      setLookupError("Lookup failed — check your connection");
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
   function addCard() {
     const m = parseFloat(cardMarket);
     if (!cardName.trim() || !m || m <= 0) return;
     setCustomerCards((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), name: cardName.trim(), condition: cardCondition, market: m },
+      {
+        id: crypto.randomUUID(),
+        name: cardName.trim(),
+        condition: cardCondition,
+        market: m,
+        imageUrl: pendingImageUrl,
+        setName: cardSetName.trim() || undefined,
+        cardNumber: cardNumber.trim() || undefined,
+      },
     ]);
-    setCardName("");
-    setCardMarket("");
+    clearCardForm();
+  }
+
+  function onCSVImport(cards: CustomerCard[]) {
+    setCustomerCards((prev) => [...prev, ...cards]);
   }
 
   function toggleMyItem(id: string) {
@@ -93,6 +209,9 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
     setPaymentType("cash");
     setAddToInventory(true);
     setFinalizeOpen(false);
+    setCustomBuyOffer("");
+    setCustomTradeValue("");
+    clearCardForm();
   }
 
   async function onFinalizeBuy() {
@@ -163,7 +282,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
               min={0}
               max={100}
               value={buyPct}
-              onChange={(e) => setBuyPct(Math.max(0, Math.min(100, Number(e.target.value))))}
+              onChange={(e) => { setBuyPct(Math.max(0, Math.min(100, Number(e.target.value)))); setCustomBuyOffer(""); }}
             />
           </label>
           <label className="flex items-center gap-2">
@@ -174,25 +293,68 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
               min={0}
               max={100}
               value={tradePct}
-              onChange={(e) => setTradePct(Math.max(0, Math.min(100, Number(e.target.value))))}
+              onChange={(e) => { setTradePct(Math.max(0, Math.min(100, Number(e.target.value)))); setCustomTradeValue(""); }}
             />
           </label>
         </div>
       </div>
 
+      <CardScanner open={scanOpen} onClose={() => setScanOpen(false)} onResult={onScanResult} />
+      <CardSearchPicker
+        open={cardSearchOpen}
+        onClose={() => setCardSearchOpen(false)}
+        onResult={onCardSearchResult}
+        initialName={cardName}
+        initialSetName={cardSetName}
+        initialCardNumber={cardNumber}
+      />
+
       {/* Customer's Cards */}
       <div className="border rounded-xl p-3 space-y-3">
-        <div className="font-medium">Customer&apos;s Cards</div>
+        <div className="flex items-center justify-between">
+          <div className="font-medium">Customer&apos;s Cards</div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCardSearchOpen(true)}
+              className="text-sm px-2.5 py-1 border rounded-lg hover:bg-muted transition-colors"
+              title="Find card by name"
+            >
+              🔍 Find
+            </button>
+            <button
+              onClick={() => setScanOpen(true)}
+              className="text-sm px-2.5 py-1 border rounded-lg hover:bg-muted transition-colors"
+              title="Scan card photo"
+            >
+              📷 Scan
+            </button>
+            <BuyCSVImport onImport={onCSVImport} />
+          </div>
+        </div>
 
-        {/* Add card */}
+        {/* Add card form */}
         <div className="space-y-2">
           <input
             className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
             placeholder="Card name *"
             value={cardName}
-            onChange={(e) => setCardName(e.target.value)}
+            onChange={(e) => { setCardName(e.target.value); setLookupConfirmed(null); }}
             onKeyDown={(e) => e.key === "Enter" && addCard()}
           />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              className="border rounded-lg px-3 py-2 text-sm bg-background"
+              placeholder="Set name (optional)"
+              value={cardSetName}
+              onChange={(e) => { setCardSetName(e.target.value); setLookupConfirmed(null); }}
+            />
+            <input
+              className="border rounded-lg px-3 py-2 text-sm bg-background"
+              placeholder="Card # (optional)"
+              value={cardNumber}
+              onChange={(e) => { setCardNumber(e.target.value); setLookupConfirmed(null); }}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <select
               className="border rounded-lg px-3 py-2 text-sm bg-background"
@@ -212,12 +374,40 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
               onKeyDown={(e) => e.key === "Enter" && addCard()}
             />
           </div>
-          <button
-            className="w-full px-4 py-2 rounded-lg border font-medium text-sm"
-            onClick={addCard}
-          >
-            + Add Card
-          </button>
+
+          {/* Lookup confirmation / error */}
+          {lookupConfirmed && (
+            <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">
+              <span className="font-medium">✓</span>
+              <span className="truncate">
+                {lookupConfirmed.name}
+                {lookupConfirmed.setName && ` · ${lookupConfirmed.setName}`}
+                {lookupConfirmed.cardNumber && ` · #${lookupConfirmed.cardNumber}`}
+              </span>
+            </div>
+          )}
+          {lookupError && (
+            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
+              {lookupError}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              className="flex-1 px-4 py-2 rounded-lg border font-medium text-sm disabled:opacity-40"
+              onClick={handleLookUp}
+              disabled={lookupBusy || !cardName.trim()}
+            >
+              {lookupBusy ? "Looking up…" : "Look Up"}
+            </button>
+            <button
+              className="flex-1 px-4 py-2 rounded-lg border font-medium text-sm disabled:opacity-40"
+              onClick={addCard}
+              disabled={!cardName.trim() || !parseFloat(cardMarket)}
+            >
+              + Add Card
+            </button>
+          </div>
         </div>
 
         {/* Card list */}
@@ -225,7 +415,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
           <>
             <div className="rounded-xl border overflow-hidden">
               {customerCards.map((c, i) => {
-                const pct = mode === "buy" ? buyPct : tradePct;
+                const pct = mode === "buy" ? effectiveBuyPct : effectiveTradePct;
                 const offer = c.market * (pct / 100);
                 return (
                   <div
@@ -236,6 +426,8 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                       <div className="text-sm font-medium truncate">{c.name}</div>
                       <div className="text-xs opacity-50">
                         {c.condition} · Market: {fmt(c.market)}
+                        {c.setName && ` · ${c.setName}`}
+                        {c.cardNumber && ` · #${c.cardNumber}`}
                       </div>
                     </div>
                     <div className="text-sm font-semibold text-green-600 shrink-0">{fmt(offer)}</div>
@@ -250,19 +442,72 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
               })}
             </div>
 
-            <div className="rounded-xl border p-3 text-sm space-y-1">
+            <div className="rounded-xl border p-3 text-sm space-y-2">
               <div className="flex justify-between text-xs opacity-60">
                 <span>Total market</span>
                 <span>{fmt(customerTotal)}</span>
               </div>
-              <div className="flex justify-between font-semibold">
-                <span>
-                  {mode === "buy" ? `Buy offer (${buyPct}%)` : `Their trade value (${tradePct}%)`}
-                </span>
-                <span className="text-green-600">
-                  {fmt(mode === "buy" ? customerOffer : customerTradeValue)}
-                </span>
-              </div>
+              {mode === "buy" ? (
+                <div className="space-y-1">
+                  <div className="text-xs opacity-60">Offer</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs opacity-50 shrink-0">%</span>
+                    <input
+                      className="w-16 border rounded-lg px-2 py-1 text-sm bg-background"
+                      type="number"
+                      min={0}
+                      value={customBuyOffer !== "" ? effectiveBuyPct.toFixed(1) : buyPct}
+                      onChange={(e) => {
+                        const pct = Math.max(0, Math.min(100, Number(e.target.value)));
+                        setBuyPct(pct);
+                        setCustomBuyOffer("");
+                      }}
+                    />
+                    <span className="text-xs opacity-50 shrink-0">$</span>
+                    <input
+                      className="flex-1 border rounded-lg px-2 py-1 text-sm bg-background font-semibold text-green-600"
+                      type="number"
+                      min={0}
+                      placeholder={fmt(customerOffer)}
+                      value={customBuyOffer}
+                      onChange={(e) => setCustomBuyOffer(e.target.value)}
+                    />
+                    {customBuyOffer !== "" && (
+                      <span className="text-xs opacity-50 shrink-0">{effectiveBuyPct.toFixed(1)}%</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="text-xs opacity-60">Their trade value</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs opacity-50 shrink-0">%</span>
+                    <input
+                      className="w-16 border rounded-lg px-2 py-1 text-sm bg-background"
+                      type="number"
+                      min={0}
+                      value={customTradeValue !== "" ? effectiveTradePct.toFixed(1) : tradePct}
+                      onChange={(e) => {
+                        const pct = Math.max(0, Math.min(100, Number(e.target.value)));
+                        setTradePct(pct);
+                        setCustomTradeValue("");
+                      }}
+                    />
+                    <span className="text-xs opacity-50 shrink-0">$</span>
+                    <input
+                      className="flex-1 border rounded-lg px-2 py-1 text-sm bg-background font-semibold text-green-600"
+                      type="number"
+                      min={0}
+                      placeholder={fmt(customerTradeValue)}
+                      value={customTradeValue}
+                      onChange={(e) => setCustomTradeValue(e.target.value)}
+                    />
+                    {customTradeValue !== "" && (
+                      <span className="text-xs opacity-50 shrink-0">{effectiveTradePct.toFixed(1)}%</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -285,7 +530,6 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
             ) : (
               filteredInventory.map((it, i) => {
                 const isSelected = selectedMyIds.has(it.id);
-                const tradeVal = it.market;
                 return (
                   <div
                     key={it.id}
@@ -305,7 +549,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                       </div>
                     </div>
                     <div className="text-sm font-semibold text-blue-600 shrink-0">
-                      {fmt(tradeVal)}
+                      {fmt(it.market)}
                     </div>
                   </div>
                 );
@@ -317,7 +561,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
           {(selectedMyIds.size > 0 || customerCards.length > 0) && (
             <div className="rounded-xl border p-3 text-sm space-y-1">
               <div className="flex justify-between">
-                <span className="opacity-60">Their trade value ({tradePct}%)</span>
+                <span className="opacity-60">Their trade value ({effectiveTradePct.toFixed(1)}%)</span>
                 <span>{fmt(customerTradeValue)}</span>
               </div>
               <div className="flex justify-between">
@@ -417,7 +661,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
               </div>
               {mode === "buy" && (
                 <div className="flex justify-between font-semibold">
-                  <span>Total cost</span>
+                  <span>Total cost ({effectiveBuyPct.toFixed(1)}%)</span>
                   <span className="text-red-500">{fmt(customerOffer)}</span>
                 </div>
               )}

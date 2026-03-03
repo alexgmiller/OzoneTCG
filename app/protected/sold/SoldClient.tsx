@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SaleGroup } from "./SoldServer";
+import { revertSale } from "./actions";
 
 function fmt(v: number | null) {
   if (v == null) return "-";
@@ -16,6 +17,18 @@ function fmtDate(iso: string) {
 export default function SoldClient({ sales }: { sales: SaleGroup[] }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
+  const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function confirmRevert(saleId: string) {
+    setBusy(true);
+    try {
+      await revertSale({ saleId });
+      setRevertingId(null);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function toggle(id: string) {
     const next = new Set(expandedIds);
@@ -135,9 +148,31 @@ export default function SoldClient({ sales }: { sales: SaleGroup[] }) {
                     <span>{fmt(sale.items.reduce((s, it) => s + (it.market ?? 0), 0))}</span>
                   </div>
                 )}
-                <div className="border-t px-4 py-2 flex justify-between text-sm font-semibold">
+                <div className="border-t px-4 py-2 flex items-center justify-between text-sm font-semibold">
                   <span>Sale total</span>
-                  <span className="text-green-600">{fmt(sale.total)}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-green-600">{fmt(sale.total)}</span>
+                    {revertingId === sale.saleId ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs opacity-60">Revert this sale?</span>
+                        <button
+                          className="text-xs px-2 py-1 rounded-lg border border-red-400 text-red-600 font-medium"
+                          onClick={() => confirmRevert(sale.saleId)}
+                          disabled={busy}
+                        >{busy ? "…" : "Yes"}</button>
+                        <button
+                          className="text-xs px-2 py-1 rounded-lg border opacity-50"
+                          onClick={() => setRevertingId(null)}
+                          disabled={busy}
+                        >No</button>
+                      </div>
+                    ) : (
+                      <button
+                        className="text-xs px-2 py-1 rounded-lg border opacity-50 hover:opacity-80 font-normal"
+                        onClick={() => setRevertingId(sale.saleId)}
+                      >Revert</button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

@@ -12,6 +12,9 @@ export type CustomerCard = {
   name: string;
   condition: Condition;
   market: number;
+  imageUrl?: string | null;
+  setName?: string | null;
+  cardNumber?: string | null;
 };
 
 export async function finalizeBuy(input: {
@@ -53,6 +56,9 @@ export async function finalizeBuy(input: {
         condition: card.condition,
         market: card.market,
         cost,
+        image_url: card.imageUrl ?? null,
+        set_name: card.setName ?? null,
+        card_number: card.cardNumber ?? null,
         updated_by: userId,
       });
       if (error) throw new Error(error.message);
@@ -117,6 +123,9 @@ export async function finalizeTrade(input: {
         condition: card.condition,
         market: card.market,
         cost,
+        image_url: card.imageUrl ?? null,
+        set_name: card.setName ?? null,
+        card_number: card.cardNumber ?? null,
         updated_by: userId,
       });
       if (error) throw new Error(error.message);

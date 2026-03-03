@@ -4,7 +4,7 @@ import InventoryClient from "./InventoryClient";
 
 type Category = "single" | "slab" | "sealed";
 type Owner = "alex" | "mila" | "shared" | "consigner";
-type Status = "inventory" | "listed" | "grading";
+type Status = "inventory" | "grading";
 type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
 
 type Item = {
@@ -22,6 +22,7 @@ type Item = {
   image_url: string | null;
   set_name: string | null;
   card_number: string | null;
+  grade: string | null;
 };
 
 export type ConsignerOption = {
@@ -37,7 +38,7 @@ export default async function InventoryServer() {
   const [{ data, error }, { data: consignerRows }] = await Promise.all([
     supabase
       .from("items")
-      .select("id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number")
+      .select("id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade")
       .eq("workspace_id", workspaceId)
       .neq("status", "sold")
       .order("updated_at", { ascending: false }),

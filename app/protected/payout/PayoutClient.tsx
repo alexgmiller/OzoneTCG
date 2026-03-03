@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { ExpenseEntry, ItemCostEntry, SharedSaleEntry, SoloSaleEntry, PayPeriod } from "./PayoutServer";
+import type { ExpenseEntry, ItemCostEntry, SharedSaleEntry, SoloSaleEntry, ConsignerSaleEntry, PayPeriod } from "./PayoutServer";
 import { settlePeriod, makeItemShared, keepItemSolo } from "./actions";
 
 function fmt(v: number) {
@@ -23,6 +23,7 @@ type Props = {
   milaItems: ItemCostEntry[];
   sharedSales: SharedSaleEntry[];
   soloSales: SoloSaleEntry[];
+  consignerSales: ConsignerSaleEntry[];
   history: PayPeriod[];
   periodStart: string | null;
 };
@@ -139,6 +140,7 @@ export default function PayoutClient({
   milaItems,
   sharedSales,
   soloSales,
+  consignerSales,
   history,
   periodStart,
 }: Props) {
@@ -178,9 +180,13 @@ export default function PayoutClient({
     milaExpenses.reduce((s, e) => s + e.cost, 0) +
     milaItems.reduce((s, i) => s + i.cost, 0);
   const salesTotal = sharedSales.reduce((s, i) => s + i.sold_price, 0);
+  const consignerCutTotal = consignerSales.reduce(
+    (s, it) => s + (it.sold_price - it.consigner_payout),
+    0
+  );
 
   const milaOwesAlex = 0.5 * alexTotal;
-  const alexOwesMila = 0.5 * salesTotal + 0.5 * milaTotal;
+  const alexOwesMila = 0.5 * salesTotal + 0.5 * milaTotal + 0.5 * consignerCutTotal;
   const net = alexOwesMila - milaOwesAlex;
   const netAbs = Math.abs(net);
   const alexPaysMila = net > 0;
@@ -191,7 +197,8 @@ export default function PayoutClient({
     alexItems.length > 0 ||
     milaItems.length > 0 ||
     sharedSales.length > 0 ||
-    soloSales.length > 0;
+    soloSales.length > 0 ||
+    consignerSales.length > 0;
 
   function toggle(id: string) {
     const next = new Set(expandedIds);
@@ -284,6 +291,20 @@ export default function PayoutClient({
           />
         )}
 
+        {/* Consigner sales — our cut */}
+        {consignerSales.length > 0 && (
+          <Section
+            title="Consigner Sales (Our Cut)"
+            subtotal={consignerCutTotal}
+            green
+            rows={consignerSales.map((s) => ({
+              label: s.name,
+              sub: s.sold_at ? fmtDate(s.sold_at) : "—",
+              amount: s.sold_price - s.consigner_payout,
+            }))}
+          />
+        )}
+
         {/* Solo sales — optional inclusion */}
         {soloSales.length > 0 && (
           <div className="border-b">
@@ -353,6 +374,12 @@ export default function PayoutClient({
               <span className="opacity-70">Alex owes Mila (50% of shared sales)</span>
               <span>{fmt(0.5 * salesTotal)}</span>
             </div>
+            {consignerCutTotal > 0 && (
+              <div className="flex justify-between">
+                <span className="opacity-70">Alex owes Mila (50% of consigner cut)</span>
+                <span>{fmt(0.5 * consignerCutTotal)}</span>
+              </div>
+            )}
             {milaTotal > 0 && (
               <div className="flex justify-between">
                 <span className="opacity-70">Alex owes Mila (50% of Mila's total)</span>

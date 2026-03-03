@@ -10,7 +10,7 @@ export default async function BuyServer() {
     .from("items")
     .select("id,name,category,owner,condition,market")
     .eq("workspace_id", workspaceId)
-    .in("status", ["inventory", "listed"])
+    .eq("status", "inventory")
     .not("market", "is", null)
     .order("name");
 

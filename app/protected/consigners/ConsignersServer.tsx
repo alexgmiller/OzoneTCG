@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
-import ConsignersClient, { type Consigner } from "./ConsignersClient";
+import ConsignersClient, { type Consigner, type SoldItem } from "./ConsignersClient";
 
 export default async function ConsignersServer() {
   const supabase = await createClient();
@@ -14,7 +14,7 @@ export default async function ConsignersServer() {
 
   if (error) throw new Error(error.message);
 
-  // For each consigner, get active item count and pending payout (sold items)
+  // Active items count and pending payout (sold items with consigner_payout)
   const { data: itemRows } = await supabase
     .from("items")
     .select("consigner_id,status,consigner_payout")
@@ -30,10 +30,35 @@ export default async function ConsignersServer() {
     if (it.status === "sold" && it.consigner_payout) s.pending_payout += it.consigner_payout;
   }
 
+  // Sales history per consigner
+  const { data: soldRows } = await supabase
+    .from("items")
+    .select("id,name,consigner_id,sold_price,consigner_payout,sold_at,set_name,card_number")
+    .eq("workspace_id", workspaceId)
+    .not("consigner_id", "is", null)
+    .eq("status", "sold")
+    .order("sold_at", { ascending: false });
+
+  const salesMap = new Map<string, SoldItem[]>();
+  for (const row of soldRows ?? []) {
+    if (!row.consigner_id) continue;
+    if (!salesMap.has(row.consigner_id)) salesMap.set(row.consigner_id, []);
+    salesMap.get(row.consigner_id)!.push({
+      id: row.id,
+      name: row.name,
+      sold_price: row.sold_price,
+      consigner_payout: row.consigner_payout,
+      sold_at: row.sold_at,
+      set_name: row.set_name,
+      card_number: row.card_number,
+    });
+  }
+
   const consigners: Consigner[] = (rows ?? []).map((c) => ({
     ...c,
     item_count: statsMap.get(c.id)?.item_count ?? 0,
     pending_payout: statsMap.get(c.id)?.pending_payout ?? 0,
+    sales: salesMap.get(c.id) ?? [],
   }));
 
   return (
