@@ -17,7 +17,7 @@ export default async function BuyServer() {
   if (error) throw new Error(error.message);
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-4">
+    <div className="max-w-4xl mx-auto p-4 space-y-4 overflow-x-hidden">
       <h1 className="text-xl font-semibold">Buy / Trade</h1>
       <BuyClient inventoryItems={(data ?? []) as InventoryItem[]} />
     </div>

@@ -164,7 +164,7 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
           colMap.category >= 0 ? (row[colMap.category] ?? "") : "",
           nameVal,
           conditionRaw,
-          gradeRaw
+          inferGrade(gradeRaw) ?? ""
         ),
         setName: colMap.set >= 0 ? row[colMap.set] ?? "" : "",
         cardNumber: colMap.number >= 0 ? row[colMap.number] ?? "" : "",
@@ -217,7 +217,7 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
             colMap.category >= 0 ? (row[colMap.category] ?? "") : "",
             nameVal,
             colMap.condition >= 0 ? (row[colMap.condition] ?? "") : "",
-            gradeRaw
+            grade ?? ""
           ),
           set_name: colMap.set >= 0 ? (row[colMap.set] ?? "").trim() || null : null,
           card_number: colMap.number >= 0 ? (row[colMap.number] ?? "").trim() || null : null,

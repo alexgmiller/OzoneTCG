@@ -55,6 +55,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
   // Trade — my inventory picker
   const [mySearch, setMySearch] = useState("");
   const [selectedMyIds, setSelectedMyIds] = useState<Set<string>>(new Set());
+  const [myCardsOpen, setMyCardsOpen] = useState(false);
 
   // Modals
   const [scanOpen, setScanOpen] = useState(false);
@@ -256,7 +257,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
       : customerCards.length > 0 || selectedMyIds.size > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full min-w-0 overflow-x-hidden">
       {/* Mode + Percentages */}
       <div className="border rounded-xl p-3 space-y-3">
         <div className="flex gap-2">
@@ -424,7 +425,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                   >
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{c.name}</div>
-                      <div className="text-xs opacity-50">
+                      <div className="text-xs opacity-50 truncate">
                         {c.condition} · Market: {fmt(c.market)}
                         {c.setName && ` · ${c.setName}`}
                         {c.cardNumber && ` · #${c.cardNumber}`}
@@ -513,59 +514,29 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
         )}
       </div>
 
-      {/* Trade: My Inventory */}
+      {/* Trade: My Cards trigger + summary */}
       {mode === "trade" && (
         <div className="border rounded-xl p-3 space-y-3">
-          <div className="font-medium">My Cards</div>
-          <input
-            className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-            placeholder="Search inventory…"
-            value={mySearch}
-            onChange={(e) => setMySearch(e.target.value)}
-          />
+          <button
+            className="w-full flex items-center justify-between"
+            onClick={() => setMyCardsOpen(true)}
+          >
+            <span className="font-medium">My Cards</span>
+            <span className="text-sm opacity-60">
+              {selectedMyIds.size > 0
+                ? `${selectedMyIds.size} selected · ${fmt(myTradeValue)}`
+                : "Tap to select →"}
+            </span>
+          </button>
 
-          <div className="rounded-xl border overflow-hidden max-h-64 overflow-y-auto">
-            {filteredInventory.length === 0 ? (
-              <div className="p-4 text-sm opacity-50 text-center">No items with market price.</div>
-            ) : (
-              filteredInventory.map((it, i) => {
-                const isSelected = selectedMyIds.has(it.id);
-                return (
-                  <div
-                    key={it.id}
-                    className={`px-3 py-2 flex items-center gap-2 cursor-pointer ${i > 0 ? "border-t" : ""} ${isSelected ? "bg-blue-50 dark:bg-blue-950/20" : ""}`}
-                    onClick={() => toggleMyItem(it.id)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      readOnly
-                      className="w-4 h-4 accent-blue-600 shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{it.name}</div>
-                      <div className="text-xs opacity-50">
-                        {it.category} · {it.condition} · Market: {fmt(it.market)}
-                      </div>
-                    </div>
-                    <div className="text-sm font-semibold text-blue-600 shrink-0">
-                      {fmt(it.market)}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Trade summary */}
           {(selectedMyIds.size > 0 || customerCards.length > 0) && (
             <div className="rounded-xl border p-3 text-sm space-y-1">
               <div className="flex justify-between">
-                <span className="opacity-60">Their trade value ({effectiveTradePct.toFixed(1)}%)</span>
+                <span className="opacity-60">Their value ({effectiveTradePct.toFixed(1)}%)</span>
                 <span>{fmt(customerTradeValue)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="opacity-60">My cards (market value)</span>
+                <span className="opacity-60">My cards</span>
                 <span>{fmt(myTradeValue)}</span>
               </div>
               <div
@@ -584,12 +555,72 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                     ? "You owe customer"
                     : "Even trade"}
                 </span>
-                <span>
-                  {Math.abs(tradeBalance) > 0.005 ? fmt(Math.abs(tradeBalance)) : "—"}
-                </span>
+                <span>{Math.abs(tradeBalance) > 0.005 ? fmt(Math.abs(tradeBalance)) : "—"}</span>
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* My Cards bottom sheet */}
+      {myCardsOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/50"
+          onClick={(e) => { if (e.target === e.currentTarget) setMyCardsOpen(false); }}
+        >
+          <div className="bg-background border-t rounded-t-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 pt-4 pb-2 shrink-0">
+              <div className="font-semibold">My Cards</div>
+              <button
+                className="text-sm px-3 py-1 rounded-lg bg-foreground text-background font-medium"
+                onClick={() => setMyCardsOpen(false)}
+              >
+                Done
+              </button>
+            </div>
+            <div className="px-4 pb-2 shrink-0">
+              <input
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+                placeholder="Search inventory…"
+                value={mySearch}
+                onChange={(e) => setMySearch(e.target.value)}
+              />
+            </div>
+            <div className="overflow-y-auto flex-1 px-4 pb-4">
+              {filteredInventory.length === 0 ? (
+                <div className="py-8 text-sm opacity-50 text-center">No items with market price.</div>
+              ) : (
+                <div className="border rounded-xl overflow-hidden">
+                  {filteredInventory.map((it, i) => {
+                    const isSelected = selectedMyIds.has(it.id);
+                    return (
+                      <div
+                        key={it.id}
+                        className={`px-3 py-2.5 flex items-center gap-3 cursor-pointer ${i > 0 ? "border-t" : ""} ${isSelected ? "bg-blue-50 dark:bg-blue-950/20" : ""}`}
+                        onClick={() => toggleMyItem(it.id)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          className="w-4 h-4 accent-blue-600 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{it.name}</div>
+                          <div className="text-xs opacity-50 truncate">
+                            {it.category} · {it.condition}
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold text-blue-600 shrink-0">
+                          {fmt(it.market)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
