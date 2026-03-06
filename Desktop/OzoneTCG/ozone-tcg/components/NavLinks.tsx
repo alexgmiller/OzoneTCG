@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, ShoppingBag, Tag, Users, Receipt, Wallet } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Tag, Users, Receipt, Wallet, Camera } from "lucide-react";
 import { Button } from "./ui/button";
 
 const links = [
@@ -10,6 +10,7 @@ const links = [
   { href: "/protected/inventory", label: "Inventory", icon: Package },
   { href: "/protected/buy", label: "Buy", icon: ShoppingBag },
   { href: "/protected/sold", label: "Sold", icon: Tag },
+  { href: "/protected/photos", label: "Deals", icon: Camera },
   { href: "/protected/consigners", label: "Consigners", icon: Users },
   { href: "/protected/expenses", label: "Expenses", icon: Receipt },
   { href: "/protected/payout", label: "Payout", icon: Wallet },
@@ -42,7 +43,7 @@ export default function NavLinks() {
               key={l.href}
               href={l.href}
               className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                active ? "text-foreground" : "text-muted-foreground"
+                active ? "text-primary" : "text-muted-foreground"
               }`}
             >
               <Icon size={20} strokeWidth={active ? 2.5 : 1.5} />

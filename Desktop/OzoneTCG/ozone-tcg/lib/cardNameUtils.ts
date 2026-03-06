@@ -6,9 +6,12 @@ export function stripParens(name: string): string {
   return name.replace(/\s*\([^)]*\)/g, "").trim();
 }
 
-/** Returns true if the card name is tagged as Japanese, e.g. "Charizard (JP)" */
+/**
+ * Returns true if the card name is tagged as Japanese.
+ * Recognises: "(JP)", "(Japanese)", "(japanese)" anywhere in the name.
+ */
 export function isJapaneseName(name: string): boolean {
-  return /\(JP\)/i.test(name);
+  return /\((JP|Japanese)\)/i.test(name);
 }
 
 /**
@@ -44,8 +47,14 @@ export function searchBaseNames(raw: string): string[] {
   // Use stripped as the base for structural transforms
   const base = stripped || trimmed;
 
-  // 3. Strip embedded promo notation: "Pikachu - 208/S-P" → "Pikachu"
-  const dePromo = base.replace(/\s+-\s+\d+\/[\w-]+\s*/g, "").trim();
+  // 3. Strip embedded promo notation:
+  //    "Pikachu - 208/S-P"  → "Pikachu"
+  //    "Espeon ex - 175"    → "Espeon ex"  (trailing standalone number)
+  //    "Oricorio ex - 024"  → "Oricorio ex"
+  const dePromo = base
+    .replace(/\s+-\s+\d+\/[\w-]+\s*/g, "")  // "- 208/S-P" style
+    .replace(/\s+-\s+\d+\s*$/g, "")          // "- 024" trailing number
+    .trim();
   if (dePromo && dePromo !== base) names.add(dePromo);
 
   // 4. Mega prefix: "M Garchomp EX" → "Mega Garchomp EX"
@@ -70,9 +79,13 @@ export function searchBaseNames(raw: string): string[] {
   }
 
   // 7. Delta species: "Raichu delta species" → "Raichu δ" (TCGdex uses the δ symbol)
-  const deltaMatch = base.match(/^(.+?)\s+delta\s+species$/i);
+  //    Also handles Collectr's parenthetical form: "Jolteon (Delta Species)"
+  //    Flatten parens so "Jolteon (Delta Species)" → "Jolteon  Delta Species" → matches regex
+  const flatForDelta = trimmed.replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
+  const deltaMatch = flatForDelta.match(/^(.+?)\s+delta\s+species\s*$/i)
+    ?? base.match(/^(.+?)\s+delta\s+species$/i);
   if (deltaMatch) {
-    const baseDelta = deltaMatch[1].trim();
+    const baseDelta = deltaMatch[1].replace(/\s+/g, " ").trim();
     names.add(`${baseDelta} δ`);
     names.add(baseDelta);
   }

@@ -36,6 +36,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
   const [tradePct, setTradePct] = useState(80);
   const [customBuyOffer, setCustomBuyOffer] = useState("");
   const [customTradeValue, setCustomTradeValue] = useState("");
+  const [customMyValue, setCustomMyValue] = useState("");
 
   // Customer card input fields
   const [cardName, setCardName] = useState("");
@@ -88,7 +89,12 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
     [inventoryItems, selectedMyIds]
   );
   const myTradeValue = selectedMyItems.reduce((s, it) => s + it.market, 0);
-  const tradeBalance = myTradeValue - customerTradeValue;
+
+  const parsedCustomMy = parseFloat(customMyValue);
+  const effectiveMyValue = customMyValue !== "" && Number.isFinite(parsedCustomMy)
+    ? parsedCustomMy
+    : myTradeValue;
+  const tradeBalance = effectiveMyValue - customerTradeValue;
 
   const filteredInventory = useMemo(() => {
     const q = mySearch.trim().toLowerCase();
@@ -163,6 +169,17 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
         if (card.market != null) setCardMarket(String(card.market));
         setPendingImageUrl(card.imageUrl ?? null);
         setLookupConfirmed({ name: card.name, setName: card.setName ?? "", cardNumber: card.cardNumber ?? "" });
+        // Background price fetch — fills market price automatically if TCGdex has data
+        if (card.cardId && card.market == null) {
+          fetch("/api/card-price", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ cardId: card.cardId }),
+          })
+            .then((r) => r.json())
+            .then((data) => { if (data.market != null) setCardMarket(String(data.market)); })
+            .catch(() => {});
+        }
       } else {
         // Multiple results — open picker
         setCardSearchOpen(true);
@@ -212,6 +229,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
     setFinalizeOpen(false);
     setCustomBuyOffer("");
     setCustomTradeValue("");
+    setCustomMyValue("");
     clearCardForm();
   }
 
@@ -524,7 +542,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
             <span className="font-medium">My Cards</span>
             <span className="text-sm opacity-60">
               {selectedMyIds.size > 0
-                ? `${selectedMyIds.size} selected · ${fmt(myTradeValue)}`
+                ? `${selectedMyIds.size} selected · ${fmt(effectiveMyValue)}${customMyValue !== "" ? " (adj)" : ""}`
                 : "Tap to select →"}
             </span>
           </button>
@@ -535,9 +553,31 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                 <span className="opacity-60">Their value ({effectiveTradePct.toFixed(1)}%)</span>
                 <span>{fmt(customerTradeValue)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="opacity-60">My cards</span>
-                <span>{fmt(myTradeValue)}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="opacity-60 shrink-0">My cards</span>
+                <div className="flex items-center gap-1">
+                  {customMyValue !== "" && (
+                    <span className="text-xs opacity-40 line-through">{fmt(myTradeValue)}</span>
+                  )}
+                  <span className="text-xs opacity-40">$</span>
+                  <input
+                    className="w-20 border rounded-lg px-2 py-0.5 text-sm bg-background text-right font-medium"
+                    type="number"
+                    min={0}
+                    placeholder={myTradeValue.toFixed(2)}
+                    value={customMyValue}
+                    onChange={(e) => setCustomMyValue(e.target.value)}
+                  />
+                  {customMyValue !== "" && (
+                    <button
+                      onClick={() => setCustomMyValue("")}
+                      className="text-xs opacity-40 hover:opacity-70 px-0.5"
+                      title="Reset to market"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
               <div
                 className={`flex justify-between font-semibold border-t pt-1 mt-1 ${
@@ -568,16 +608,46 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
           className="fixed inset-0 z-50 flex items-end bg-black/50"
           onClick={(e) => { if (e.target === e.currentTarget) setMyCardsOpen(false); }}
         >
-          <div className="bg-background border-t rounded-t-2xl w-full max-h-[80vh] flex flex-col">
+          <div className="bg-background border-t rounded-t-2xl w-full max-h-[85vh] flex flex-col">
+            {/* Header */}
             <div className="flex items-center justify-between px-4 pt-4 pb-2 shrink-0">
-              <div className="font-semibold">My Cards</div>
+              <div className="font-semibold">
+                My Cards
+                {selectedMyIds.size > 0 && (
+                  <span className="ml-2 text-sm font-normal opacity-60">
+                    {selectedMyIds.size} selected · {fmt(effectiveMyValue)}
+                  </span>
+                )}
+              </div>
               <button
-                className="text-sm px-3 py-1 rounded-lg bg-foreground text-background font-medium"
+                className="text-sm px-3 py-1.5 rounded-lg bg-foreground text-background font-medium"
                 onClick={() => setMyCardsOpen(false)}
               >
                 Done
               </button>
             </div>
+
+            {/* Selected chips — always visible at top */}
+            {selectedMyItems.length > 0 && (
+              <div className="px-4 pb-2 shrink-0">
+                <div className="text-xs font-medium text-muted-foreground mb-1.5">Selected — tap to remove</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedMyItems.map((it) => (
+                    <button
+                      key={it.id}
+                      onClick={() => toggleMyItem(it.id)}
+                      className="flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary"
+                    >
+                      <span className="max-w-[120px] truncate">{it.name}</span>
+                      <span className="opacity-60 shrink-0">{fmt(it.market)}</span>
+                      <span className="ml-0.5 opacity-50">✕</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Search */}
             <div className="px-4 pb-2 shrink-0">
               <input
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
@@ -586,9 +656,11 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                 onChange={(e) => setMySearch(e.target.value)}
               />
             </div>
+
+            {/* Inventory list — unselected items first when nothing is searched */}
             <div className="overflow-y-auto flex-1 px-4 pb-4">
               {filteredInventory.length === 0 ? (
-                <div className="py-8 text-sm opacity-50 text-center">No items with market price.</div>
+                <div className="py-8 text-sm opacity-50 text-center">No items found.</div>
               ) : (
                 <div className="border rounded-xl overflow-hidden">
                   {filteredInventory.map((it, i) => {
@@ -596,22 +668,19 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                     return (
                       <div
                         key={it.id}
-                        className={`px-3 py-2.5 flex items-center gap-3 cursor-pointer ${i > 0 ? "border-t" : ""} ${isSelected ? "bg-blue-50 dark:bg-blue-950/20" : ""}`}
+                        className={`px-3 py-2.5 flex items-center gap-3 cursor-pointer ${i > 0 ? "border-t" : ""} ${isSelected ? "bg-primary/5" : ""}`}
                         onClick={() => toggleMyItem(it.id)}
                       >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          readOnly
-                          className="w-4 h-4 accent-blue-600 shrink-0"
-                        />
+                        <div className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center ${isSelected ? "bg-primary border-primary" : "border-border"}`}>
+                          {isSelected && <span className="text-[10px] text-primary-foreground font-bold leading-none">✓</span>}
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{it.name}</div>
+                          <div className={`text-sm font-medium truncate ${isSelected ? "text-primary" : ""}`}>{it.name}</div>
                           <div className="text-xs opacity-50 truncate">
                             {it.category} · {it.condition}
                           </div>
                         </div>
-                        <div className="text-sm font-semibold text-blue-600 shrink-0">
+                        <div className={`text-sm font-semibold shrink-0 ${isSelected ? "text-primary" : "opacity-70"}`}>
                           {fmt(it.market)}
                         </div>
                       </div>
@@ -700,7 +769,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                 <>
                   <div className="flex justify-between">
                     <span className="opacity-60">My cards trading away</span>
-                    <span>{selectedMyIds.size}</span>
+                    <span>{selectedMyIds.size} · {fmt(effectiveMyValue)}{customMyValue !== "" ? "*" : ""}</span>
                   </div>
                   <div
                     className={`flex justify-between font-semibold border-t pt-1 mt-1 ${

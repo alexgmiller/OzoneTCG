@@ -1332,12 +1332,19 @@ export default function InventoryClient({
               })}
             </div>
 
-            <div className="text-xs opacity-50 -mt-2">
-              Total market: {fmt(totalMarket || null)} · Split proportionally by market value
-            </div>
-
             <div>
-              <label className="text-sm font-medium block mb-1">Total sale price ($)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium">Total sale price ($)</label>
+                {totalMarket > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary font-medium hover:underline"
+                    onClick={() => setSalePrice(totalMarket.toFixed(2))}
+                  >
+                    Use market {fmt(totalMarket)}
+                  </button>
+                )}
+              </div>
               <input
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
                 placeholder="0.00"
@@ -1346,6 +1353,7 @@ export default function InventoryClient({
                 onChange={(e) => setSalePrice(e.target.value)}
                 autoFocus
               />
+              <div className="text-xs opacity-50 mt-1">Split proportionally by market value</div>
             </div>
 
             <div className="flex gap-2">
