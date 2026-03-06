@@ -8,6 +8,7 @@ export type CardSearchResult = {
   cardNumber: string;
   imageUrl: string | null;
   market: number | null;
+  cardId?: string;
 };
 
 type Props = {
@@ -92,6 +93,19 @@ export default function CardSearchPicker({
   function handleSelect(card: CardSearchResult) {
     onResult(card);
     handleClose();
+    // Background price fetch — if TCGdex has market data, fire a second onResult with it
+    if (card.cardId && card.market == null) {
+      fetch("/api/card-price", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cardId: card.cardId }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.market != null) onResult({ ...card, market: data.market });
+        })
+        .catch(() => {});
+    }
   }
 
   return (

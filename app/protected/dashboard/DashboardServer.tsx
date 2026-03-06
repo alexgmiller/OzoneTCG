@@ -68,32 +68,32 @@ export default async function DashboardServer() {
       <DashboardClient workspaceId={workspaceId} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="border rounded-xl p-3">
-          <div className="text-xs opacity-70">Active Market</div>
+        <div className="border border-violet-200 dark:border-violet-800/50 bg-violet-50/60 dark:bg-violet-900/15 rounded-xl p-3">
+          <div className="text-xs font-medium text-violet-600 dark:text-violet-400">Active Market</div>
           <div className="text-lg font-semibold">{money(totals.market.active_total)}</div>
           <div className="text-xs opacity-60 mt-1">
             {totals.counts.inventory} items in inventory
           </div>
         </div>
 
-        <div className="border rounded-xl p-3">
-          <div className="text-xs opacity-70">Cost Basis (All)</div>
+        <div className="border border-blue-200 dark:border-blue-800/50 bg-blue-50/60 dark:bg-blue-900/15 rounded-xl p-3">
+          <div className="text-xs font-medium text-blue-600 dark:text-blue-400">Cost Basis (All)</div>
           <div className="text-lg font-semibold">{money(totals.cost.total_all)}</div>
           <div className="text-xs opacity-60 mt-1">
             Inv {money(totals.cost.inventory)} • Sold {money(totals.cost.sold)}
           </div>
         </div>
 
-        <div className="border rounded-xl p-3">
-          <div className="text-xs opacity-70">Sold Revenue</div>
+        <div className="border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/60 dark:bg-emerald-900/15 rounded-xl p-3">
+          <div className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Sold Revenue</div>
           <div className="text-lg font-semibold">{money(totals.sold.revenue)}</div>
           <div className="text-xs opacity-60 mt-1">
             Sold Profit (rev - cost): {money(totals.sold.profit)}
           </div>
         </div>
 
-        <div className="border rounded-xl p-3">
-          <div className="text-xs opacity-70">Items</div>
+        <div className="border border-amber-200 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-900/15 rounded-xl p-3">
+          <div className="text-xs font-medium text-amber-600 dark:text-amber-400">Items</div>
           <div className="text-lg font-semibold">{totals.counts.total}</div>
           <div className="text-xs opacity-60 mt-1">
             Inv {totals.counts.inventory} • Sold {totals.counts.sold}

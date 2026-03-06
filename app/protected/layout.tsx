@@ -13,9 +13,9 @@ export default function ProtectedLayout({
   return (
     <main className="min-h-screen flex flex-col">
       <div className="flex-1 w-full flex flex-col">
-        <nav className="w-full border-b border-b-foreground/10 h-14 sticky top-0 z-40 bg-background">
+        <nav className="w-full border-b border-b-primary/20 h-14 sticky top-0 z-40 bg-background">
           <div className="w-full h-full flex justify-between items-center px-4 text-sm">
-            <Link href="/protected/dashboard" className="font-bold text-base tracking-tight">
+            <Link href="/protected/dashboard" className="font-bold text-base tracking-tight bg-gradient-to-r from-violet-600 to-indigo-500 bg-clip-text text-transparent">
               OzoneTCG
             </Link>
 
