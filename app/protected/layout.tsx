@@ -1,6 +1,7 @@
 import { EnvVarWarning } from "@/components/env-var-warning";
 import { AuthButton } from "@/components/auth-button";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import MobileBottomNav from "@/components/NavLinks";
 import { hasEnvVars } from "@/lib/utils";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -13,7 +14,7 @@ export default function ProtectedLayout({
   return (
     <main className="min-h-screen flex flex-col">
       <div className="flex-1 w-full flex flex-col">
-        <nav className="w-full border-b border-b-primary/20 h-14 sticky top-0 z-40 bg-background">
+        <nav className="w-full border-b border-b-primary/10 h-14 sticky top-0 z-40 bg-background/60 backdrop-blur-md">
           <div className="w-full h-full flex justify-between items-center px-4 text-sm">
             <Link href="/protected/dashboard" className="font-bold text-base tracking-tight bg-gradient-to-r from-violet-600 to-indigo-500 bg-clip-text text-transparent">
               OzoneTCG
@@ -37,6 +38,8 @@ export default function ProtectedLayout({
           {children}
         </div>
       </div>
+      {/* Rendered outside the sticky/backdrop-blur nav to keep fixed positioning intact on Safari */}
+      <MobileBottomNav />
     </main>
   );
 }

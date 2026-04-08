@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from "./logout-button";
-import NavLinks from "./NavLinks";
+import { DesktopNavLinks } from "./NavLinks";
 
 export async function AuthButton() {
   const supabase = await createClient();
@@ -25,7 +25,7 @@ export async function AuthButton() {
 
   return (
     <div className="flex items-center gap-4">
-      <NavLinks />
+      <DesktopNavLinks />
 
       <div className="flex items-center gap-3">
         <span className="hidden md:inline text-sm opacity-80">Hey, {user.email}!</span>

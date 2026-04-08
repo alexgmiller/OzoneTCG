@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { finalizeBuy, finalizeTrade, type CustomerCard } from "./actions";
 import CardScanner, { type ScanResult } from "@/components/CardScanner";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
+import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
 import BuyCSVImport from "./BuyCSVImport";
 
 type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
@@ -57,6 +58,9 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
   const [mySearch, setMySearch] = useState("");
   const [selectedMyIds, setSelectedMyIds] = useState<Set<string>>(new Set());
   const [myCardsOpen, setMyCardsOpen] = useState(false);
+
+  // Live listings
+  const [liveListingsCard, setLiveListingsCard] = useState<CustomerCard | null>(null);
 
   // Modals
   const [scanOpen, setScanOpen] = useState(false);
@@ -353,12 +357,20 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
 
         {/* Add card form */}
         <div className="space-y-2">
-          <input
+          <CardAutocomplete
             className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
             placeholder="Card name *"
             value={cardName}
-            onChange={(e) => { setCardName(e.target.value); setLookupConfirmed(null); }}
+            onChange={(v) => { setCardName(v); setLookupConfirmed(null); }}
             onKeyDown={(e) => e.key === "Enter" && addCard()}
+            onSelect={(card: AutocompleteCard) => {
+              setCardName(card.name);
+              setCardSetName(card.setName ?? "");
+              setCardNumber(card.cardNumber ?? "");
+              setPendingImageUrl(card.imageUrl ?? null);
+              setLookupConfirmed({ name: card.name, setName: card.setName ?? "", cardNumber: card.cardNumber ?? "" });
+              if (card.market != null) setCardMarket(String(card.market));
+            }}
           />
           <div className="grid grid-cols-2 gap-2">
             <input
@@ -411,6 +423,41 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
             </div>
           )}
 
+          {/* Search buttons */}
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              className="px-2 py-2 rounded-lg border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors"
+              disabled={!cardName.trim()}
+              onClick={() => {
+                const q = [cardName, cardSetName].filter(Boolean).join(" ");
+                const qs = new URLSearchParams({ Language: "English", productLineName: "pokemon", q, view: "grid" });
+                window.open(`https://www.tcgplayer.com/search/pokemon/product?${qs}`, "_blank");
+              }}
+            >
+              TCGplayer
+            </button>
+            <button
+              className="px-2 py-2 rounded-lg border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors"
+              disabled={!cardName.trim()}
+              onClick={() => {
+                const q = [cardName, cardSetName, cardNumber, "pokemon card"].filter(Boolean).join(" ") + " site:tcgplayer.com";
+                window.open(`https://www.google.com/search?q=${encodeURIComponent(q)}`, "_blank");
+              }}
+            >
+              Google
+            </button>
+            <button
+              className="px-2 py-2 rounded-lg border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors"
+              disabled={!cardName.trim()}
+              onClick={() => {
+                const q = [cardName, cardSetName, cardNumber, "pokemon"].filter(Boolean).join(" ");
+                window.open(`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&LH_Complete=1&LH_Sold=1`, "_blank");
+              }}
+            >
+              eBay Sold
+            </button>
+          </div>
+
           <div className="flex gap-2">
             <button
               className="flex-1 px-4 py-2 rounded-lg border font-medium text-sm disabled:opacity-40"
@@ -450,6 +497,13 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
                       </div>
                     </div>
                     <div className="text-sm font-semibold text-green-600 shrink-0">{fmt(offer)}</div>
+                    <button
+                      className="text-xs px-2 py-0.5 border rounded-md opacity-60 hover:opacity-100 shrink-0"
+                      title="See live TCGplayer listings"
+                      onClick={() => setLiveListingsCard(c)}
+                    >
+                      Live
+                    </button>
                     <button
                       className="text-xs opacity-40 hover:opacity-80 px-1 shrink-0"
                       onClick={() => setCustomerCards((prev) => prev.filter((x) => x.id !== c.id))}
@@ -816,6 +870,131 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
           </div>
         </div>
       )}
+
+      {liveListingsCard && (
+        <LiveListingsModal
+          card={liveListingsCard}
+          onClose={() => setLiveListingsCard(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Live Listings Modal ──────────────────────────────────────────────────────
+
+type Listing = { price: number; shipping: number; total: number; condition: string; seller: string; quantity: number };
+
+function LiveListingsModal({
+  card,
+  onClose,
+}: {
+  card: CustomerCard;
+  onClose: () => void;
+}) {
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams({ name: card.name });
+      if (card.setName && card.cardNumber) {
+        // Construct TCGdex card ID (e.g. "sv04.5-6") for precise lookup
+        qs.set("cardId", `${card.setName}-${card.cardNumber}`);
+      } else if (card.setName) {
+        qs.set("setName", card.setName);
+      }
+      const res = await fetch(`/api/tcgplayer-listings?${qs}`);
+      const data = await res.json();
+      if (data.error && !data.listings?.length) {
+        setError(data.error);
+      } else {
+        setListings(data.listings ?? []);
+      }
+    } catch {
+      setError("Failed to fetch listings");
+    } finally {
+      setLoading(false);
+    }
+  }, [card.name, card.setName, card.cardNumber]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const lowest = listings[0]?.total ?? null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4 pb-20 sm:pb-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background border rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl">
+        {/* Header */}
+        <div className="flex items-start justify-between px-4 py-3 border-b shrink-0">
+          <div>
+            <div className="font-semibold text-sm truncate">{card.name}</div>
+            {card.setName && <div className="text-xs text-muted-foreground">{card.setName}</div>}
+            {lowest != null && !loading && (
+              <div className="text-xs text-emerald-600 font-medium mt-0.5">
+                Lowest: ${lowest.toFixed(2)} shipped
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center w-10 h-10 -mr-1 text-muted-foreground rounded-xl shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {loading && (
+            <div className="text-sm text-muted-foreground text-center py-10">Loading listings…</div>
+          )}
+          {error && !loading && (
+            <div className="text-sm text-red-600 text-center py-10 px-4">{error}</div>
+          )}
+          {!loading && !error && listings.length === 0 && (
+            <div className="text-sm text-muted-foreground text-center py-10">No listings found</div>
+          )}
+          {!loading && listings.length > 0 && (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs text-muted-foreground">
+                  <th className="text-left px-4 py-2 font-medium">Condition</th>
+                  <th className="text-right px-2 py-2 font-medium">Price</th>
+                  <th className="text-right px-2 py-2 font-medium">Ship</th>
+                  <th className="text-right px-4 py-2 font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listings.map((l, i) => (
+                  <tr key={i} className={`border-b last:border-0 ${i === 0 ? "bg-emerald-50 dark:bg-emerald-950/20" : ""}`}>
+                    <td className="px-4 py-2 text-xs text-muted-foreground truncate max-w-[120px]">{l.condition || "—"}</td>
+                    <td className="px-2 py-2 text-right">${l.price.toFixed(2)}</td>
+                    <td className="px-2 py-2 text-right text-muted-foreground">
+                      {l.shipping === 0 ? <span className="text-emerald-600 text-xs">Free</span> : `$${l.shipping.toFixed(2)}`}
+                    </td>
+                    <td className="px-4 py-2 text-right font-semibold">${l.total.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="px-4 py-3 border-t shrink-0">
+          <button
+            onClick={load}
+            className="w-full py-2 rounded-xl border text-sm text-muted-foreground"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

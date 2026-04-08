@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
-import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, refreshItemPrices, fetchCardData } from "./actions";
+import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, fetchCardData, uploadCardImage, uploadItemImage, refreshSlabPrice, getEbayDailyCallCount, refreshRawCardPrice, type RefreshedSlabPrice, type RefreshedRawCardPrice } from "./actions";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import type { SlabPrice, RawCardPrice } from "./InventoryServer";
+import { makeSlabPriceKey, parseGrade, type SlabSale } from "@/lib/ebay";
+import { makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
 import CSVImport from "./CSVImport";
 import CardScanner, { type ScanResult } from "@/components/CardScanner";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
+import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
+import CardImage from "@/components/CardImage";
 
 type Category = "single" | "slab" | "sealed";
 type Owner = "alex" | "mila" | "shared" | "consigner";
@@ -16,7 +22,9 @@ type SortKey =
   | "date-desc" | "date-asc"
   | "name-asc"  | "name-desc"
   | "market-desc" | "market-asc"
-  | "cost-desc"   | "cost-asc";
+  | "cost-desc"   | "cost-asc"
+  | "fmv-desc"    | "fmv-asc"
+  | "margin-desc" | "margin-asc";
 
 type ConsignerOption = { id: string; name: string; rate: number };
 
@@ -49,6 +57,7 @@ type ItemForm = {
   notes: string;
   consignerId: string;
   imageUrl: string;
+  cardId: string;
   setName: string;
   cardNumber: string;
   grade: string;
@@ -75,12 +84,36 @@ const categoryColors: Record<string, string> = {
 };
 
 function gradeStyle(grade: string): string {
-  const n = parseInt(grade.replace("PSA ", ""));
-  if (n === 10) return "bg-yellow-100 border border-yellow-400 text-yellow-800 font-bold";
-  if (n === 9)  return "bg-emerald-100 border border-emerald-400 text-emerald-800 font-semibold";
-  if (n >= 7)   return "bg-blue-100 border border-blue-400 text-blue-800";
-  if (n >= 5)   return "bg-orange-100 border border-orange-400 text-orange-800";
+  const parsed = parseGrade(grade);
+  if (!parsed) return "bg-purple-100 border border-purple-400 text-purple-800";
+  const n = parseFloat(parsed.grade);
+  if (parsed.grade.toLowerCase().includes("black") || n >= 9.5)
+    return "bg-yellow-100 border border-yellow-400 text-yellow-800 font-bold";
+  if (n >= 9)  return "bg-emerald-100 border border-emerald-400 text-emerald-800 font-semibold";
+  if (n >= 7)  return "bg-blue-100 border border-blue-400 text-blue-800";
+  if (n >= 5)  return "bg-orange-100 border border-orange-400 text-orange-800";
   return "bg-red-100 border border-red-400 text-red-800";
+}
+
+// ── Staleness tiers ────────────────────────────────────────────────────────
+const TIER_2H = 2 * 60 * 60 * 1000;
+const TIER_4H = 4 * 60 * 60 * 1000;
+const TIER_8H = 8 * 60 * 60 * 1000;
+const EBAY_DAILY_BUDGET = 5000;
+const EBAY_BUDGET_WARN_PCT = 0.8;
+
+function getSlabTierMs(fmv: number | null, compCount: number): number {
+  if (compCount < 3) return TIER_2H;       // low confidence → 2h
+  if (fmv == null)   return TIER_2H;       // no data → treat as 2h (will be highest priority)
+  if (fmv > 200)     return TIER_2H;       // high value → 2h
+  if (fmv >= 50)     return TIER_4H;       // medium value → 4h
+  return TIER_8H;                          // low value → 8h
+}
+
+function isSlabTierStale(sp: SlabPrice | null | undefined, fmv: number | null): boolean {
+  if (!sp?.last_updated) return true;      // no cached data at all
+  const compCount = sp.sold_count > 0 ? sp.sold_count : sp.comp_count;
+  return Date.now() - new Date(sp.last_updated).getTime() > getSlabTierMs(fmv, compCount);
 }
 
 const blankForm = (): ItemForm => ({
@@ -94,6 +127,7 @@ const blankForm = (): ItemForm => ({
   notes: "",
   consignerId: "",
   imageUrl: "",
+  cardId: "",
   setName: "",
   cardNumber: "",
   grade: "",
@@ -111,6 +145,7 @@ function itemToForm(it: Item): ItemForm {
     notes: it.notes ?? "",
     consignerId: it.consigner_id ?? "",
     imageUrl: it.image_url ?? "",
+    cardId: "",
     setName: it.set_name ?? "",
     cardNumber: it.card_number ?? "",
     grade: it.grade ?? "",
@@ -134,6 +169,29 @@ function ItemFormFields({
   findConfirmed?: string | null;
   findError?: string | null;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (form.cardId) fd.append("cardId", form.cardId);
+      if (form.name) fd.append("name", form.name);
+      if (form.cardNumber) fd.append("cardNumber", form.cardNumber);
+      const url = await uploadCardImage(fd);
+      setForm({ ...form, imageUrl: url });
+    } catch {
+      // silent — user can retry
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
@@ -189,17 +247,32 @@ function ItemFormFields({
             value={form.grade}
             onChange={(e) => setForm({ ...form, grade: e.target.value })}
           >
-            <option value="">— PSA Grade —</option>
-            <option value="PSA 10">PSA 10</option>
-            <option value="PSA 9">PSA 9</option>
-            <option value="PSA 8">PSA 8</option>
-            <option value="PSA 7">PSA 7</option>
-            <option value="PSA 6">PSA 6</option>
-            <option value="PSA 5">PSA 5</option>
-            <option value="PSA 4">PSA 4</option>
-            <option value="PSA 3">PSA 3</option>
-            <option value="PSA 2">PSA 2</option>
-            <option value="PSA 1">PSA 1</option>
+            <option value="">— Grade —</option>
+            <optgroup label="PSA">
+              {[10,9,8,7,6,5,4,3,2,1].map((n) => (
+                <option key={`PSA ${n}`} value={`PSA ${n}`}>PSA {n}</option>
+              ))}
+            </optgroup>
+            <optgroup label="BGS">
+              {["10 Black Label", 10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1].map((g) => (
+                <option key={`BGS ${g}`} value={`BGS ${g}`}>BGS {g}</option>
+              ))}
+            </optgroup>
+            <optgroup label="CGC">
+              {[10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1].map((g) => (
+                <option key={`CGC ${g}`} value={`CGC ${g}`}>CGC {g}</option>
+              ))}
+            </optgroup>
+            <optgroup label="ACE">
+              {[10,9,8,7,6,5,4,3,2,1].map((n) => (
+                <option key={`ACE ${n}`} value={`ACE ${n}`}>ACE {n}</option>
+              ))}
+            </optgroup>
+            <optgroup label="TAG">
+              {[10, 9.5, 9, 8.5, 8, 7, 6, 5].map((g) => (
+                <option key={`TAG ${g}`} value={`TAG ${g}`}>TAG {g}</option>
+              ))}
+            </optgroup>
           </select>
         ) : (
           <select
@@ -219,11 +292,22 @@ function ItemFormFields({
       {/* Card identification — name + set + number + Find */}
       <div className="space-y-2">
         <div className="flex gap-2">
-          <input
+          <CardAutocomplete
             className="flex-1 border rounded-lg px-3 py-2 text-sm bg-background"
             placeholder="Name *"
             value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            onChange={(v) => setForm({ ...form, name: v })}
+            onSelect={(card: AutocompleteCard) => {
+              setForm({
+                ...form,
+                name: card.name,
+                setName: card.setName ?? "",
+                cardNumber: card.cardNumber ?? "",
+                imageUrl: card.imageUrl ?? "",
+                cardId: card.cardId ?? "",
+                ...(card.market != null ? { market: String(card.market) } : {}),
+              });
+            }}
           />
           {onFind && (
             <button
@@ -289,7 +373,8 @@ function ItemFormFields({
         onChange={(e) => setForm({ ...form, notes: e.target.value })}
       />
 
-      {/* Image — show found image prominently, fallback to URL input */}
+      {/* Image — show found image prominently, fallback to URL input + upload */}
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
       {form.imageUrl ? (
         <div className="flex items-start gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -298,25 +383,45 @@ function ItemFormFields({
             <input
               className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
               placeholder="Image URL"
-              value={form.imageUrl}
+              value={form.imageUrl ?? ""}
               onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
             />
-            <button
-              type="button"
-              className="text-xs text-red-500 underline"
-              onClick={() => setForm({ ...form, imageUrl: "" })}
-            >
-              Remove image
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline disabled:opacity-40"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingImage}
+              >
+                {uploadingImage ? "Uploading…" : "Replace photo"}
+              </button>
+              <button
+                type="button"
+                className="text-xs text-red-500 underline"
+                onClick={() => setForm({ ...form, imageUrl: "" })}
+              >
+                Remove image
+              </button>
+            </div>
           </div>
         </div>
       ) : (
-        <input
-          className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-          placeholder="Image URL (or use Find / Scan to auto-fill)"
-          value={form.imageUrl}
-          onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-        />
+        <div className="space-y-1.5">
+          <input
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+            placeholder="Image URL (or use Find / Scan to auto-fill)"
+            value={form.imageUrl ?? ""}
+            onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+          />
+          <button
+            type="button"
+            className="text-xs text-muted-foreground underline disabled:opacity-40"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingImage}
+          >
+            {uploadingImage ? "Uploading…" : "Upload photo"}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -333,14 +438,23 @@ export default function InventoryClient({
   items,
   consigners,
   workspaceId,
+  slabPrices,
+  rawCardPrices,
 }: {
   items: Item[];
   consigners: ConsignerOption[];
   workspaceId: string;
+  slabPrices: Record<string, SlabPrice>;
+  rawCardPrices: Record<string, RawCardPrice>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [bulkSyncing, setBulkSyncing] = useState(false);
+  // Background auto-refresh
+  type BgStatus = "idle" | "running" | "done" | "rate_limited";
+  const [bgStatus, setBgStatus] = useState<BgStatus>("idle");
+  const [bgStaleCount, setBgStaleCount] = useState(0);
+  const [dailyCallCount, setDailyCallCount] = useState(0);
+  const bgRef = useRef<{ paused: boolean; aborted: boolean }>({ paused: false, aborted: false });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(true);
@@ -358,6 +472,33 @@ export default function InventoryClient({
   // PSA 10 eBay price lookup state per grading item
   type Psa10Entry = { medianPrice: number | null; count: number; loading: boolean; fetched: boolean; rateLimited?: boolean };
   const [psa10Data, setPsa10Data] = useState<Record<string, Psa10Entry>>({});
+
+  // Slab pricing refresh state per inventory slab
+  const [slabRefreshing, setSlabRefreshing] = useState<Record<string, boolean>>({});
+  const [slabRateLimited, setSlabRateLimited] = useState<Record<string, boolean>>({});
+
+  // Inline cost editing
+  const [inlineCostId, setInlineCostId] = useState<string | null>(null);
+  const [inlineCostVal, setInlineCostVal] = useState("");
+
+  // Pricing detail modal — store item + slabKey; derive sp live from slabPrices prop so refresh updates it
+  const [pricingDetailItem, setPricingDetailItem] = useState<{ item: Item; slabKey: string } | null>(null);
+  const [soldExpanded, setSoldExpanded] = useState(false);
+
+  // Raw card pricing state
+  const [rawCardRefreshing, setRawCardRefreshing] = useState<Record<string, boolean>>({});
+  const [rawCardPriceOverrides, setRawCardPriceOverrides] = useState<Record<string, RawCardPrice>>({});
+  const mergedRawCardPrices = useMemo(
+    () => ({ ...rawCardPrices, ...rawCardPriceOverrides }),
+    [rawCardPrices, rawCardPriceOverrides]
+  );
+  const [rawCardDetailItem, setRawCardDetailItem] = useState<Item | null>(null);
+  const [historyDuration, setHistoryDuration] = useState<"7d" | "30d" | "90d" | "180d">("90d");
+
+  const openRawCardModal = useCallback((it: Item) => {
+    setRawCardDetailItem(it);
+    setHistoryDuration("90d");
+  }, []);
 
   async function fetchPsa10(id: string, name: string, setName?: string | null) {
     setPsa10Data((prev) => ({ ...prev, [id]: { medianPrice: null, count: 0, loading: true, fetched: false } }));
@@ -391,10 +532,125 @@ export default function InventoryClient({
     return () => { supabase.removeChannel(channel); };
   }, [router, workspaceId]);
 
+  // ── Background auto-refresh loop ──────────────────────────────────────────
+  useEffect(() => {
+    // Abort any prior loop instance
+    bgRef.current.aborted = true;
+    const ctrl = { paused: false, aborted: false };
+    bgRef.current = ctrl;
+
+    const allSlabs = items.filter((it) => it.category === "slab" && it.grade && it.status !== "grading");
+    if (allSlabs.length === 0) { setBgStatus("done"); return; }
+
+    // Build stale queue with FMV context
+    const withFmv = allSlabs.map((it) => {
+      const parsed = parseGrade(it.grade!);
+      const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
+      const sp = key ? slabPrices[key] : null;
+      const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+      const compCount = sp ? (sp.sold_count > 0 ? sp.sold_count : sp.comp_count) : 0;
+      return { item: it, sp, fmv, compCount, key };
+    });
+
+    const stale = withFmv.filter(({ sp, fmv }) => isSlabTierStale(sp, fmv));
+    if (stale.length === 0) { setBgStatus("done"); return; }
+
+    // Sort: no data first, then low confidence, then high value, then by tier
+    stale.sort((a, b) => {
+      const rank = (x: typeof a) => {
+        if (!x.sp) return 0;                        // no data — highest priority
+        if (x.compCount < 3) return 1;              // low confidence
+        if ((x.fmv ?? 0) > 200) return 2;           // high value
+        if ((x.fmv ?? 0) >= 50) return 3;           // medium value
+        return 4;                                    // low value
+      };
+      return rank(a) - rank(b);
+    });
+
+    setBgStaleCount(stale.length);
+    setBgStatus("running");
+
+    async function runLoop() {
+      // Check rate limit before starting
+      const initialCount = await getEbayDailyCallCount();
+      setDailyCallCount(initialCount);
+      if (initialCount >= EBAY_DAILY_BUDGET * EBAY_BUDGET_WARN_PCT) {
+        setBgStatus("rate_limited");
+        return;
+      }
+
+      for (const { item, sp, fmv, compCount } of stale) {
+        if (ctrl.aborted) break;
+
+        // Wait while a manual refresh is in progress
+        while (ctrl.paused && !ctrl.aborted) {
+          await new Promise<void>((r) => setTimeout(r, 300));
+        }
+        if (ctrl.aborted) break;
+
+        // Re-check rate limit each iteration
+        const callCount = await getEbayDailyCallCount();
+        setDailyCallCount(callCount);
+        if (callCount >= EBAY_DAILY_BUDGET * EBAY_BUDGET_WARN_PCT) {
+          setBgStatus("rate_limited");
+          break;
+        }
+
+        const tierMs = getSlabTierMs(fmv, compCount);
+        setSlabRefreshing((prev) => ({ ...prev, [item.id]: true }));
+        try {
+          const result = await refreshSlabPrice(
+            item.id, item.name, item.grade!,
+            item.set_name ?? null, item.card_number ?? null,
+            tierMs
+          );
+          if (result.rateLimited) {
+            setSlabRateLimited((prev) => ({ ...prev, [item.id]: true }));
+            setBgStatus("rate_limited");
+            break;
+          }
+          if (result.updated && result.refreshedPrice) {
+            // Update local state immediately — no server re-render needed per item
+            applyRefreshedPrice(result.refreshedPrice);
+          }
+          setBgStaleCount((n) => Math.max(0, n - 1));
+        } catch {
+          // Skip individual failures silently — continue the queue
+        } finally {
+          setSlabRefreshing((prev) => ({ ...prev, [item.id]: false }));
+        }
+
+        if (!ctrl.aborted) await new Promise<void>((r) => setTimeout(r, 3000)); // 3s — respectful scraping cadence
+      }
+
+      if (!ctrl.aborted) {
+        setBgStatus("done");
+        // Single router.refresh() at the end to sync item.market values written server-side
+        router.refresh();
+      }
+    }
+
+    runLoop();
+    return () => { ctrl.aborted = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally run once on mount with initial prop snapshot
+
   const consignerMap = useMemo(
     () => new Map(consigners.map((c) => [c.id, c])),
     [consigners]
   );
+
+  // Local price overrides — updated by background loop so we don't need router.refresh() per item.
+  // Merged over the server-provided slabPrices prop.
+  const [slabPriceOverrides, setSlabPriceOverrides] = useState<Record<string, SlabPrice>>({});
+  const mergedSlabPrices = useMemo(
+    () => ({ ...slabPrices, ...slabPriceOverrides }),
+    [slabPrices, slabPriceOverrides]
+  );
+
+  function applyRefreshedPrice(rp: RefreshedSlabPrice) {
+    setSlabPriceOverrides((prev) => ({ ...prev, [rp.lookup_key]: rp as SlabPrice }));
+  }
 
   const [addForm, setAddForm] = useState<ItemForm>(blankForm());
   const [stagedItems, setStagedItems] = useState<StagedItem[]>([]);
@@ -419,6 +675,16 @@ export default function InventoryClient({
   const [filterOwner, setFilterOwner] = useState<Owner | "all">("all");
   const [filterConsigner, setFilterConsigner] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("date-desc");
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("inventory-view-mode");
+    if (saved === "grid" || saved === "list") setViewMode(saved);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("inventory-view-mode", viewMode);
+  }, [viewMode]);
 
   const gradingItems = useMemo(
     () => items.filter((it) => it.status === "grading"),
@@ -444,11 +710,44 @@ export default function InventoryClient({
         case "cost-desc":   return nullLast(a.cost, b.cost, false);
         case "date-asc":    return a.created_at.localeCompare(b.created_at);
         case "date-desc":   return b.created_at.localeCompare(a.created_at);
+        case "fmv-asc":
+        case "fmv-desc": {
+          const getFmv = (it: Item) => {
+            if (it.category !== "slab" || !it.grade) return null;
+            const parsed = parseGrade(it.grade);
+            if (!parsed) return null;
+            const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
+            const sp = mergedSlabPrices[key];
+            return sp?.fair_market_value ?? sp?.sold_median ?? sp?.median_price ?? null;
+          };
+          return nullLast(getFmv(a), getFmv(b), sort === "fmv-asc");
+        }
+        case "margin-asc":
+        case "margin-desc": {
+          const getMargin = (it: Item) => {
+            if (it.cost == null || it.cost === 0) return null;
+            let price = it.market;
+            if (it.category === "slab" && it.grade) {
+              const parsed = parseGrade(it.grade);
+              if (parsed) {
+                const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
+                const sp = mergedSlabPrices[key];
+                price = sp?.fair_market_value ?? sp?.sold_median ?? sp?.median_price ?? it.market;
+              }
+            }
+            if (price == null) return null;
+            return (price - it.cost) / it.cost;
+          };
+          return nullLast(getMargin(a), getMargin(b), sort === "margin-asc");
+        }
         default: return 0;
       }
     });
     return result;
-  }, [items, search, filterCategory, filterStatus, filterOwner, filterConsigner, sort]);
+  }, [items, search, filterCategory, filterStatus, filterOwner, filterConsigner, sort, slabPrices]);
+
+  const displayedSlabs = useMemo(() => displayedItems.filter((it) => it.category === "slab"), [displayedItems]);
+  const displayedRawCards = useMemo(() => displayedItems.filter((it) => it.category !== "slab"), [displayedItems]);
 
   const selectedItems = useMemo(
     () => items.filter((it) => selectedIds.has(it.id)),
@@ -652,20 +951,58 @@ export default function InventoryClient({
     } finally { setBusy(false); }
   }
 
-  async function onBulkSync() {
-    const toSync = selectedItems.map((it) => ({
-      id: it.id,
-      name: it.name,
-      category: it.category,
-      setName: it.set_name,
-      cardNumber: it.card_number,
-    }));
-    setBulkSyncing(true);
-    try {
-      await refreshItemPrices(toSync);
-    } finally {
-      setBulkSyncing(false);
+  async function handleUploadImage(it: Item, file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    await uploadItemImage(fd, it.id, it.name, it.set_name ?? null, it.card_number ?? null);
+  }
+
+  async function handleRefreshSlabPrice(it: Item, fromBg = false) {
+    if (!it.grade) return;
+    // Manual refresh pauses the background loop temporarily
+    if (!fromBg) {
+      bgRef.current.paused = true;
     }
+    setSlabRefreshing((prev) => ({ ...prev, [it.id]: true }));
+    setSlabRateLimited((prev) => ({ ...prev, [it.id]: false }));
+    try {
+      // Manual: no maxAgeMs → always hits eBay. Background: pass tier window.
+      const result = await refreshSlabPrice(it.id, it.name, it.grade, it.set_name ?? null, it.card_number ?? null);
+      if (result.rateLimited) {
+        setSlabRateLimited((prev) => ({ ...prev, [it.id]: true }));
+      } else {
+        router.refresh();
+      }
+    } finally {
+      setSlabRefreshing((prev) => ({ ...prev, [it.id]: false }));
+      if (!fromBg) {
+        setTimeout(() => { bgRef.current.paused = false; }, 1500);
+      }
+    }
+  }
+
+  async function handleRefreshRawCardPrice(it: Item) {
+    setRawCardRefreshing((prev) => ({ ...prev, [it.id]: true }));
+    try {
+      const result = await refreshRawCardPrice(
+        it.id, it.name, it.condition ?? null, it.set_name ?? null, it.card_number ?? null
+      );
+      if (result.updated && result.refreshedPrice) {
+        setRawCardPriceOverrides((prev) => ({ ...prev, [result.refreshedPrice!.lookup_key]: result.refreshedPrice! as RawCardPrice }));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[raw card refresh] error:", msg);
+    } finally {
+      setRawCardRefreshing((prev) => ({ ...prev, [it.id]: false }));
+    }
+  }
+
+  async function handleSaveInlineCost(id: string) {
+    const n = toNum(inlineCostVal);
+    setInlineCostId(null);
+    setInlineCostVal("");
+    if (n !== null) await updateItem(id, { cost: n });
   }
 
   async function onBulkDelete() {
@@ -909,16 +1246,19 @@ export default function InventoryClient({
         )}
       </div>
 
-      {/* Tile grid */}
-      <div className="border rounded-xl">
-        <div className="px-3 py-2 border-b flex items-center justify-between sticky top-0 z-10 bg-background rounded-t-xl">
+      {/* Inventory list/grid */}
+      <div className="border rounded-xl overflow-hidden">
+        {/* Header */}
+        <div className="px-3 py-2 border-b flex items-center justify-between sticky top-0 z-10 bg-background">
           <div className="flex items-center gap-2">
             <button
               className="flex items-center gap-1.5 text-xs font-medium opacity-70 hover:opacity-100"
               onClick={() => setInventoryOpen((o) => !o)}
             >
               <span>{inventoryOpen ? "▾" : "▸"}</span>
-              {isFiltered ? `${displayedItems.length} of ${items.length} items` : `Items (${items.length})`}
+              {isFiltered
+                ? `${displayedItems.length} of ${items.filter((i) => i.status !== "grading").length} items`
+                : `Inventory (${items.filter((i) => i.status !== "grading").length}) · Slabs ${displayedSlabs.length} · Raw ${displayedRawCards.length}`}
             </button>
             {inventoryOpen && (
               <button className="text-xs px-2 py-1 rounded-lg border opacity-60" onClick={selectAll}>
@@ -926,87 +1266,376 @@ export default function InventoryClient({
               </button>
             )}
           </div>
-          {selectedIds.size > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs opacity-70">{selectedIds.size} selected</span>
-              <button className="text-xs px-3 py-1 rounded-lg bg-green-600 text-white font-medium" onClick={() => setSellOpen(true)} disabled={busy}>Sell</button>
-              <button className="text-xs px-3 py-1 rounded-lg border font-medium" onClick={() => setMassEditOpen(true)} disabled={busy}>Edit</button>
-              <button className="text-xs px-3 py-1 rounded-lg border border-blue-300 text-blue-600 font-medium" onClick={onBulkSync} disabled={busy || bulkSyncing}>{bulkSyncing ? "Syncing…" : "Sync"}</button>
-              <button className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-600 font-medium" onClick={() => setDeleteOpen(true)} disabled={busy}>Del</button>
-              <button className="text-xs px-2 py-1 rounded-lg border opacity-60" onClick={clearSelection}>Clear</button>
+          <div className="flex items-center gap-2">
+            {/* View toggle */}
+            <div className="flex border rounded-lg overflow-hidden text-xs">
+              <button
+                className={`px-2 py-1 transition-colors ${viewMode === "list" ? "bg-foreground text-background" : "hover:bg-muted"}`}
+                onClick={() => setViewMode("list")}
+                title="List view"
+              >☰</button>
+              <button
+                className={`px-2 py-1 transition-colors ${viewMode === "grid" ? "bg-foreground text-background" : "hover:bg-muted"}`}
+                onClick={() => setViewMode("grid")}
+                title="Grid view"
+              >⊞</button>
             </div>
-          )}
+          </div>
         </div>
 
-        {inventoryOpen && displayedItems.length === 0 && (
-          <div className="p-6 text-sm opacity-70">
-            {items.length === 0 ? "No items yet." : "No items match your filters."}
+        {/* Persistent search */}
+        {inventoryOpen && (
+          <div className="px-3 py-2 border-b">
+            <input
+              className="w-full border rounded-lg px-3 py-1.5 text-sm bg-background"
+              placeholder="Search inventory…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
         )}
 
-        {inventoryOpen && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 p-3">
-          {displayedItems.map((it) => {
-            const isSelected = selectedIds.has(it.id);
-            const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
-            return (
-              <div
-                key={it.id}
-                className={`border rounded-xl p-3 flex flex-col gap-2 transition-colors cursor-pointer ${isSelected ? "border-green-500 bg-green-50 dark:bg-green-950/20" : "hover:border-foreground/30"}`}
-                onClick={() => toggleSelect(it.id)}
-              >
-                {/* Card image */}
-                {it.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={it.image_url} alt={it.name} className="w-full h-auto rounded-lg" />
-                ) : (
-                  <div className="w-full aspect-[5/7] rounded-lg bg-muted/30 flex items-center justify-center">
-                    <span className="text-xs opacity-20">No image</span>
-                  </div>
-                )}
+        {/* Auto-refresh status */}
+        {bgStatus === "rate_limited" && (
+          <div className="px-3 py-2 text-xs text-orange-600 bg-orange-50 dark:bg-orange-950/20 border-b border-orange-200 dark:border-orange-800">
+            Auto-refresh paused — daily API limit nearly reached ({dailyCallCount.toLocaleString()} / {EBAY_DAILY_BUDGET.toLocaleString()} calls). Manual refresh still available.
+          </div>
+        )}
+        {bgStatus === "running" && bgStaleCount > 0 && (
+          <div className="px-3 py-1.5 text-xs opacity-40 border-b flex items-center gap-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+            Auto-updating prices… {bgStaleCount} remaining
+          </div>
+        )}
+        {bgStatus === "done" && (
+          <div className="px-3 py-1 text-xs opacity-30 border-b">All prices current</div>
+        )}
 
-                <div className="flex items-center justify-between gap-1">
-                  <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>
-                </div>
+        {inventoryOpen && displayedItems.length === 0 && (
+          <div className="p-6 text-sm opacity-70">
+            {items.filter((i) => i.status !== "grading").length === 0 ? "No items yet." : "No items match your filters."}
+          </div>
+        )}
 
-                <div className="font-semibold text-sm leading-tight line-clamp-2">{it.name}</div>
-
-                {(it.set_name || it.card_number) && (
-                  <div className="text-xs opacity-50 truncate">
-                    {[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}
-                  </div>
-                )}
-
-                {it.category === "slab" && it.grade && (
-                  <span className={`self-start text-xs px-2 py-0.5 rounded-full ${gradeStyle(it.grade)}`}>
-                    {it.grade}
-                  </span>
-                )}
-
-                <div className="text-xs opacity-60 space-y-0.5">
-                  <div>{consigner ? consigner.name : it.owner} • {it.status}</div>
-                  {it.category === "single" && it.condition && <div>{it.condition}</div>}
-                </div>
-
-                <div className="text-xs space-y-0.5">
-                  <div>Cost: {fmt(it.cost)}</div>
-                  <div>Market: {fmt(it.market)}</div>
-                </div>
-
-                <div className="mt-auto pt-1">
-                  <button
-                    className="w-full text-xs py-2.5 rounded-lg border font-medium"
-                    onClick={(e) => { e.stopPropagation(); openEdit(it); }}
-                    disabled={busy}
-                  >
-                    Edit
-                  </button>
-                </div>
+        {/* LIST VIEW */}
+        {inventoryOpen && viewMode === "list" && displayedItems.length > 0 && (
+          <div className="divide-y">
+            {/* Column headers */}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-muted/20 text-xs font-medium opacity-60 select-none">
+              <div className="w-10 flex-shrink-0" />
+              <button className="flex-1 text-left flex items-center gap-1 hover:opacity-100" onClick={() => setSort(sort === "name-asc" ? "name-desc" : "name-asc")}>
+                Name {sort === "name-asc" ? "↑" : sort === "name-desc" ? "↓" : ""}
+              </button>
+              <button className="w-24 text-right flex items-center justify-end gap-1 hover:opacity-100" onClick={() => setSort(sort === "fmv-asc" ? "fmv-desc" : "fmv-asc")}>
+                FMV / Market {sort === "fmv-asc" ? "↑" : sort === "fmv-desc" ? "↓" : ""}
+              </button>
+              <button className="w-16 text-right flex items-center justify-end gap-1 hover:opacity-100" onClick={() => setSort(sort === "cost-asc" ? "cost-desc" : "cost-asc")}>
+                Cost {sort === "cost-asc" ? "↑" : sort === "cost-desc" ? "↓" : ""}
+              </button>
+              <button className="w-24 text-right flex items-center justify-end gap-1 hover:opacity-100" onClick={() => setSort(sort === "margin-asc" ? "margin-desc" : "margin-asc")}>
+                Margin {sort === "margin-asc" ? "↑" : sort === "margin-desc" ? "↓" : ""}
+              </button>
+              <div className="w-12 flex-shrink-0" />
+            </div>
+            {/* Slabs section */}
+            <>
+              <div className="px-3 py-1 bg-purple-50/60 dark:bg-purple-950/20 flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400">Slabs</span>
+                <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-medium">{displayedSlabs.length}</span>
               </div>
-            );
-          })}
-        </div>
+              {displayedSlabs.length === 0 ? (
+                <div className="px-3 py-5 text-center text-xs opacity-40">
+                  {items.some((i) => i.category === "slab" && i.status !== "grading") ? "No slabs match your filters" : "No slabs yet"}
+                </div>
+              ) : displayedSlabs.map((it) => {
+                const isSelected = selectedIds.has(it.id);
+                const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
+                const parsed = it.grade ? parseGrade(it.grade) : null;
+                const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
+                const sp = slabKey ? mergedSlabPrices[slabKey] : null;
+                const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
+                const marginAmt = fmv != null && it.cost != null && it.cost > 0 ? fmv - it.cost : null;
+                const marginPct = fmv != null && it.cost != null && it.cost > 0 ? ((fmv - it.cost) / it.cost) * 100 : null;
+                const isRefreshing = slabRefreshing[it.id];
+                const isRateLimited = slabRateLimited[it.id];
+                const isStale = isSlabTierStale(sp, fmv);
+                return (
+                  <div
+                    key={it.id}
+                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${isSelected ? "bg-green-50 dark:bg-green-950/20" : "hover:bg-muted/30"}`}
+                    onClick={() => toggleSelect(it.id)}
+                  >
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
+                    <div className="flex-shrink-0 w-10">
+                      {it.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={it.image_url} alt={it.name} className="w-10 h-14 rounded object-cover" />
+                      ) : (
+                        <div className="w-10 h-14 rounded bg-muted flex items-center justify-center"><span className="text-[10px] opacity-30">?</span></div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="text-sm font-medium leading-tight truncate">{it.name}</div>
+                      {(it.set_name || it.card_number) && (
+                        <div className="text-xs opacity-50 truncate">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
+                      )}
+                      {it.grade && <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full ${gradeStyle(it.grade)}`}>{it.grade}</span>}
+                      {consigner && <div className="text-xs opacity-40">{consigner.name}</div>}
+                    </div>
+                    {/* FMV — stale = dimmed + clock, fresh = normal; click to open detail modal */}
+                    <div className="flex-shrink-0 w-24 text-right">
+                      {isRefreshing ? (
+                        <div className="text-xs opacity-40">Fetching…</div>
+                      ) : isRateLimited ? (
+                        <button className="text-xs text-orange-500 underline" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>Rate limited</button>
+                      ) : !sp ? (
+                        <button className="text-xs px-2 py-1 rounded-lg border font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20 whitespace-nowrap" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>Get Price</button>
+                      ) : isStale ? (
+                        <div>
+                          <button className="text-sm font-semibold opacity-40 hover:opacity-70" onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>{fmv != null ? fmt(fmv) : "—"} <span className="text-[10px]">🕐</span></button>
+                          <button className="text-[10px] opacity-40 hover:opacity-80 underline" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>refresh</button>
+                        </div>
+                      ) : (
+                        <div>
+                          <button className="text-sm font-semibold hover:text-purple-600 transition-colors" onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>{fmv != null ? fmt(fmv) : "—"}</button>
+                          {sp.sold_count > 0 && (
+                            <div className="text-xs opacity-50">{sp.sold_count} sold{sp.sold_count < 3 && <span className="text-orange-400 ml-1">low</span>}</div>
+                          )}
+                          <button className="text-[10px] opacity-30 hover:opacity-70" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
+                        </div>
+                      )}
+                    </div>
+                    {/* Cost — clickable to set if missing */}
+                    <div className="hidden sm:block flex-shrink-0 w-16 text-right text-sm">
+                      {inlineCostId === it.id ? (
+                        <input
+                          autoFocus
+                          className="w-14 border rounded px-1 py-0.5 text-xs text-right bg-background"
+                          value={inlineCostVal}
+                          inputMode="decimal"
+                          onChange={(e) => setInlineCostVal(e.target.value)}
+                          onBlur={() => handleSaveInlineCost(it.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : it.cost != null ? (
+                        <span className="opacity-70">{fmt(it.cost)}</span>
+                      ) : (
+                        <button className="text-xs opacity-30 hover:opacity-70 underline" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>set cost</button>
+                      )}
+                    </div>
+                    {/* Margin — $amount + % */}
+                    <div className="hidden sm:block flex-shrink-0 w-24 text-right text-xs font-medium">
+                      {marginAmt != null && marginPct != null ? (
+                        <span className={marginPct >= 0 ? "text-green-600" : "text-red-500"}>
+                          {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
+                        </span>
+                      ) : <span className="opacity-30">—</span>}
+                    </div>
+                    <div className="flex-shrink-0">
+                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+            {/* Raw Cards section */}
+            <>
+              <div className="px-3 py-1 bg-blue-50/60 dark:bg-blue-950/20 flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Raw Cards</span>
+                <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-medium">{displayedRawCards.length}</span>
+              </div>
+              {displayedRawCards.length === 0 ? (
+                <div className="px-3 py-5 text-center text-xs opacity-40">
+                  {items.some((i) => i.category !== "slab" && i.status !== "grading") ? "No raw cards match your filters" : "No raw cards yet"}
+                </div>
+              ) : displayedRawCards.map((it) => {
+                const isSelected = selectedIds.has(it.id);
+                const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
+                const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+                const rcp = mergedRawCardPrices[rawKey];
+                const condPrice = rcp
+                  ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition)
+                  : null;
+                // Use condition price if available; fall back to items.market
+                const displayPrice = condPrice ?? it.market;
+                const marginAmt = displayPrice != null && it.cost != null && it.cost > 0 ? displayPrice - it.cost : null;
+                const marginPct = displayPrice != null && it.cost != null && it.cost > 0 ? ((displayPrice - it.cost) / it.cost) * 100 : null;
+                const isRawRefreshing = rawCardRefreshing[it.id];
+                return (
+                  <div
+                    key={it.id}
+                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${isSelected ? "bg-green-50 dark:bg-green-950/20" : "hover:bg-muted/30"}`}
+                    onClick={() => toggleSelect(it.id)}
+                  >
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
+                    <div className="flex-shrink-0 w-10">
+                      {it.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={it.image_url} alt={it.name} className="w-10 h-14 rounded object-cover" />
+                      ) : (
+                        <div className="w-10 h-14 rounded bg-muted flex items-center justify-center"><span className="text-[10px] opacity-30">?</span></div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="text-sm font-medium leading-tight truncate">{it.name}</div>
+                      {(it.set_name || it.card_number) && (
+                        <div className="text-xs opacity-50 truncate">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
+                      )}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>
+                        {it.category === "single" && it.condition && <span className="text-xs opacity-50">{it.condition}</span>}
+                      </div>
+                      {consigner && <div className="text-xs opacity-40">{consigner.name}</div>}
+                    </div>
+                    <div className="flex-shrink-0 w-24 text-right">
+                      {isRawRefreshing ? (
+                        <div className="text-xs opacity-40">Fetching…</div>
+                      ) : !rcp ? (
+                        <button
+                          className="text-xs px-2 py-1 rounded-lg border font-medium border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 whitespace-nowrap"
+                          onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}
+                        >Get Price</button>
+                      ) : (
+                        <div>
+                          <button
+                            className="text-sm font-semibold hover:text-blue-600 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); openRawCardModal(it); }}
+                          >{fmt(displayPrice)}</button>
+                          <div className="text-[10px] opacity-30">TCGPlayer</div>
+                          <button className="text-[10px] opacity-30 hover:opacity-70" onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}>↺</button>
+                        </div>
+                      )}
+                      <div className="text-xs opacity-40">{it.owner}</div>
+                    </div>
+                    {/* Cost — inline editable */}
+                    <div className="hidden sm:block flex-shrink-0 w-16 text-right text-sm">
+                      {inlineCostId === it.id ? (
+                        <input
+                          autoFocus
+                          className="w-14 border rounded px-1 py-0.5 text-xs text-right bg-background"
+                          value={inlineCostVal}
+                          inputMode="decimal"
+                          onChange={(e) => setInlineCostVal(e.target.value)}
+                          onBlur={() => handleSaveInlineCost(it.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : it.cost != null ? (
+                        <span className="opacity-70">{fmt(it.cost)}</span>
+                      ) : (
+                        <button className="text-xs opacity-30 hover:opacity-70 underline" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>set cost</button>
+                      )}
+                    </div>
+                    {/* Margin */}
+                    <div className="hidden sm:block flex-shrink-0 w-24 text-right text-xs font-medium">
+                      {marginAmt != null && marginPct != null ? (
+                        <span className={marginPct >= 0 ? "text-green-600" : "text-red-500"}>
+                          {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
+                        </span>
+                      ) : <span className="opacity-30">—</span>}
+                    </div>
+                    <div className="flex-shrink-0">
+                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          </div>
+        )}
+
+        {/* GRID VIEW — visual browsing only */}
+        {inventoryOpen && viewMode === "grid" && (
+          <div className="p-3 space-y-4">
+            {/* Slabs grid */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400">Slabs</span>
+                <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-medium">{displayedSlabs.length}</span>
+              </div>
+              {displayedSlabs.length === 0 ? (
+                <div className="py-6 text-center text-xs opacity-40">
+                  {items.some((i) => i.category === "slab" && i.status !== "grading") ? "No slabs match your filters" : "No slabs yet"}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+                  {displayedSlabs.map((it) => {
+                    const isSelected = selectedIds.has(it.id);
+                    const marketColor = it.market != null && it.cost != null
+                      ? it.market >= it.cost ? "text-green-600" : "text-red-500"
+                      : "opacity-60";
+                    return (
+                      <div
+                        key={it.id}
+                        className={`border rounded-xl overflow-hidden flex flex-col transition-colors cursor-pointer ${isSelected ? "border-green-500 ring-1 ring-green-500" : "hover:border-foreground/30"}`}
+                        onClick={() => toggleSelect(it.id)}
+                      >
+                        <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
+                        <div className="px-2 py-1.5 flex flex-col gap-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
+                            {it.grade && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${gradeStyle(it.grade)}`}>{it.grade}</span>}
+                          </div>
+                          <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
+                          <div className="text-xs">
+                            <span className="opacity-50">{it.cost != null ? fmt(it.cost) : "—"} → </span>
+                            <span className={`font-medium ${marketColor}`}>{fmt(it.market)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* Raw Cards grid */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Raw Cards</span>
+                <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-medium">{displayedRawCards.length}</span>
+              </div>
+              {displayedRawCards.length === 0 ? (
+                <div className="py-6 text-center text-xs opacity-40">
+                  {items.some((i) => i.category !== "slab" && i.status !== "grading") ? "No raw cards match your filters" : "No raw cards yet"}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+                  {displayedRawCards.map((it) => {
+                    const isSelected = selectedIds.has(it.id);
+                    const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+                    const rcp = mergedRawCardPrices[rawKey];
+                    const condPrice = rcp
+                      ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition)
+                      : null;
+                    const displayPrice = condPrice ?? it.market;
+                    const marketColor = displayPrice != null && it.cost != null
+                      ? displayPrice >= it.cost ? "text-green-600" : "text-red-500"
+                      : "opacity-60";
+                    return (
+                      <div
+                        key={it.id}
+                        className={`border rounded-xl overflow-hidden flex flex-col transition-colors cursor-pointer ${isSelected ? "border-green-500 ring-1 ring-green-500" : "hover:border-foreground/30"}`}
+                        onClick={() => toggleSelect(it.id)}
+                      >
+                        <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
+                        <div className="px-2 py-1.5 flex flex-col gap-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
+                          </div>
+                          <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
+                          <div className="text-xs">
+                            <span className="opacity-50">{it.cost != null ? fmt(it.cost) : "—"} → </span>
+                            <span className={`font-medium ${marketColor}`}>{fmt(displayPrice)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -1022,14 +1651,13 @@ export default function InventoryClient({
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-3">
             {gradingItems.map((it) => (
               <div key={it.id} className="border rounded-xl p-3 flex flex-col gap-2">
-                {it.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={it.image_url} alt={it.name} className="w-full h-auto rounded-lg" />
-                ) : (
-                  <div className="w-full aspect-[5/7] rounded-lg bg-muted/30 flex items-center justify-center">
-                    <span className="text-xs opacity-20">No image</span>
-                  </div>
-                )}
+                <CardImage
+                  src={it.image_url}
+                  name={it.name}
+                  setName={it.set_name}
+                  cardNumber={it.card_number}
+                  onUpload={(file) => handleUploadImage(it, file)}
+                />
                 <div className="font-semibold text-sm leading-tight line-clamp-2">{it.name}</div>
                 {(it.set_name || it.card_number) && (
                   <div className="text-xs opacity-60 truncate">
@@ -1127,36 +1755,49 @@ export default function InventoryClient({
         </div>
       )}
 
-      {/* Fixed bottom selection preview bar */}
+      {/* Fixed bottom selection bar — thumbnails left, actions right */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 bg-background/95 backdrop-blur-sm border-t shadow-lg">
-          <div className="px-3 py-2 overflow-x-auto">
-            <div className="flex gap-2" style={{ minWidth: "max-content" }}>
-              {selectedItems.map((it) => (
-                <button
-                  key={it.id}
-                  className="flex flex-col items-center gap-0.5 w-14 group flex-shrink-0"
-                  onClick={() => toggleSelect(it.id)}
-                  title={`Deselect ${it.name}`}
-                >
-                  <div className="relative w-14">
-                    {it.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={it.image_url} alt={it.name} className="w-14 h-auto rounded-md ring-2 ring-green-500 object-cover" />
-                    ) : (
-                      <div className="w-14 h-[3.5rem] rounded-md bg-muted/40 flex items-center justify-center ring-2 ring-green-500">
-                        <span className="text-xs opacity-30">?</span>
+        <div className="fixed bottom-0 left-0 right-0 z-20 bg-background border-t shadow-[0_-2px_12px_rgba(0,0,0,0.08)]">
+          <div className="flex items-center gap-2 px-3 py-2">
+            {/* Thumbnails — scrollable */}
+            <div className="flex-1 overflow-x-auto min-w-0">
+              <div className="flex gap-2" style={{ minWidth: "max-content" }}>
+                {selectedItems.map((it) => (
+                  <button
+                    key={it.id}
+                    className="flex flex-col items-center gap-0.5 w-14 group flex-shrink-0"
+                    onClick={() => toggleSelect(it.id)}
+                    title={`Deselect ${it.name}`}
+                  >
+                    <div className="relative w-14">
+                      {it.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={it.image_url} alt={it.name} className="w-14 h-auto rounded-md ring-2 ring-green-500 object-cover" />
+                      ) : (
+                        <div className="w-14 h-[3.5rem] rounded-md bg-muted/40 flex items-center justify-center ring-2 ring-green-500">
+                          <span className="text-xs opacity-30">?</span>
+                        </div>
+                      )}
+                      <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-foreground/80 text-background text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none select-none">
+                        ×
                       </div>
-                    )}
-                    <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-foreground/80 text-background text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none select-none">
-                      ×
                     </div>
-                  </div>
-                  <span className="text-[10px] opacity-50 w-full text-center truncate leading-tight">
-                    {it.name.split(" ").slice(0, 2).join(" ")}
-                  </span>
-                </button>
-              ))}
+                    <span className="text-[10px] opacity-50 w-full text-center truncate leading-tight">
+                      {it.name.split(" ").slice(0, 2).join(" ")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Action buttons — fixed right side */}
+            <div className="flex-shrink-0 flex flex-col items-end gap-1.5 pl-3 border-l">
+              <span className="text-xs font-medium opacity-60">{selectedIds.size} selected</span>
+              <div className="flex items-center gap-1.5">
+                <button className="text-xs px-2.5 py-1 rounded-lg bg-green-600 text-white font-medium" onClick={() => setSellOpen(true)} disabled={busy}>Sell</button>
+                <button className="text-xs px-2.5 py-1 rounded-lg border font-medium" onClick={() => setMassEditOpen(true)} disabled={busy}>Edit</button>
+<button className="text-xs px-2.5 py-1 rounded-lg border border-red-300 text-red-600 font-medium" onClick={() => setDeleteOpen(true)} disabled={busy}>Del</button>
+                <button className="text-xs px-2 py-1 rounded-lg border opacity-60" onClick={clearSelection}>Clear</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1365,6 +2006,416 @@ export default function InventoryClient({
           </div>
         </div>
       )}
+
+      {/* ── Pricing Detail Modal ───────────────────────────────────────────── */}
+      {pricingDetailItem && (() => {
+        const { item: pdi, slabKey } = pricingDetailItem;
+        // Derive sp live from merged prices so background updates are reflected immediately
+        const pdSp = mergedSlabPrices[slabKey];
+        const isModalRefreshing = slabRefreshing[pdi.id];
+        const fmvVal = pdSp ? (pdSp.fair_market_value ?? pdSp.sold_median ?? pdSp.median_price) : null;
+
+        // Helpers
+        function fmtModalDate(d: string) {
+          if (!d) return "—";
+          const dt = new Date(d);
+          if (isNaN(dt.getTime())) return "—";
+          return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+        }
+
+        function calcMedianPrice(items: SlabSale[]): number | null {
+          const prices = items.map((s) => s.price).sort((a, b) => a - b);
+          if (!prices.length) return null;
+          const mid = Math.floor(prices.length / 2);
+          return prices.length % 2 === 0 ? (prices[mid - 1] + prices[mid]) / 2 : prices[mid];
+        }
+
+        function applyOutlierFilter(items: SlabSale[]): SlabSale[] {
+          const median = calcMedianPrice(items);
+          if (median == null || median === 0) return items;
+          return items.filter((s) => s.price >= median * 0.2 && s.price <= median * 2.5);
+        }
+
+        function timeLeft(endDateStr: string): string {
+          if (!endDateStr) return "";
+          const ms = new Date(endDateStr).getTime() - Date.now();
+          if (ms <= 0) return "Ended";
+          if (ms < 60 * 60 * 1000) return "Ending soon";
+          const totalHours = Math.floor(ms / (60 * 60 * 1000));
+          const mins = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+          if (totalHours < 24) return `${totalHours}h ${mins}m left`;
+          const days = Math.floor(totalHours / 24);
+          const hrs = totalHours % 24;
+          return `${days}d ${hrs}h left`;
+        }
+
+        // Build filtered, sorted lists
+        const validSold = (pdSp?.sold_items ?? []).filter((s) => !s.isBestOffer && s.price > 1);
+        const soldLists = applyOutlierFilter(validSold)
+          .sort((a, b) => new Date(b.soldDate).getTime() - new Date(a.soldDate).getTime())
+          .slice(0, 20);
+
+        const validActive = (pdSp?.active_items ?? []).filter((s) => !s.isBestOffer && s.price > 1);
+        const activeLists = applyOutlierFilter(validActive).sort((a, b) => a.price - b.price);
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+            onClick={() => setPricingDetailItem(null)}
+          >
+            <div
+              className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="px-4 pt-4 pb-3 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-sm leading-tight truncate">{pdi.name}</div>
+                  {(pdi.set_name || pdi.card_number) && (
+                    <div className="text-xs opacity-50 mt-0.5">{[pdi.set_name, pdi.card_number ? `#${pdi.card_number}` : ""].filter(Boolean).join(" · ")}</div>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {pdi.grade && <span className={`text-xs px-1.5 py-0.5 rounded-full ${gradeStyle(pdi.grade)}`}>{pdi.grade}</span>}
+                    {fmvVal != null && (
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-base font-bold">{fmt(fmvVal)}</span>
+                        <span className="text-[10px] opacity-40 font-normal">
+                          {pdSp?.sold_median != null ? "Fair Market Value" : "Listed FMV (ask price)"}
+                        </span>
+                      </div>
+                    )}
+                    {fmvVal == null && <span className="text-sm opacity-40">No price data</span>}
+                  </div>
+                </div>
+                <button className="text-lg opacity-40 hover:opacity-70 flex-shrink-0 -mt-0.5" onClick={() => setPricingDetailItem(null)}>✕</button>
+              </div>
+
+              {/* Scrollable body */}
+              <div className="overflow-y-auto flex-1 divide-y">
+                {/* Recent Sales */}
+                <div className="px-4 py-3">
+                  <div className="text-xs font-semibold opacity-50 uppercase tracking-wider mb-2">Recent Sales · eBay</div>
+                  {soldLists.length === 0 ? (
+                    <div className="text-sm opacity-40 text-center py-3">
+                      {isModalRefreshing
+                        ? "Fetching…"
+                        : pdSp?.sold_items != null
+                          ? "Sold data unavailable — Marketplace Insights API access required"
+                          : "No sold data — hit ↺ Refresh to load"
+                      }
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {soldLists.slice(0, soldExpanded ? soldLists.length : 5).map((s, i) => (
+                        <a
+                          key={i}
+                          href={s.itemUrl || undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center justify-between gap-2 rounded px-1.5 py-1 -mx-1.5 transition-colors group ${s.itemUrl ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}`}
+                          onClick={s.itemUrl ? undefined : (e) => e.preventDefault()}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {(s.buyingOptions ?? []).includes("AUCTION")
+                              ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium flex-shrink-0">Auction</span>
+                              : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium flex-shrink-0">Fixed</span>
+                            }
+                            <span className="text-xs opacity-50 truncate">{s.title}</span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-xs opacity-40">{fmtModalDate(s.soldDate)}</span>
+                            <span className="text-sm font-semibold tabular-nums">{fmt(s.price)}</span>
+                            {s.itemUrl && <span className="text-[10px] opacity-20 group-hover:opacity-50 transition-opacity">↗</span>}
+                          </div>
+                        </a>
+                      ))}
+                      {soldLists.length > 5 && (
+                        <button
+                          className="w-full text-xs text-center py-1.5 opacity-40 hover:opacity-70 transition-opacity"
+                          onClick={() => setSoldExpanded((v) => !v)}
+                        >
+                          {soldExpanded ? "Show less" : `View more (${soldLists.length - 5} more)`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Active Listings */}
+                <div className="px-4 py-3">
+                  <div className="text-xs font-semibold opacity-50 uppercase tracking-wider mb-2">Active Listings · eBay</div>
+                  {activeLists.length === 0 ? (
+                    <div className="text-sm opacity-40 text-center py-3">{isModalRefreshing ? "Fetching…" : "No active listings — hit ↺ Refresh to load"}</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {activeLists.map((s, i) => {
+                        const isAuction = (s.buyingOptions ?? []).includes("AUCTION");
+                        return (
+                          <a
+                            key={i}
+                            href={s.itemUrl || undefined}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-center justify-between gap-2 rounded px-1.5 py-1 -mx-1.5 transition-colors group ${s.itemUrl ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}`}
+                            onClick={s.itemUrl ? undefined : (e) => e.preventDefault()}
+                          >
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                              {isAuction ? (
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">Auction</span>
+                                  {s.soldDate && <span className="text-[10px] opacity-50">{timeLeft(s.soldDate)}</span>}
+                                  {s.bidCount != null && <span className="text-[10px] opacity-50">{s.bidCount} bid{s.bidCount !== 1 ? "s" : ""}</span>}
+                                </div>
+                              ) : (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium w-fit">Fixed price</span>
+                              )}
+                              <span className="text-xs opacity-50 truncate">{s.title}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className="text-sm font-semibold tabular-nums">{fmt(s.price)}</span>
+                              {s.itemUrl && <span className="text-[10px] opacity-20 group-hover:opacity-50 transition-opacity">↗</span>}
+                            </div>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-4 py-3 border-t flex items-center justify-between gap-2">
+                <div className="text-xs opacity-40">
+                  {pdSp?.last_updated ? `Updated ${fmtModalDate(pdSp.last_updated)}` : ""}
+                  {isSlabTierStale(pdSp, fmvVal) && <span className="text-orange-400 ml-1">· stale</span>}
+                </div>
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20 disabled:opacity-40"
+                  disabled={isModalRefreshing}
+                  onClick={() => handleRefreshSlabPrice(pdi)}
+                >
+                  {isModalRefreshing ? "Fetching…" : "↺ Refresh"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Raw Card Pricing Modal ────────────────────────────────────────── */}
+      {rawCardDetailItem && (() => {
+        const it = rawCardDetailItem;
+        const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+        const rcp = mergedRawCardPrices[rawKey];
+        const isRefreshing = rawCardRefreshing[it.id];
+
+        const CONDITIONS: { label: string; key: "nm" | "lp" | "mp" | "hp" | "dmg" }[] = [
+          { label: "Near Mint",          key: "nm"  },
+          { label: "Lightly Played",     key: "lp"  },
+          { label: "Moderately Played",  key: "mp"  },
+          { label: "Heavily Played",     key: "hp"  },
+          { label: "Damaged",            key: "dmg" },
+        ];
+
+        const priceByKey: Record<string, number | null> = rcp
+          ? { nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }
+          : { nm: null, lp: null, mp: null, hp: null, dmg: null };
+
+        const itemCondKey = CONDITIONS.find((c) => c.label === it.condition)?.key ?? "nm";
+
+        function fmtModalDate(d: string) {
+          if (!d) return "—";
+          const dt = new Date(d);
+          if (isNaN(dt.getTime())) return "—";
+          return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+        }
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+            onClick={() => setRawCardDetailItem(null)}
+          >
+            <div
+              className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-sm shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="px-4 pt-4 pb-3 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-sm leading-tight truncate">{it.name}</div>
+                  {(it.set_name || it.card_number) && (
+                    <div className="text-xs opacity-50 mt-0.5">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {it.condition && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800">{it.condition}</span>
+                    )}
+                    {rcp && priceByKey[itemCondKey] != null && (
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-base font-bold">{fmt(priceByKey[itemCondKey])}</span>
+                        <span className="text-[10px] opacity-40 font-normal">Market Value</span>
+                      </div>
+                    )}
+                    {(!rcp || priceByKey[itemCondKey] == null) && (
+                      <span className="text-sm opacity-40">{isRefreshing ? "Fetching…" : "No price data"}</span>
+                    )}
+                  </div>
+                </div>
+                <button className="text-lg opacity-40 hover:opacity-70 flex-shrink-0 -mt-0.5" onClick={() => setRawCardDetailItem(null)}>✕</button>
+              </div>
+
+              {/* Condition price table */}
+              <div className="px-4 py-3">
+                <div className="text-xs font-semibold opacity-50 uppercase tracking-wider mb-2">Condition Prices · TCGPlayer</div>
+                {!rcp ? (
+                  <div className="text-sm opacity-40 text-center py-3">
+                    {isRefreshing ? "Fetching…" : "No price data — hit ↺ Refresh to load"}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {CONDITIONS.map(({ label, key }) => {
+                      const price = priceByKey[key];
+                      const isItemCondition = key === itemCondKey;
+                      return (
+                        <div
+                          key={key}
+                          className={`flex items-center justify-between px-2 py-1.5 rounded-lg ${isItemCondition ? "bg-blue-50 dark:bg-blue-950/30 ring-1 ring-blue-200 dark:ring-blue-800" : ""}`}
+                        >
+                          <span className={`text-sm ${isItemCondition ? "font-semibold text-blue-700 dark:text-blue-300" : "opacity-70"}`}>
+                            {label}
+                            {isItemCondition && <span className="ml-1.5 text-[10px] opacity-60">← this card</span>}
+                          </span>
+                          <span className={`text-sm tabular-nums ${isItemCondition ? "font-bold text-blue-700 dark:text-blue-300" : "opacity-70"}`}>
+                            {price != null ? fmt(price) : "—"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Price history chart */}
+              {(() => {
+                const allHistory: { date: string; price: number }[] = rcp?.price_history ?? [];
+                const DURATIONS: { label: string; key: "7d" | "30d" | "90d" | "180d"; days: number }[] = [
+                  { label: "7d",  key: "7d",  days: 7   },
+                  { label: "30d", key: "30d", days: 30  },
+                  { label: "90d", key: "90d", days: 90  },
+                  { label: "180d",key: "180d",days: 180 },
+                ];
+                const cutoffDate = new Date();
+                const selectedDays = DURATIONS.find((d) => d.key === historyDuration)?.days ?? 90;
+                cutoffDate.setDate(cutoffDate.getDate() - selectedDays);
+                const cutoffStr = cutoffDate.toISOString().slice(0, 10);
+                const filtered = allHistory.filter((p) => p.date >= cutoffStr);
+
+                // Percentage change: first → last point
+                const pctChange = filtered.length >= 2
+                  ? ((filtered[filtered.length - 1].price - filtered[0].price) / filtered[0].price) * 100
+                  : null;
+                const lineColor = pctChange == null ? "#a855f7" : pctChange >= 0 ? "#22c55e" : "#ef4444";
+
+                // X-axis tick formatter — show M/D
+                function fmtTick(dateStr: string) {
+                  const p = dateStr.split("-");
+                  return `${Number(p[1])}/${Number(p[2])}`;
+                }
+
+                return (
+                  <div className="px-4 py-3 border-t">
+                    <div className="flex items-center justify-between mb-2 gap-2">
+                      <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">Price History · NM</div>
+                      <div className="flex items-center gap-1">
+                        {pctChange != null && (
+                          <span className={`text-xs font-semibold tabular-nums mr-1 ${pctChange >= 0 ? "text-green-500" : "text-red-500"}`}>
+                            {pctChange >= 0 ? "+" : ""}{pctChange.toFixed(1)}%
+                          </span>
+                        )}
+                        {DURATIONS.map((d) => (
+                          <button
+                            key={d.key}
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${
+                              historyDuration === d.key
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                                : "opacity-40 hover:opacity-70"
+                            }`}
+                            onClick={() => setHistoryDuration(d.key)}
+                          >{d.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                    {allHistory.length === 0 ? (
+                      <div className="text-xs opacity-30 text-center py-4">
+                        {isRefreshing ? "Fetching…" : "No history — hit ↺ Refresh to load"}
+                      </div>
+                    ) : filtered.length < 3 ? (
+                      <div className="text-xs opacity-30 text-center py-4">Not enough history for this period</div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={110}>
+                        <LineChart data={filtered} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.15)" vertical={false} />
+                          <XAxis
+                            dataKey="date"
+                            tickFormatter={fmtTick}
+                            tick={{ fontSize: 9, opacity: 0.45 }}
+                            tickLine={false}
+                            axisLine={false}
+                            interval="preserveStartEnd"
+                            minTickGap={40}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 9, opacity: 0.45 }}
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(v: number) => `$${v % 1 === 0 ? v : v.toFixed(2)}`}
+                            domain={["auto", "auto"]}
+                            width={48}
+                          />
+                          <Tooltip
+                            contentStyle={{ fontSize: 11, borderRadius: 6, border: "none", background: "var(--background)", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
+                            formatter={(v: number | undefined) => [v != null ? `$${v.toFixed(2)}` : "—", "NM Price"]}
+                            labelFormatter={(label: unknown) => {
+                              const s = String(label ?? "");
+                              const p = s.split("-");
+                              return `${Number(p[1])}/${Number(p[2])}/${p[0]}`;
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="price"
+                            stroke={lineColor}
+                            strokeWidth={1.5}
+                            dot={false}
+                            activeDot={{ r: 3, fill: lineColor }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Footer */}
+              <div className="px-4 py-3 border-t flex items-center justify-between gap-2">
+                <div className="text-xs opacity-40">
+                  {rcp?.last_updated ? `Updated ${fmtModalDate(rcp.last_updated)}` : ""}
+                  {rcp?.printing && rcp.printing !== "Normal" && (
+                    <span className="ml-1 opacity-60">· {rcp.printing}</span>
+                  )}
+                </div>
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border font-medium border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 disabled:opacity-40"
+                  disabled={isRefreshing}
+                  onClick={() => handleRefreshRawCardPrice(it)}
+                >
+                  {isRefreshing ? "Fetching…" : "↺ Refresh"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
