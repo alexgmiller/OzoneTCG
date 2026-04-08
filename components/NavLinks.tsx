@@ -2,24 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, ShoppingBag, Tag, Users, Receipt, Wallet, Camera, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Package, ArrowLeftRight, Users, Receipt, Wallet, MoreHorizontal } from "lucide-react";
 import { Button } from "./ui/button";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 const allLinks = [
-  { href: "/protected/dashboard",  label: "Dashboard",  icon: LayoutDashboard },
-  { href: "/protected/inventory",  label: "Inventory",  icon: Package },
-  { href: "/protected/buy",        label: "Buy",        icon: ShoppingBag },
-  { href: "/protected/sold",       label: "Sold",       icon: Tag },
-  { href: "/protected/photos",     label: "Deals",      icon: Camera },
-  { href: "/protected/consigners", label: "Consigners", icon: Users },
-  { href: "/protected/expenses",   label: "Expenses",   icon: Receipt },
-  { href: "/protected/payout",     label: "Payout",     icon: Wallet },
+  { href: "/protected/dashboard",      label: "Dashboard",     icon: LayoutDashboard },
+  { href: "/protected/inventory",      label: "Inventory",     icon: Package },
+  { href: "/protected/transactions",   label: "Transactions",  icon: ArrowLeftRight },
+  { href: "/protected/consigners",     label: "Consigners",    icon: Users },
+  { href: "/protected/expenses",       label: "Expenses",      icon: Receipt },
+  { href: "/protected/payout",         label: "Payout",        icon: Wallet },
 ];
 
 const primaryLinks = allLinks.filter((l) =>
-  ["/protected/inventory", "/protected/buy", "/protected/sold", "/protected/photos"].includes(l.href)
+  ["/protected/dashboard", "/protected/inventory", "/protected/transactions"].includes(l.href)
 );
 const moreLinks = allLinks.filter((l) => !primaryLinks.includes(l));
 
@@ -97,7 +95,7 @@ export default function MobileBottomNav() {
         </div>
       )}
 
-      {/* Tab bar */}
+      {/* Tab bar — icon only */}
       <nav className="bg-background/60 backdrop-blur-md border-t border-t-primary/10 flex h-14 w-full">
         {primaryLinks.map((l) => {
           const active = pathname === l.href || pathname.startsWith(l.href + "/");
@@ -106,24 +104,22 @@ export default function MobileBottomNav() {
             <Link
               key={l.href}
               href={l.href}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
+              className={`flex-1 flex items-center justify-center transition-colors ${
                 active ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <Icon size={22} strokeWidth={active ? 2.5 : 1.5} />
-              <span className="text-[10px] font-medium leading-none">{l.label}</span>
+              <Icon size={24} strokeWidth={active ? 2.5 : 1.5} />
             </Link>
           );
         })}
 
         <button
           onClick={() => setMoreOpen((o) => !o)}
-          className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
+          className={`flex-1 flex items-center justify-center transition-colors ${
             moreOpen || moreActive ? "text-primary" : "text-muted-foreground"
           }`}
         >
-          <MoreHorizontal size={22} strokeWidth={moreOpen || moreActive ? 2.5 : 1.5} />
-          <span className="text-[10px] font-medium leading-none">More</span>
+          <MoreHorizontal size={24} strokeWidth={moreOpen || moreActive ? 2.5 : 1.5} />
         </button>
       </nav>
     </div>
