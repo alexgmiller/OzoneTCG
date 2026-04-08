@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 
 type ItemInput = {
@@ -65,6 +66,117 @@ export async function createItems(inputs: ItemInput[]) {
 
   if (error) throw new Error(error.message);
   revalidatePath("/protected/inventory");
+}
+
+export async function uploadCardImage(formData: FormData): Promise<string> {
+  // Verify user is logged in
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+
+  const admin = createAdminClient();
+  const file = formData.get("file") as File | null;
+  if (!file) throw new Error("No file provided");
+
+  const cardId = formData.get("cardId") as string | null;
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  const filename = cardId ? `${cardId}.${ext}` : `custom-${Date.now()}.${ext}`;
+
+  const { error } = await admin.storage
+    .from("card-images")
+    .upload(filename, file, { upsert: true, contentType: file.type });
+
+  if (error) throw new Error(error.message);
+
+  const { data } = admin.storage.from("card-images").getPublicUrl(filename);
+
+  // Update pokemon_cards so this image shows in future searches
+  if (cardId) {
+    await admin.from("pokemon_cards").update({ image_url: data.publicUrl }).eq("id", cardId);
+  } else {
+    // Fallback: update by name + card number when no cardId (manually typed)
+    const name = formData.get("name") as string | null;
+    const cardNumber = formData.get("cardNumber") as string | null;
+    if (name && cardNumber) {
+      await admin.from("pokemon_cards")
+        .update({ image_url: data.publicUrl })
+        .eq("name", name.trim())
+        .eq("card_number", cardNumber.trim());
+    } else if (name) {
+      await admin.from("pokemon_cards")
+        .update({ image_url: data.publicUrl })
+        .eq("name", name.trim());
+    }
+  }
+
+  return data.publicUrl;
+}
+
+/**
+ * Upload a custom card image from the inventory tile placeholder.
+ * - Saves the file to Supabase Storage (card-images bucket)
+ * - Upserts card_image_cache so future Sync/Scan hits the manual image
+ * - Updates this specific item's image_url immediately
+ */
+export async function uploadItemImage(
+  formData: FormData,
+  itemId: string,
+  name: string,
+  setName: string | null,
+  cardNumber: string | null
+): Promise<string> {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+
+  const admin = createAdminClient();
+  const file = formData.get("file") as File | null;
+  if (!file) throw new Error("No file provided");
+
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+  const num = (cardNumber ?? "").split("/")[0].trim();
+  const filename = `manual-${slug}-${num || Date.now()}.${ext}`;
+
+  const { error: uploadErr } = await admin.storage
+    .from("card-images")
+    .upload(filename, file, { upsert: true, contentType: file.type });
+  if (uploadErr) throw new Error(uploadErr.message);
+
+  const { data: urlData } = admin.storage.from("card-images").getPublicUrl(filename);
+  const imageUrl = urlData.publicUrl;
+
+  // Write to card_image_cache so future lookups (Sync/Scan) skip the APIs
+  const { makeLookupKey } = await import("@/lib/cardCache");
+  const lookupKey = makeLookupKey(name, setName, cardNumber);
+  await admin.from("card_image_cache").upsert({
+    lookup_key: lookupKey,
+    name,
+    set_name: setName ?? null,
+    card_number: cardNumber ?? null,
+    image_url: imageUrl,
+    source: "manual",
+    cached_at: new Date().toISOString(),
+  });
+
+  // Also persist to pokemon_cards for the manual-images fallback layer
+  await admin.from("pokemon_cards").upsert({
+    id: `manual-${slug}-${num || "0"}`,
+    name,
+    card_number: num || null,
+    image_url: imageUrl,
+  }).onConflict("id");
+
+  // Update this item directly
+  const workspaceId = await getWorkspaceId();
+  await supabase
+    .from("items")
+    .update({ image_url: imageUrl, updated_by: auth.user.id })
+    .eq("id", itemId)
+    .eq("workspace_id", workspaceId);
+
+  revalidatePath("/protected/inventory");
+  return imageUrl;
 }
 
 export async function updateItem(id: string, input: Partial<ItemInput>) {
@@ -299,6 +411,446 @@ export async function fetchCardData(
 ): Promise<{ imageUrl: string | null; market: number | null } | null> {
   const { lookupCard } = await import("@/lib/pokemonPriceTracker");
   return lookupCard(name, "single", { setName, cardNumber });
+}
+
+export async function getEbayDailyCallCount(): Promise<number> {
+  const admin = createAdminClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const { count } = await admin
+    .from("slab_prices")
+    .select("*", { count: "exact", head: true })
+    .gte("last_updated", `${today}T00:00:00.000Z`);
+  const calls = (count ?? 0) * 2; // 2 eBay calls per slab refresh (active + sold)
+  console.log(`[eBay] Daily call estimate: ${calls} (${today})`);
+  return calls;
+}
+
+export type RefreshedSlabPrice = {
+  lookup_key: string;
+  median_price: number | null;
+  avg_price: number | null;
+  low_price: number | null;
+  high_price: number | null;
+  comp_count: number;
+  previous_median: number | null;
+  sold_median: number | null;
+  sold_avg: number | null;
+  sold_low: number | null;
+  sold_high: number | null;
+  sold_count: number;
+  fair_market_value: number | null;
+  last_updated: string;
+  active_items: import("@/lib/ebay").SlabSale[] | null;
+  sold_items: import("@/lib/ebay").SlabSale[] | null;
+};
+
+export async function refreshSlabPrice(
+  itemId: string,
+  name: string,
+  grade: string,
+  setName?: string | null,
+  cardNumber?: string | null,
+  maxAgeMs?: number // undefined = force (manual); number = tier window (background auto-refresh)
+): Promise<{ updated: boolean; median: number | null; compCount: number; lowConfidence: boolean; rateLimited?: boolean; refreshedPrice?: RefreshedSlabPrice }> {
+  const {
+    parseGrade,
+    fetchSlabSales,
+    calculateSlabPricing,
+    fetchSlabSoldSales,
+    calculateSoldPricing,
+    makeSlabPriceKey,
+  } = await import("@/lib/ebay");
+
+  const parsed = parseGrade(grade);
+  if (!parsed) return { updated: false, median: null, compCount: 0, lowConfidence: true };
+
+  const admin = createAdminClient();
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+
+  const lookupKey = makeSlabPriceKey(name, setName, cardNumber, parsed.company, parsed.grade);
+
+  // Server-side staleness guard — only applies to background auto-refresh calls (maxAgeMs set).
+  // Manual calls (maxAgeMs undefined) always hit eBay.
+  const { data: existing } = await admin
+    .from("slab_prices")
+    .select("median_price, comp_count, last_updated, active_items")
+    .eq("lookup_key", lookupKey)
+    .maybeSingle();
+
+  if (maxAgeMs !== undefined && existing?.last_updated) {
+    const age = Date.now() - new Date(existing.last_updated).getTime();
+    const hasListings = existing.active_items != null;
+    if (age < maxAgeMs && hasListings) {
+      console.log("[refreshSlabPrice] cache hit, skipping. Age:", Math.round(age / 60000), "min, tier:", Math.round(maxAgeMs / 60000), "min");
+      return {
+        updated: false,
+        median: existing.median_price ?? null,
+        compCount: existing.comp_count ?? 0,
+        lowConfidence: (existing.comp_count ?? 0) < 3,
+      };
+    }
+  }
+
+  console.log("[refreshSlabPrice] fetching eBay active + sold", { name, grade, cardNumber });
+
+  // ── Active listings ──────────────────────────────────────────────────────
+  // Never throw from eBay calls — a network/API failure should not crash the page.
+  let activeSales: import("@/lib/ebay").SlabSale[] = [];
+  try {
+    activeSales = await fetchSlabSales(name, parsed.company, parsed.grade, setName, cardNumber);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === "EBAY_RATE_LIMITED") {
+      return { updated: false, median: null, compCount: 0, lowConfidence: true, rateLimited: true };
+    }
+    console.error("[refreshSlabPrice] active listings fetch failed (non-fatal):", msg);
+    return { updated: false, median: null, compCount: 0, lowConfidence: true };
+  }
+  const activePricing = calculateSlabPricing(activeSales);
+
+  // ── Sold listings ────────────────────────────────────────────────────────
+  let soldPricing;
+  let soldSalesRaw: import("@/lib/ebay").SlabSale[] = [];
+  try {
+    const { sales: soldSales, source } = await fetchSlabSoldSales(
+      name, parsed.company, parsed.grade, cardNumber
+    );
+    soldSalesRaw = soldSales;
+    soldPricing = calculateSoldPricing(soldSales, source);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === "EBAY_RATE_LIMITED") {
+      console.warn("[refreshSlabPrice] sold fetch rate limited, skipping");
+    } else {
+      console.error("[refreshSlabPrice] sold listings fetch failed (non-fatal):", msg);
+    }
+    soldPricing = undefined;
+  }
+
+  const fairMarketValue = soldPricing?.median ?? activePricing.median;
+
+  const { error: upsertError } = await admin.from("slab_prices").upsert({
+    lookup_key: lookupKey,
+    // Active listings
+    median_price: activePricing.median,
+    avg_price: activePricing.avg,
+    low_price: activePricing.low,
+    high_price: activePricing.high,
+    comp_count: activePricing.compCount,
+    previous_median: existing?.median_price ?? null,
+    // Sold listings
+    sold_median: soldPricing?.median ?? null,
+    sold_avg: soldPricing?.avg ?? null,
+    sold_low: soldPricing?.low ?? null,
+    sold_high: soldPricing?.high ?? null,
+    sold_count: soldPricing?.compCount ?? 0,
+    fair_market_value: fairMarketValue,
+    last_updated: new Date().toISOString(),
+    // Raw listing items for detail modal
+    active_items: activeSales,
+    sold_items: soldSalesRaw,
+  });
+
+  if (upsertError) {
+    console.error("[refreshSlabPrice] slab_prices upsert failed:", upsertError);
+    throw new Error(`slab_prices upsert failed: ${upsertError.message}`);
+  }
+  console.log("[refreshSlabPrice] upserted", lookupKey, "active:", activePricing.median, "sold:", soldPricing?.median);
+
+  // Update item market price with fair market value
+  if (fairMarketValue != null) {
+    await supabase
+      .from("items")
+      .update({ market: fairMarketValue })
+      .eq("id", itemId)
+      .eq("workspace_id", workspaceId);
+  }
+
+  revalidatePath("/protected/inventory");
+
+  const now = new Date().toISOString();
+  const refreshedPrice: RefreshedSlabPrice = {
+    lookup_key: lookupKey,
+    median_price: activePricing.median,
+    avg_price: activePricing.avg,
+    low_price: activePricing.low,
+    high_price: activePricing.high,
+    comp_count: activePricing.compCount,
+    previous_median: existing?.median_price ?? null,
+    sold_median: soldPricing?.median ?? null,
+    sold_avg: soldPricing?.avg ?? null,
+    sold_low: soldPricing?.low ?? null,
+    sold_high: soldPricing?.high ?? null,
+    sold_count: soldPricing?.compCount ?? 0,
+    fair_market_value: fairMarketValue,
+    last_updated: now,
+    active_items: activeSales,
+    sold_items: soldSalesRaw,
+  };
+
+  return {
+    updated: true,
+    median: soldPricing?.median ?? activePricing.median,
+    compCount: soldPricing?.compCount ?? activePricing.compCount,
+    lowConfidence: (soldPricing?.compCount ?? activePricing.compCount) < 3,
+    refreshedPrice,
+  };
+}
+
+export type RefreshedRawCardPrice = {
+  lookup_key: string;
+  justtcg_card_id: string | null;
+  nm_price: number | null;
+  lp_price: number | null;
+  mp_price: number | null;
+  hp_price: number | null;
+  dmg_price: number | null;
+  printing: string;
+  price_source: string;
+  last_updated: string;
+  price_history: { date: string; price: number }[] | null;
+};
+
+/**
+ * Refresh TCGPlayer pricing for a single raw card via JustTCG.
+ * Writes to raw_card_prices table and updates items.market with the
+ * condition-specific price for this item.
+ */
+export async function refreshRawCardPrice(
+  itemId: string,
+  name: string,
+  condition: string | null,
+  setName?: string | null,
+  cardNumber?: string | null
+): Promise<{ updated: boolean; refreshedPrice?: RefreshedRawCardPrice }> {
+  const { searchRawCard, makeRawCardPriceKey, priceForCondition } = await import("@/lib/justtcg");
+
+  const lookupKey = makeRawCardPriceKey(name, setName, cardNumber);
+  const admin = createAdminClient();
+
+  // Check cache first — skip if refreshed within 24h
+  const { data: existing } = await admin
+    .from("raw_card_prices")
+    .select("last_updated,justtcg_card_id")
+    .eq("lookup_key", lookupKey)
+    .maybeSingle();
+
+  if (existing?.last_updated) {
+    const age = Date.now() - new Date(existing.last_updated).getTime();
+    if (age < 24 * 60 * 60 * 1000) {
+      console.log("[refreshRawCardPrice] cache hit, age:", Math.round(age / 60000), "min");
+      return { updated: false };
+    }
+  }
+
+  console.log("[refreshRawCardPrice] fetching JustTCG", { name, setName, cardNumber });
+
+  let result;
+  try {
+    result = await searchRawCard(name, setName, cardNumber);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === "JUSTTCG_RATE_LIMITED") {
+      console.warn("[refreshRawCardPrice] rate limited");
+      throw new Error("JUSTTCG_RATE_LIMITED");
+    }
+    console.error("[refreshRawCardPrice] searchRawCard failed:", msg);
+    return { updated: false };
+  }
+
+  if (!result) return { updated: false };
+
+  const now = new Date().toISOString();
+  const row: RefreshedRawCardPrice = {
+    lookup_key: lookupKey,
+    justtcg_card_id: result.justtcgCardId,
+    nm_price: result.nm,
+    lp_price: result.lp,
+    mp_price: result.mp,
+    hp_price: result.hp,
+    dmg_price: result.dmg,
+    printing: result.printing,
+    price_source: "tcgplayer_via_justtcg",
+    last_updated: now,
+    price_history: result.priceHistory ?? null,
+  };
+
+  const { error: upsertErr } = await admin.from("raw_card_prices").upsert(row);
+  if (upsertErr) {
+    console.error("[refreshRawCardPrice] upsert failed:", upsertErr.message);
+    throw new Error(`raw_card_prices upsert failed: ${upsertErr.message}`);
+  }
+  const histCount = row.price_history?.length ?? 0;
+  if (histCount > 0) {
+    console.log(`[JustTCG] Price history saved to raw_card_prices.price_history (${histCount} points)`);
+  } else {
+    console.log(`[JustTCG] Price history not saved — none returned from API`);
+  }
+
+  // Update items.market with the condition-specific price
+  const marketPrice = priceForCondition(
+    { nm: result.nm, lp: result.lp, mp: result.mp, hp: result.hp, dmg: result.dmg },
+    condition
+  );
+  if (marketPrice != null) {
+    const supabase = await createClient();
+    const workspaceId = await getWorkspaceId();
+    await supabase
+      .from("items")
+      .update({ market: marketPrice })
+      .eq("id", itemId)
+      .eq("workspace_id", workspaceId);
+  }
+
+  console.log("[refreshRawCardPrice] upserted", lookupKey, "nm:", result.nm, "lp:", result.lp);
+  revalidatePath("/protected/inventory");
+  return { updated: true, refreshedPrice: row };
+}
+
+/**
+ * Batch-refresh TCGPlayer pricing for multiple raw cards.
+ * Uses JustTCG batch endpoint for cards with known cardIds; falls back to
+ * individual search for new cards. Groups into batches of 20.
+ */
+export async function refreshRawCardPrices(
+  items: { id: string; name: string; condition: string | null; setName?: string | null; cardNumber?: string | null }[]
+): Promise<void> {
+  if (items.length === 0) return;
+
+  const { searchRawCard, batchLookupRawCards, makeRawCardPriceKey, priceForCondition } = await import("@/lib/justtcg");
+  const admin = createAdminClient();
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+
+  const now = new Date().toISOString();
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+
+  // Build lookup keys, fetch existing cached prices
+  const keyedItems = items.map((it) => ({
+    ...it,
+    lookupKey: makeRawCardPriceKey(it.name, it.setName, it.cardNumber),
+  }));
+
+  const allKeys = [...new Set(keyedItems.map((i) => i.lookupKey))];
+  const { data: existingRows } = await admin
+    .from("raw_card_prices")
+    .select("lookup_key,justtcg_card_id,last_updated")
+    .in("lookup_key", allKeys);
+
+  const existingMap = new Map((existingRows ?? []).map((r) => [r.lookup_key, r]));
+
+  // Partition: cards with known IDs that aren't stale go into batch lookup;
+  // new or stale-without-ID cards go through individual search
+  const needsBatch: Array<{ lookupKey: string; cardId: string }> = [];
+  const needsSearch: typeof keyedItems = [];
+
+  for (const item of keyedItems) {
+    const existing = existingMap.get(item.lookupKey);
+    const isStale = !existing?.last_updated || new Date(existing.last_updated).getTime() < cutoff;
+    if (!isStale) continue; // still fresh — skip
+
+    if (existing?.justtcg_card_id) {
+      needsBatch.push({ lookupKey: item.lookupKey, cardId: existing.justtcg_card_id });
+    } else {
+      needsSearch.push(item);
+    }
+  }
+
+  console.log(`[refreshRawCardPrices] batch=${needsBatch.length} search=${needsSearch.length}`);
+
+  // ── Batch lookup for known card IDs ──────────────────────────────────────
+  if (needsBatch.length > 0) {
+    const cardIds = [...new Set(needsBatch.map((b) => b.cardId))];
+    let batchResults: Map<string, import("@/lib/justtcg").RawCardPrices>;
+    try {
+      batchResults = await batchLookupRawCards(cardIds);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn("[refreshRawCardPrices] batch lookup error:", msg);
+      batchResults = new Map();
+    }
+
+    for (const { lookupKey, cardId } of needsBatch) {
+      const prices = batchResults.get(cardId);
+      if (!prices) continue;
+
+      await admin.from("raw_card_prices").upsert({
+        lookup_key: lookupKey,
+        justtcg_card_id: prices.justtcgCardId,
+        nm_price: prices.nm,
+        lp_price: prices.lp,
+        mp_price: prices.mp,
+        hp_price: prices.hp,
+        dmg_price: prices.dmg,
+        printing: prices.printing,
+        price_source: "tcgplayer_via_justtcg",
+        last_updated: now,
+        price_history: prices.priceHistory ?? null,
+      });
+
+      // Update market price on all items sharing this lookup key
+      const matchingItems = keyedItems.filter((i) => i.lookupKey === lookupKey);
+      for (const item of matchingItems) {
+        const marketPrice = priceForCondition(
+          { nm: prices.nm, lp: prices.lp, mp: prices.mp, hp: prices.hp, dmg: prices.dmg },
+          item.condition
+        );
+        if (marketPrice != null) {
+          await supabase
+            .from("items")
+            .update({ market: marketPrice })
+            .eq("id", item.id)
+            .eq("workspace_id", workspaceId);
+        }
+      }
+    }
+  }
+
+  // ── Individual search for new cards ──────────────────────────────────────
+  for (const item of needsSearch) {
+    let prices;
+    try {
+      prices = await searchRawCard(item.name, item.setName, item.cardNumber);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "JUSTTCG_RATE_LIMITED") {
+        console.warn("[refreshRawCardPrices] rate limited — stopping");
+        break;
+      }
+      console.error("[refreshRawCardPrices] search error for", item.name, ":", msg);
+      continue;
+    }
+    if (!prices) continue;
+
+    await admin.from("raw_card_prices").upsert({
+      lookup_key: item.lookupKey,
+      justtcg_card_id: prices.justtcgCardId,
+      nm_price: prices.nm,
+      lp_price: prices.lp,
+      mp_price: prices.mp,
+      hp_price: prices.hp,
+      dmg_price: prices.dmg,
+      printing: prices.printing,
+      price_source: "tcgplayer_via_justtcg",
+      last_updated: now,
+      price_history: prices.priceHistory ?? null,
+    });
+
+    const marketPrice = priceForCondition(
+      { nm: prices.nm, lp: prices.lp, mp: prices.mp, hp: prices.hp, dmg: prices.dmg },
+      item.condition
+    );
+    if (marketPrice != null) {
+      await supabase
+        .from("items")
+        .update({ market: marketPrice })
+        .eq("id", item.id)
+        .eq("workspace_id", workspaceId);
+    }
+  }
+
+  revalidatePath("/protected/inventory");
 }
 
 export async function refreshItemPrices(

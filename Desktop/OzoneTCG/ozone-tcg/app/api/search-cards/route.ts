@@ -1,8 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchBaseNames, nameVariants, isJapaneseName, extractEmbeddedNumber } from "@/lib/cardNameUtils";
+import { createClient } from "@/lib/supabase/server";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
 const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
+
+// Search local pokemon_cards table in Supabase
+async function searchLocalDB(
+  name: string,
+  setName: string | undefined,
+  cardNumber: string | undefined,
+  lang: "en" | "ja"
+): Promise<SearchResult[]> {
+  try {
+    const supabase = await createClient();
+    let query = supabase
+      .from("pokemon_cards")
+      .select("id, name, set_id, set_name, card_number, image_url")
+      .eq("language", lang)
+      .ilike("name", `%${name}%`)
+      .order("name")
+      .limit(40);
+
+    if (setName) query = query.ilike("set_name", `%${setName}%`);
+    if (cardNumber) query = query.eq("card_number", cardNumber);
+
+    const { data, error } = await query;
+    if (error || !data?.length) return [];
+
+    // Sort: exact prefix matches first, then by name length (shorter = more specific)
+    const lower = name.toLowerCase();
+    const sorted = [...data].sort((a, b) => {
+      const aStart = a.name.toLowerCase().startsWith(lower) ? 0 : 1;
+      const bStart = b.name.toLowerCase().startsWith(lower) ? 0 : 1;
+      if (aStart !== bStart) return aStart - bStart;
+      return a.name.length - b.name.length;
+    });
+
+    return sorted.map((c) => ({
+      name: c.name,
+      setName: c.set_id ?? "",
+      cardNumber: c.card_number ?? "",
+      imageUrl: c.image_url,
+      market: null,
+      cardId: c.id,
+    }));
+  } catch {
+    return [];
+  }
+}
 const FETCH_TIMEOUT_MS = 8000;
 
 type SearchResult = {
@@ -116,6 +162,16 @@ export async function POST(req: NextRequest) {
   const sn = setName?.trim() || undefined;
   const isJP = isJapaneseName(name) || /\bjapanese\b|^jp$/i.test(sn ?? "");
   const yearFilter = year?.trim().match(/^\d{4}$/) ? year.trim() : undefined;
+
+  // Try local DB first — much faster than TCGdex API, and works offline
+  // Skip for year-filtered searches (DB doesn't have release dates)
+  if (!yearFilter) {
+    const lang = isJP ? "ja" : "en";
+    const local = await searchLocalDB(name.trim(), sn, num, lang);
+    if (local.length > 0) {
+      return NextResponse.json({ cards: local, source: "db" });
+    }
+  }
 
   // For JP cards: try JP endpoint first, then EN as fallback
   const endpoints = isJP ? [TCGDEX_JA, TCGDEX_EN] : [TCGDEX_EN];
