@@ -23,6 +23,31 @@ type ItemInput = {
   set_name?: string | null;
   card_number?: string | null;
   grade?: string | null;
+  // Trade chain tracking
+  cost_basis?: number | null;
+  buy_percentage?: number | null;
+  acquisition_type?: string | null;
+  chain_depth?: number;
+  original_cash_invested?: number | null;
+};
+
+export type CardTransaction = {
+  id: string;
+  card_id: string | null;
+  transaction_type: string;
+  trade_group_id: string | null;
+  date: string;
+  market_price_at_time: number | null;
+  cost_basis: number | null;
+  chain_depth: number;
+  buy_percentage: number | null;
+  cash_paid: number | null;
+  trade_percentage: number | null;
+  trade_credit_value: number | null;
+  cash_difference: number | null;
+  previous_card_id: string | null;
+  notes: string | null;
+  created_at: string;
 };
 
 export async function createItem(input: ItemInput) {
@@ -877,4 +902,270 @@ export async function refreshItemPrices(
   }
 
   revalidatePath("/protected/inventory");
+}
+
+// ── Trade chain actions ────────────────────────────────────────────────────────
+
+/**
+ * Record a buy: creates the item, a card_transaction, and an expense entry.
+ */
+export async function recordBuy(input: {
+  name: string;
+  setName: string | null;
+  cardNumber: string | null;
+  grade: string | null;
+  category: "single" | "slab" | "sealed";
+  condition: "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
+  owner: "alex" | "mila" | "shared";
+  cashPaid: number;
+  marketPrice: number | null;
+  buyPct: number | null;
+  paidBy: "alex" | "mila" | "shared";
+  notes?: string | null;
+  imageUrl?: string | null;
+}): Promise<{ itemId: string }> {
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+
+  // 1. Create the inventory item
+  const { data: item, error: itemErr } = await supabase
+    .from("items")
+    .insert({
+      workspace_id: workspaceId,
+      name: input.name.trim(),
+      set_name: input.setName ?? null,
+      card_number: input.cardNumber ?? null,
+      grade: input.grade ?? null,
+      category: input.category,
+      condition: input.condition,
+      owner: input.owner,
+      status: "inventory",
+      cost: input.cashPaid,
+      market: input.marketPrice ?? null,
+      notes: input.notes?.trim() || null,
+      image_url: input.imageUrl || null,
+      cost_basis: input.cashPaid,
+      buy_percentage: input.buyPct,
+      acquisition_type: "buy",
+      chain_depth: 0,
+      original_cash_invested: input.cashPaid,
+      updated_by: auth.user.id,
+    })
+    .select("id")
+    .single();
+
+  if (itemErr || !item) throw new Error(itemErr?.message ?? "Failed to create item");
+
+  // 2. Record the transaction
+  await supabase.from("card_transactions").insert({
+    workspace_id: workspaceId,
+    card_id: item.id,
+    transaction_type: "buy",
+    market_price_at_time: input.marketPrice ?? null,
+    cost_basis: input.cashPaid,
+    chain_depth: 0,
+    buy_percentage: input.buyPct,
+    cash_paid: input.cashPaid,
+    notes: input.notes?.trim() || null,
+  });
+
+  // 3. Create expense entry for the cash spent
+  const desc = `Buy: ${input.name.trim()}${input.setName ? ` (${input.setName})` : ""}`;
+  await supabase.from("expenses").insert({
+    workspace_id: workspaceId,
+    description: desc,
+    cost: input.cashPaid,
+    paid_by: input.paidBy,
+    payment_type: "card_buy",
+    updated_by: auth.user.id,
+  });
+
+  revalidatePath("/protected/inventory");
+  revalidatePath("/protected/expenses");
+  return { itemId: item.id };
+}
+
+/**
+ * Record a trade: marks outgoing items as sold, creates incoming items with
+ * calculated cost basis, records all card_transactions, and optionally logs
+ * an expense if the vendor paid cash.
+ */
+export async function recordTrade(input: {
+  goingOut: { itemId: string; tradeValue: number }[];
+  comingIn: {
+    name: string;
+    setName: string | null;
+    cardNumber: string | null;
+    grade: string | null;
+    category: "single" | "slab" | "sealed";
+    condition: "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
+    owner: "alex" | "mila" | "shared";
+    marketPrice: number;
+    tradePct: number;
+  }[];
+  cashDifference: number; // positive = vendor paid cash out, negative = vendor received cash
+  paidBy: "alex" | "mila" | "shared";
+  notes?: string | null;
+}): Promise<void> {
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+
+  if (input.goingOut.length === 0 || input.comingIn.length === 0) {
+    throw new Error("A trade requires at least one card going out and one coming in");
+  }
+
+  // 1. Fetch outgoing items to get their cost basis
+  const outgoingIds = input.goingOut.map((g) => g.itemId);
+  const { data: outItems, error: fetchErr } = await supabase
+    .from("items")
+    .select("id, name, cost_basis, cost, chain_depth, original_cash_invested")
+    .in("id", outgoingIds)
+    .eq("workspace_id", workspaceId);
+
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!outItems?.length) throw new Error("Could not find outgoing items");
+
+  const outMap = new Map(outItems.map((it) => [it.id, it]));
+
+  // 2. Calculate cost basis transfer
+  const totalOutBasis = outItems.reduce((sum, it) => sum + (it.cost_basis ?? it.cost ?? 0), 0);
+  const totalOutOrigCash = outItems.reduce((sum, it) => sum + (it.original_cash_invested ?? it.cost_basis ?? it.cost ?? 0), 0);
+  const maxChainDepth = outItems.reduce((max, it) => Math.max(max, it.chain_depth ?? 0), 0);
+
+  const tradeCreditTotal = input.comingIn.reduce((sum, c) => sum + (c.marketPrice * c.tradePct) / 100, 0);
+  const newTotalBasis = totalOutBasis + input.cashDifference;
+  // Original cash: only increases when vendor pays MORE cash out
+  const newOrigCash = totalOutOrigCash + Math.max(0, input.cashDifference);
+
+  // 3. Build incoming card rows with pro-rata basis split
+  const tradeGroupId = crypto.randomUUID();
+  const soldAt = new Date().toISOString();
+  const incomingCardIds: string[] = [];
+
+  for (const card of input.comingIn) {
+    const cardCredit = (card.marketPrice * card.tradePct) / 100;
+    const share = tradeCreditTotal > 0 ? cardCredit / tradeCreditTotal : 1 / input.comingIn.length;
+    const cardBasis = parseFloat((newTotalBasis * share).toFixed(2));
+    const cardOrigCash = parseFloat((newOrigCash * share).toFixed(2));
+    const outgoingNames = outItems.map((it) => it.name).join(", ");
+    const tradeNote = `Traded for: ${outgoingNames}${input.notes ? ` — ${input.notes}` : ""}`;
+
+    const { data: newItem, error: insertErr } = await supabase
+      .from("items")
+      .insert({
+        workspace_id: workspaceId,
+        name: card.name.trim(),
+        set_name: card.setName ?? null,
+        card_number: card.cardNumber ?? null,
+        grade: card.grade ?? null,
+        category: card.category,
+        condition: card.condition,
+        owner: card.owner,
+        status: "inventory",
+        cost: cardBasis,
+        market: card.marketPrice,
+        notes: tradeNote,
+        cost_basis: cardBasis,
+        acquisition_type: "trade",
+        chain_depth: maxChainDepth + 1,
+        original_cash_invested: cardOrigCash,
+        updated_by: auth.user!.id,
+      })
+      .select("id")
+      .single();
+
+    if (insertErr || !newItem) throw new Error(insertErr?.message ?? "Failed to create incoming item");
+    incomingCardIds.push(newItem.id);
+
+    // Record trade_in transaction
+    await supabase.from("card_transactions").insert({
+      workspace_id: workspaceId,
+      card_id: newItem.id,
+      transaction_type: "trade_in",
+      trade_group_id: tradeGroupId,
+      market_price_at_time: card.marketPrice,
+      cost_basis: cardBasis,
+      chain_depth: maxChainDepth + 1,
+      trade_percentage: card.tradePct,
+      trade_credit_value: cardCredit,
+      cash_difference: input.cashDifference,
+      previous_card_id: outgoingIds.length === 1 ? outgoingIds[0] : null,
+      notes: input.notes?.trim() || null,
+    });
+  }
+
+  // 4. Mark outgoing items as traded (status=sold, sale_id=tradeGroupId)
+  const outgoingNames = input.comingIn.map((c) => c.name).join(", ");
+  for (const { itemId, tradeValue } of input.goingOut) {
+    const outItem = outMap.get(itemId);
+    if (!outItem) continue;
+    const tradeNote = `Traded for: ${outgoingNames}${input.notes ? ` — ${input.notes}` : ""}`;
+
+    await supabase
+      .from("items")
+      .update({
+        status: "sold",
+        sale_id: tradeGroupId,
+        sold_price: tradeValue,
+        sold_at: soldAt,
+        notes: tradeNote,
+        updated_by: auth.user!.id,
+      })
+      .eq("id", itemId)
+      .eq("workspace_id", workspaceId);
+
+    // Record trade_out transaction
+    await supabase.from("card_transactions").insert({
+      workspace_id: workspaceId,
+      card_id: itemId,
+      transaction_type: "trade_out",
+      trade_group_id: tradeGroupId,
+      market_price_at_time: tradeValue,
+      cost_basis: outItem.cost_basis ?? outItem.cost ?? null,
+      chain_depth: outItem.chain_depth ?? 0,
+      cash_difference: input.cashDifference,
+      notes: input.notes?.trim() || null,
+    });
+  }
+
+  // 5. If vendor paid cash, create an expense record
+  if (input.cashDifference > 0) {
+    const inNames = input.comingIn.map((c) => c.name).join(", ");
+    await supabase.from("expenses").insert({
+      workspace_id: workspaceId,
+      description: `Trade cash: ${inNames}`,
+      cost: input.cashDifference,
+      paid_by: input.paidBy,
+      payment_type: "trade_cash",
+      updated_by: auth.user!.id,
+    });
+  }
+
+  revalidatePath("/protected/inventory");
+  revalidatePath("/protected/sold");
+  revalidatePath("/protected/expenses");
+  revalidatePath("/protected/dashboard");
+}
+
+/**
+ * Fetch the full transaction history for a card, following the chain back
+ * through previous_card_id links.
+ */
+export async function getItemTransactions(cardId: string): Promise<CardTransaction[]> {
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+
+  const { data, error } = await supabase
+    .from("card_transactions")
+    .select("id,card_id,transaction_type,trade_group_id,date,market_price_at_time,cost_basis,chain_depth,buy_percentage,cash_paid,trade_percentage,trade_credit_value,cash_difference,previous_card_id,notes,created_at")
+    .eq("workspace_id", workspaceId)
+    .or(`card_id.eq.${cardId},previous_card_id.eq.${cardId}`)
+    .order("date", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CardTransaction[];
 }

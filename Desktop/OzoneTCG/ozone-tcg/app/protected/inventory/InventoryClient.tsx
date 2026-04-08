@@ -44,6 +44,11 @@ type Item = {
   set_name: string | null;
   card_number: string | null;
   grade: string | null;
+  cost_basis: number | null;
+  buy_percentage: number | null;
+  acquisition_type: string | null;
+  chain_depth: number;
+  original_cash_invested: number | null;
 };
 
 type ItemForm = {
@@ -54,6 +59,7 @@ type ItemForm = {
   condition: Condition;
   cost: string;
   market: string;
+  buyPct: string; // helper: auto-fill cost from market price
   notes: string;
   consignerId: string;
   imageUrl: string;
@@ -75,6 +81,18 @@ function toNum(v: string) {
 function fmt(v: number | null) {
   if (v == null) return "-";
   return `$${v.toFixed(2)}`;
+}
+
+function buildSlabEbayQuery(name: string, grade: string | null, setName: string | null, cardNumber: string | null): string {
+  const cleanName = name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
+  const num = cardNumber?.split("/")[0]?.trim() ?? "";
+  return [grade, cleanName, setName, num].filter(Boolean).join(" ");
+}
+
+function buildRawEbayQuery(name: string, setName: string | null, cardNumber: string | null): string {
+  const cleanName = name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
+  const num = cardNumber?.split("/")[0]?.trim() ?? "";
+  return [cleanName, setName, num].filter(Boolean).join(" ");
 }
 
 const categoryColors: Record<string, string> = {
@@ -124,6 +142,7 @@ const blankForm = (): ItemForm => ({
   condition: "Near Mint",
   cost: "",
   market: "",
+  buyPct: "",
   notes: "",
   consignerId: "",
   imageUrl: "",
@@ -142,6 +161,7 @@ function itemToForm(it: Item): ItemForm {
     condition: it.condition,
     cost: it.cost != null ? String(it.cost) : "",
     market: it.market != null ? String(it.market) : "",
+    buyPct: it.buy_percentage != null ? String(it.buy_percentage) : "",
     notes: it.notes ?? "",
     consignerId: it.consigner_id ?? "",
     imageUrl: it.image_url ?? "",
@@ -351,17 +371,39 @@ function ItemFormFields({
       <div className="grid grid-cols-2 gap-2">
         <input
           className="border rounded-lg px-3 py-2 text-sm bg-background"
-          placeholder="Cost"
-          value={form.cost}
-          inputMode="decimal"
-          onChange={(e) => setForm({ ...form, cost: e.target.value })}
-        />
-        <input
-          className="border rounded-lg px-3 py-2 text-sm bg-background"
           placeholder="Market"
           value={form.market}
           inputMode="decimal"
-          onChange={(e) => setForm({ ...form, market: e.target.value })}
+          onChange={(e) => {
+            const market = e.target.value;
+            const pct = Number(form.buyPct);
+            const mkt = Number(market);
+            const newCost = form.buyPct && pct > 0 && mkt > 0 ? String(((mkt * pct) / 100).toFixed(2)) : form.cost;
+            setForm({ ...form, market, cost: newCost });
+          }}
+        />
+        <div className="relative">
+          <input
+            className="border rounded-lg px-3 py-2 text-sm bg-background w-full pr-7"
+            placeholder="Buy %"
+            value={form.buyPct}
+            inputMode="decimal"
+            onChange={(e) => {
+              const buyPct = e.target.value;
+              const pct = Number(buyPct);
+              const mkt = Number(form.market);
+              const newCost = buyPct && pct > 0 && mkt > 0 ? String(((mkt * pct) / 100).toFixed(2)) : form.cost;
+              setForm({ ...form, buyPct, cost: newCost });
+            }}
+          />
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs opacity-30 pointer-events-none">%</span>
+        </div>
+        <input
+          className="border rounded-lg px-3 py-2 text-sm bg-background col-span-2"
+          placeholder={form.buyPct && form.market ? `Cost (auto: ${form.cost || "—"})` : "Cost"}
+          value={form.cost}
+          inputMode="decimal"
+          onChange={(e) => setForm({ ...form, cost: e.target.value, buyPct: "" })}
         />
       </div>
 
@@ -494,6 +536,22 @@ export default function InventoryClient({
   );
   const [rawCardDetailItem, setRawCardDetailItem] = useState<Item | null>(null);
   const [historyDuration, setHistoryDuration] = useState<"7d" | "30d" | "90d" | "180d">("90d");
+
+  // Collapsible section state
+  const [slabsCollapsed, setSlabsCollapsed] = useState(false);
+  const [rawCollapsed, setRawCollapsed] = useState(false);
+
+  // Quick filter pills
+  const [filterNoPrice, setFilterNoPrice] = useState(false);
+  const [filterNoCost, setFilterNoCost] = useState(false);
+  const [filterHighValue, setFilterHighValue] = useState(false);
+  const [filterLowConf, setFilterLowConf] = useState(false);
+  const [filterStale, setFilterStale] = useState(false);
+
+  // Bulk cost entry
+  const [bulkCostOpen, setBulkCostOpen] = useState(false);
+  const [bulkCostVal, setBulkCostVal] = useState("");
+  const [bulkCostSplit, setBulkCostSplit] = useState(false);
 
   const openRawCardModal = useCallback((it: Item) => {
     setRawCardDetailItem(it);
@@ -686,6 +744,13 @@ export default function InventoryClient({
     localStorage.setItem("inventory-view-mode", viewMode);
   }, [viewMode]);
 
+  useEffect(() => {
+    if (localStorage.getItem("inventory-slabs-collapsed") === "true") setSlabsCollapsed(true);
+    if (localStorage.getItem("inventory-raw-collapsed") === "true") setRawCollapsed(true);
+  }, []);
+  useEffect(() => { localStorage.setItem("inventory-slabs-collapsed", String(slabsCollapsed)); }, [slabsCollapsed]);
+  useEffect(() => { localStorage.setItem("inventory-raw-collapsed", String(rawCollapsed)); }, [rawCollapsed]);
+
   const gradingItems = useMemo(
     () => items.filter((it) => it.status === "grading"),
     [items]
@@ -746,8 +811,88 @@ export default function InventoryClient({
     return result;
   }, [items, search, filterCategory, filterStatus, filterOwner, filterConsigner, sort, slabPrices]);
 
-  const displayedSlabs = useMemo(() => displayedItems.filter((it) => it.category === "slab"), [displayedItems]);
-  const displayedRawCards = useMemo(() => displayedItems.filter((it) => it.category !== "slab"), [displayedItems]);
+  // Pill filter counts — computed from base filtered set before pills applied
+  const pillCounts = useMemo(() => {
+    let noPrice = 0, noCost = 0, highValue = 0, lowConf = 0, stale = 0;
+    for (const it of displayedItems) {
+      if (it.cost == null) noCost++;
+      if (it.category === "slab" && it.grade) {
+        const parsed = parseGrade(it.grade);
+        const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
+        const sp = key ? mergedSlabPrices[key] : null;
+        const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+        if (!sp) noPrice++;
+        if (fmv != null && fmv > 200) highValue++;
+        if (sp && (sp.sold_count > 0 ? sp.sold_count : sp.comp_count) < 3) lowConf++;
+        if (isSlabTierStale(sp, fmv)) stale++;
+      } else {
+        const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+        const rcp = mergedRawCardPrices[rawKey];
+        const condPrice = rcp ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) : null;
+        if (!rcp) noPrice++;
+        if (condPrice != null && condPrice > 200) highValue++;
+        if (!rcp || Date.now() - new Date(rcp.last_updated).getTime() > 24 * 60 * 60 * 1000) stale++;
+      }
+    }
+    return { noPrice, noCost, highValue, lowConf, stale };
+  }, [displayedItems, mergedSlabPrices, mergedRawCardPrices]);
+
+  // Apply active pill filters on top of base filters
+  const filteredDisplayedItems = useMemo(() => {
+    if (!filterNoPrice && !filterNoCost && !filterHighValue && !filterLowConf && !filterStale) return displayedItems;
+    return displayedItems.filter((it) => {
+      if (filterNoCost && it.cost != null) return false;
+      if (it.category === "slab" && it.grade) {
+        const parsed = parseGrade(it.grade);
+        const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
+        const sp = key ? mergedSlabPrices[key] : null;
+        const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+        if (filterNoPrice && sp) return false;
+        if (filterHighValue && !(fmv != null && fmv > 200)) return false;
+        if (filterLowConf && !(sp && (sp.sold_count > 0 ? sp.sold_count : sp.comp_count) < 3)) return false;
+        if (filterStale && !isSlabTierStale(sp, fmv)) return false;
+      } else {
+        const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+        const rcp = mergedRawCardPrices[rawKey];
+        const condPrice = rcp ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) : null;
+        if (filterNoPrice && rcp) return false;
+        if (filterHighValue && !(condPrice != null && condPrice > 200)) return false;
+        if (filterLowConf) return false; // low confidence only applies to slabs
+        if (filterStale && rcp && Date.now() - new Date(rcp.last_updated).getTime() <= 24 * 60 * 60 * 1000) return false;
+      }
+      return true;
+    });
+  }, [displayedItems, filterNoPrice, filterNoCost, filterHighValue, filterLowConf, filterStale, mergedSlabPrices, mergedRawCardPrices]);
+
+  // Inventory value summary
+  const inventorySummary = useMemo(() => {
+    let slabValue = 0, rawValue = 0, totalCost = 0;
+    for (const it of displayedItems) {
+      let price: number | null = null;
+      if (it.category === "slab" && it.grade) {
+        const parsed = parseGrade(it.grade);
+        const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
+        const sp = key ? mergedSlabPrices[key] : null;
+        price = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
+        slabValue += price ?? 0;
+      } else {
+        const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+        const rcp = mergedRawCardPrices[rawKey];
+        price = rcp
+          ? (priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) ?? it.market)
+          : it.market;
+        rawValue += price ?? 0;
+      }
+      totalCost += it.cost ?? 0;
+    }
+    const total = slabValue + rawValue;
+    const profit = total - totalCost;
+    const profitPct = totalCost > 0 ? (profit / totalCost) * 100 : null;
+    return { slabValue, rawValue, total, totalCost, profit, profitPct };
+  }, [displayedItems, mergedSlabPrices, mergedRawCardPrices]);
+
+  const displayedSlabs = useMemo(() => filteredDisplayedItems.filter((it) => it.category === "slab"), [filteredDisplayedItems]);
+  const displayedRawCards = useMemo(() => filteredDisplayedItems.filter((it) => it.category !== "slab"), [filteredDisplayedItems]);
 
   const selectedItems = useMemo(
     () => items.filter((it) => selectedIds.has(it.id)),
@@ -1015,11 +1160,25 @@ export default function InventoryClient({
   }
 
   function selectAll() {
-    if (selectedIds.size === displayedItems.length && displayedItems.length > 0) {
+    if (selectedIds.size === filteredDisplayedItems.length && filteredDisplayedItems.length > 0) {
       clearSelection();
     } else {
-      setSelectedIds(new Set(displayedItems.map((it) => it.id)));
+      setSelectedIds(new Set(filteredDisplayedItems.map((it) => it.id)));
     }
+  }
+
+  async function onBulkSetCost() {
+    const n = toNum(bulkCostVal);
+    if (n === null || n < 0 || selectedIds.size === 0) return;
+    setBusy(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const costEach = bulkCostSplit ? Math.round((n / ids.length) * 100) / 100 : n;
+      await Promise.all(ids.map((id) => updateItem(id, { cost: costEach })));
+      setBulkCostOpen(false);
+      setBulkCostVal("");
+      setBulkCostSplit(false);
+    } finally { setBusy(false); }
   }
 
   const isFiltered =
@@ -1027,7 +1186,8 @@ export default function InventoryClient({
     filterCategory !== "all" ||
     filterStatus !== "all" ||
     filterOwner !== "all" ||
-    filterConsigner !== "all";
+    filterConsigner !== "all" ||
+    filterNoPrice || filterNoCost || filterHighValue || filterLowConf || filterStale;
 
   return (
     <div className={`space-y-4 ${selectedIds.size > 0 ? "pb-32" : ""}`}>
@@ -1247,21 +1407,21 @@ export default function InventoryClient({
       </div>
 
       {/* Inventory list/grid */}
-      <div className="border rounded-xl overflow-hidden">
+      <div className="border rounded-xl overflow-x-hidden">
         {/* Header */}
-        <div className="px-3 py-2 border-b flex items-center justify-between sticky top-0 z-10 bg-background">
+        <div className="px-3 py-2.5 border-b flex items-center justify-between sticky top-0 z-10 bg-background">
           <div className="flex items-center gap-2">
             <button
-              className="flex items-center gap-1.5 text-xs font-medium opacity-70 hover:opacity-100"
+              className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider opacity-50 hover:opacity-100 transition-opacity duration-150 inv-label"
               onClick={() => setInventoryOpen((o) => !o)}
             >
-              <span>{inventoryOpen ? "▾" : "▸"}</span>
+              <span className="text-[10px]">{inventoryOpen ? "▾" : "▸"}</span>
               {isFiltered
-                ? `${displayedItems.length} of ${items.filter((i) => i.status !== "grading").length} items`
-                : `Inventory (${items.filter((i) => i.status !== "grading").length}) · Slabs ${displayedSlabs.length} · Raw ${displayedRawCards.length}`}
+                ? `${filteredDisplayedItems.length} of ${items.filter((i) => i.status !== "grading").length} items`
+                : `Inventory · ${items.filter((i) => i.status !== "grading").length}`}
             </button>
             {inventoryOpen && (
-              <button className="text-xs px-2 py-1 rounded-lg border opacity-60" onClick={selectAll}>
+              <button className="text-xs px-2 py-1 rounded-lg border opacity-40 hover:opacity-80 transition-opacity duration-150" onClick={selectAll}>
                 {selectedIds.size === displayedItems.length && displayedItems.length > 0 ? "Deselect All" : "Select All"}
               </button>
             )}
@@ -1270,12 +1430,12 @@ export default function InventoryClient({
             {/* View toggle */}
             <div className="flex border rounded-lg overflow-hidden text-xs">
               <button
-                className={`px-2 py-1 transition-colors ${viewMode === "list" ? "bg-foreground text-background" : "hover:bg-muted"}`}
+                className={`px-2 py-1 transition-colors duration-150 ${viewMode === "list" ? "bg-foreground text-background" : "hover:bg-muted opacity-50 hover:opacity-100"}`}
                 onClick={() => setViewMode("list")}
                 title="List view"
               >☰</button>
               <button
-                className={`px-2 py-1 transition-colors ${viewMode === "grid" ? "bg-foreground text-background" : "hover:bg-muted"}`}
+                className={`px-2 py-1 transition-colors duration-150 ${viewMode === "grid" ? "bg-foreground text-background" : "hover:bg-muted opacity-50 hover:opacity-100"}`}
                 onClick={() => setViewMode("grid")}
                 title="Grid view"
               >⊞</button>
@@ -1311,39 +1471,113 @@ export default function InventoryClient({
           <div className="px-3 py-1 text-xs opacity-30 border-b">All prices current</div>
         )}
 
+        {inventoryOpen && filteredDisplayedItems.length === 0 && displayedItems.length > 0 && (
+          <div className="p-6 text-sm opacity-70 text-center">No items match your filters.</div>
+        )}
         {inventoryOpen && displayedItems.length === 0 && (
-          <div className="p-6 text-sm opacity-70">
-            {items.filter((i) => i.status !== "grading").length === 0 ? "No items yet." : "No items match your filters."}
+          <div className="p-6 text-sm opacity-70">No items yet.</div>
+        )}
+
+        {/* Inventory value summary bar */}
+        {inventoryOpen && displayedItems.length > 0 && (
+          <div className="px-3 py-2 border-b bg-muted/10 flex items-center gap-2 overflow-x-auto">
+            <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-muted/30">
+              <span className="text-[10px] uppercase tracking-wider opacity-40 font-semibold">Total</span>
+              <span className="text-sm font-bold inv-price">{fmt(inventorySummary.total)}</span>
+            </div>
+            <div className="w-px h-8 bg-border flex-shrink-0 opacity-20" />
+            <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-purple-500/8">
+              <span className="text-[10px] uppercase tracking-wider text-purple-500 opacity-70 font-semibold">Slabs</span>
+              <span className="text-sm font-bold text-purple-500 dark:text-purple-400 inv-price">{fmt(inventorySummary.slabValue)}</span>
+            </div>
+            <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-blue-500/8">
+              <span className="text-[10px] uppercase tracking-wider text-blue-500 opacity-70 font-semibold">Raw</span>
+              <span className="text-sm font-bold text-blue-500 dark:text-blue-400 inv-price">{fmt(inventorySummary.rawValue)}</span>
+            </div>
+            {inventorySummary.totalCost > 0 && (
+              <>
+                <div className="w-px h-8 bg-border flex-shrink-0 opacity-20" />
+                <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-muted/30">
+                  <span className="text-[10px] uppercase tracking-wider opacity-40 font-semibold">Cost</span>
+                  <span className="text-sm font-bold opacity-50 inv-price">{fmt(inventorySummary.totalCost)}</span>
+                </div>
+                <div className={`flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg ${inventorySummary.profit >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
+                  <span className={`text-[10px] uppercase tracking-wider font-semibold ${inventorySummary.profit >= 0 ? "text-green-500 opacity-80" : "text-red-500 opacity-80"}`}>Profit</span>
+                  <span className={`text-sm font-bold inv-price ${inventorySummary.profit >= 0 ? "text-green-500 dark:text-green-400" : "text-red-500"}`}>
+                    {inventorySummary.profit >= 0 ? "+" : ""}{fmt(inventorySummary.profit)}
+                    {inventorySummary.profitPct != null && (
+                      <span className="text-xs opacity-60 font-medium ml-1">({inventorySummary.profitPct >= 0 ? "+" : ""}{inventorySummary.profitPct.toFixed(0)}%)</span>
+                    )}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Quick filter pills */}
+        {inventoryOpen && displayedItems.length > 0 && (
+          <div className="px-3 py-2 border-b flex items-center gap-1.5 overflow-x-auto">
+            {(
+              [
+                { label: "No Price",   count: pillCounts.noPrice,   active: filterNoPrice,   toggle: () => setFilterNoPrice((v) => !v) },
+                { label: "No Cost",    count: pillCounts.noCost,    active: filterNoCost,    toggle: () => setFilterNoCost((v) => !v) },
+                { label: "High Value", count: pillCounts.highValue, active: filterHighValue, toggle: () => setFilterHighValue((v) => !v) },
+                { label: "Low Conf",   count: pillCounts.lowConf,   active: filterLowConf,   toggle: () => setFilterLowConf((v) => !v) },
+                { label: "Stale",      count: pillCounts.stale,     active: filterStale,     toggle: () => setFilterStale((v) => !v) },
+              ] as { label: string; count: number; active: boolean; toggle: () => void }[]
+            ).map(({ label, count, active, toggle }) => (
+              <button
+                key={label}
+                onClick={toggle}
+                disabled={count === 0 && !active}
+                className={`flex-shrink-0 text-[11px] px-3 py-1 rounded-full border font-medium transition-all duration-150 whitespace-nowrap ${
+                  active
+                    ? "bg-violet-600 text-white border-violet-600 shadow-sm"
+                    : count === 0
+                      ? "opacity-20 cursor-default border-border"
+                      : "border-border opacity-60 hover:opacity-100 hover:border-foreground/40 hover:bg-muted/50"
+                }`}
+              >
+                {label}{count > 0 ? <span className={`ml-1 ${active ? "opacity-80" : "opacity-60"}`}>({count})</span> : ""}
+              </button>
+            ))}
           </div>
         )}
 
         {/* LIST VIEW */}
-        {inventoryOpen && viewMode === "list" && displayedItems.length > 0 && (
+        {inventoryOpen && viewMode === "list" && filteredDisplayedItems.length > 0 && (
           <div className="divide-y">
             {/* Column headers */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-muted/20 text-xs font-medium opacity-60 select-none">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-background border-b text-[11px] font-semibold uppercase tracking-wider opacity-40 select-none sticky top-0 z-10">
+              <div className="w-4 flex-shrink-0" />
               <div className="w-10 flex-shrink-0" />
-              <button className="flex-1 text-left flex items-center gap-1 hover:opacity-100" onClick={() => setSort(sort === "name-asc" ? "name-desc" : "name-asc")}>
+              <button className="flex-1 max-w-[45%] text-left flex items-center gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "name-asc" ? "name-desc" : "name-asc")}>
                 Name {sort === "name-asc" ? "↑" : sort === "name-desc" ? "↓" : ""}
               </button>
-              <button className="w-24 text-right flex items-center justify-end gap-1 hover:opacity-100" onClick={() => setSort(sort === "fmv-asc" ? "fmv-desc" : "fmv-asc")}>
-                FMV / Market {sort === "fmv-asc" ? "↑" : sort === "fmv-desc" ? "↓" : ""}
+              <div className="w-[72px] flex-shrink-0" />
+              <button className="w-28 text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "fmv-asc" ? "fmv-desc" : "fmv-asc")}>
+                FMV / Mkt {sort === "fmv-asc" ? "↑" : sort === "fmv-desc" ? "↓" : ""}
               </button>
-              <button className="w-16 text-right flex items-center justify-end gap-1 hover:opacity-100" onClick={() => setSort(sort === "cost-asc" ? "cost-desc" : "cost-asc")}>
+              <button className="w-16 text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "cost-asc" ? "cost-desc" : "cost-asc")}>
                 Cost {sort === "cost-asc" ? "↑" : sort === "cost-desc" ? "↓" : ""}
               </button>
-              <button className="w-24 text-right flex items-center justify-end gap-1 hover:opacity-100" onClick={() => setSort(sort === "margin-asc" ? "margin-desc" : "margin-asc")}>
+              <button className="w-24 text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "margin-asc" ? "margin-desc" : "margin-asc")}>
                 Margin {sort === "margin-asc" ? "↑" : sort === "margin-desc" ? "↓" : ""}
               </button>
-              <div className="w-12 flex-shrink-0" />
+              <div className="w-10 flex-shrink-0" />
             </div>
             {/* Slabs section */}
             <>
-              <div className="px-3 py-1 bg-purple-50/60 dark:bg-purple-950/20 flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400">Slabs</span>
-                <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-medium">{displayedSlabs.length}</span>
-              </div>
-              {displayedSlabs.length === 0 ? (
+              <button
+                className="w-full px-3 py-2 bg-purple-500/5 dark:bg-purple-500/8 border-b border-purple-500/10 flex items-center gap-2 hover:bg-purple-500/10 transition-colors duration-150 text-left"
+                onClick={() => setSlabsCollapsed((v) => !v)}
+              >
+                <span className="text-[9px] opacity-40 w-3">{slabsCollapsed ? "▶" : "▼"}</span>
+                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-purple-600 dark:text-purple-400 inv-label">Slabs</span>
+                <span className="text-[11px] bg-purple-500/15 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-semibold tabular-nums">{displayedSlabs.length}</span>
+              </button>
+              {!slabsCollapsed && (displayedSlabs.length === 0 ? (
                 <div className="px-3 py-5 text-center text-xs opacity-40">
                   {items.some((i) => i.category === "slab" && i.status !== "grading") ? "No slabs match your filters" : "No slabs yet"}
                 </div>
@@ -1362,28 +1596,53 @@ export default function InventoryClient({
                 return (
                   <div
                     key={it.id}
-                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${isSelected ? "bg-green-50 dark:bg-green-950/20" : "hover:bg-muted/30"}`}
+                    className={`inv-row-slab flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors duration-150 ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : "hover:bg-muted/40"}`}
                     onClick={() => toggleSelect(it.id)}
                   >
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
                     <div className="flex-shrink-0 w-10">
                       {it.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.image_url} alt={it.name} className="w-10 h-14 rounded object-cover" />
+                        <img src={it.image_url} alt={it.name} className="w-10 h-14 rounded-lg object-cover shadow-md ring-1 ring-black/10 dark:ring-white/5" />
                       ) : (
-                        <div className="w-10 h-14 rounded bg-muted flex items-center justify-center"><span className="text-[10px] opacity-30">?</span></div>
+                        <div className="w-10 h-14 rounded-lg bg-muted flex items-center justify-center ring-1 ring-black/5 dark:ring-white/5"><span className="text-[10px] opacity-30">?</span></div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0 space-y-0.5">
-                      <div className="text-sm font-medium leading-tight truncate">{it.name}</div>
+                    <div className="min-w-0 flex-1 max-w-[45%] space-y-0.5">
+                      <div className="text-sm font-semibold leading-tight truncate inv-label">{it.name}</div>
                       {(it.set_name || it.card_number) && (
                         <div className="text-xs opacity-50 truncate">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
                       )}
-                      {it.grade && <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full ${gradeStyle(it.grade)}`}>{it.grade}</span>}
-                      {consigner && <div className="text-xs opacity-40">{consigner.name}</div>}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {it.grade && <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full ${gradeStyle(it.grade)}`}>{it.grade}</span>}
+                        {consigner ? (
+                          <span className="text-xs opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
+                        ) : it.owner !== "shared" ? (
+                          <span className="text-xs opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {/* Quick links */}
+                    <div className="hidden sm:flex flex-col gap-0.5 w-[72px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {(() => {
+                        const q = buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number);
+                        const enc = encodeURIComponent(q);
+                        return (
+                          <>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${enc}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer"
+                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
+                              eBay Sold
+                            </a>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${enc}&_sacat=183454`} target="_blank" rel="noopener noreferrer"
+                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
+                              eBay List
+                            </a>
+                          </>
+                        );
+                      })()}
                     </div>
                     {/* FMV — stale = dimmed + clock, fresh = normal; click to open detail modal */}
-                    <div className="flex-shrink-0 w-24 text-right">
+                    <div className="flex-shrink-0 w-28 text-right">
                       {isRefreshing ? (
                         <div className="text-xs opacity-40">Fetching…</div>
                       ) : isRateLimited ? (
@@ -1392,16 +1651,22 @@ export default function InventoryClient({
                         <button className="text-xs px-2 py-1 rounded-lg border font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20 whitespace-nowrap" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>Get Price</button>
                       ) : isStale ? (
                         <div>
-                          <button className="text-sm font-semibold opacity-40 hover:opacity-70" onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>{fmv != null ? fmt(fmv) : "—"} <span className="text-[10px]">🕐</span></button>
-                          <button className="text-[10px] opacity-40 hover:opacity-80 underline" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>refresh</button>
+                          <div className="flex items-center justify-end gap-0.5">
+                            <button className="text-sm font-semibold opacity-40 hover:opacity-70 inv-price" onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>{fmv != null ? fmt(fmv) : "—"} <span className="text-[10px]">🕐</span></button>
+                            <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted opacity-40 hover:opacity-80 transition-colors" title="Refresh price from eBay" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
+                          </div>
+                          <div className="text-[10px] opacity-30">eBay</div>
                         </div>
                       ) : (
                         <div>
-                          <button className="text-sm font-semibold hover:text-purple-600 transition-colors" onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>{fmv != null ? fmt(fmv) : "—"}</button>
+                          <div className="flex items-center justify-end gap-0.5">
+                            <button className="text-sm font-semibold hover:text-purple-500 transition-colors inv-price" onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>{fmv != null ? fmt(fmv) : "—"}</button>
+                            <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted opacity-40 hover:opacity-80 transition-colors" title="Refresh price from eBay" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
+                          </div>
                           {sp.sold_count > 0 && (
-                            <div className="text-xs opacity-50">{sp.sold_count} sold{sp.sold_count < 3 && <span className="text-orange-400 ml-1">low</span>}</div>
+                            <div className="text-[10px] opacity-40">{sp.sold_count} sold{sp.sold_count < 3 && <span className="text-orange-400 ml-1">low</span>}</div>
                           )}
-                          <button className="text-[10px] opacity-30 hover:opacity-70" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
+                          <div className="text-[10px] opacity-30">eBay</div>
                         </div>
                       )}
                     </div>
@@ -1410,7 +1675,7 @@ export default function InventoryClient({
                       {inlineCostId === it.id ? (
                         <input
                           autoFocus
-                          className="w-14 border rounded px-1 py-0.5 text-xs text-right bg-background"
+                          className="w-14 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
                           value={inlineCostVal}
                           inputMode="decimal"
                           onChange={(e) => setInlineCostVal(e.target.value)}
@@ -1419,33 +1684,53 @@ export default function InventoryClient({
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : it.cost != null ? (
-                        <span className="opacity-70">{fmt(it.cost)}</span>
+                        <span className="opacity-70 inv-price">{fmt(it.cost)}</span>
                       ) : (
                         <button className="text-xs opacity-30 hover:opacity-70 underline" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>set cost</button>
                       )}
                     </div>
-                    {/* Margin — $amount + % */}
-                    <div className="hidden sm:block flex-shrink-0 w-24 text-right text-xs font-medium">
+                    {/* Margin — $amount + % + acquisition badge */}
+                    <div className="hidden sm:block flex-shrink-0 w-24 text-right text-xs font-medium inv-price">
                       {marginAmt != null && marginPct != null ? (
-                        <span className={marginPct >= 0 ? "text-green-600" : "text-red-500"}>
+                        <span className={marginPct >= 0 ? "text-green-500" : "text-red-500"}>
                           {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
                         </span>
                       ) : <span className="opacity-30">—</span>}
+                      {it.acquisition_type && (
+                        <div className="mt-0.5 flex items-center justify-end gap-1">
+                          <span
+                            className={`text-[9px] px-1 py-0.5 rounded font-bold font-mono ${
+                              it.acquisition_type === "trade"
+                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                            }`}
+                            title={it.acquisition_type === "trade"
+                              ? `Trade chain depth ${it.chain_depth}${it.original_cash_invested != null ? `, orig. cash: $${it.original_cash_invested.toFixed(2)}` : ""}`
+                              : `Bought at ${it.buy_percentage != null ? it.buy_percentage + "%" : "custom price"}`}
+                          >
+                            {it.acquisition_type === "trade" ? `T${it.chain_depth > 0 ? it.chain_depth : ""}` : "B"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="flex-shrink-0">
-                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
+                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </>
             {/* Raw Cards section */}
             <>
-              <div className="px-3 py-1 bg-blue-50/60 dark:bg-blue-950/20 flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Raw Cards</span>
-                <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-medium">{displayedRawCards.length}</span>
-              </div>
-              {displayedRawCards.length === 0 ? (
+              <button
+                className="w-full px-3 py-2 bg-blue-500/5 dark:bg-blue-500/8 border-b border-blue-500/10 flex items-center gap-2 hover:bg-blue-500/10 transition-colors duration-150 text-left"
+                onClick={() => setRawCollapsed((v) => !v)}
+              >
+                <span className="text-[9px] opacity-40 w-3">{rawCollapsed ? "▶" : "▼"}</span>
+                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-blue-600 dark:text-blue-400 inv-label">Raw Cards</span>
+                <span className="text-[11px] bg-blue-500/15 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-semibold tabular-nums">{displayedRawCards.length}</span>
+              </button>
+              {!rawCollapsed && (displayedRawCards.length === 0 ? (
                 <div className="px-3 py-5 text-center text-xs opacity-40">
                   {items.some((i) => i.category !== "slab" && i.status !== "grading") ? "No raw cards match your filters" : "No raw cards yet"}
                 </div>
@@ -1465,30 +1750,59 @@ export default function InventoryClient({
                 return (
                   <div
                     key={it.id}
-                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${isSelected ? "bg-green-50 dark:bg-green-950/20" : "hover:bg-muted/30"}`}
+                    className={`inv-row-raw flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors duration-150 ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : "hover:bg-muted/40"}`}
                     onClick={() => toggleSelect(it.id)}
                   >
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
                     <div className="flex-shrink-0 w-10">
                       {it.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.image_url} alt={it.name} className="w-10 h-14 rounded object-cover" />
+                        <img src={it.image_url} alt={it.name} className="w-10 h-14 rounded-lg object-cover shadow-md ring-1 ring-black/10 dark:ring-white/5" />
                       ) : (
-                        <div className="w-10 h-14 rounded bg-muted flex items-center justify-center"><span className="text-[10px] opacity-30">?</span></div>
+                        <div className="w-10 h-14 rounded-lg bg-muted flex items-center justify-center ring-1 ring-black/5 dark:ring-white/5"><span className="text-[10px] opacity-30">?</span></div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0 space-y-0.5">
-                      <div className="text-sm font-medium leading-tight truncate">{it.name}</div>
+                    <div className="min-w-0 flex-1 max-w-[45%] space-y-0.5">
+                      <div className="text-sm font-semibold leading-tight truncate inv-label">{it.name}</div>
                       {(it.set_name || it.card_number) && (
                         <div className="text-xs opacity-50 truncate">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
                       )}
                       <div className="flex items-center gap-1 flex-wrap">
                         <span className={`text-xs px-1.5 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>
                         {it.category === "single" && it.condition && <span className="text-xs opacity-50">{it.condition}</span>}
+                        {consigner ? (
+                          <span className="text-xs opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
+                        ) : it.owner !== "shared" ? (
+                          <span className="text-xs opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
+                        ) : null}
                       </div>
-                      {consigner && <div className="text-xs opacity-40">{consigner.name}</div>}
                     </div>
-                    <div className="flex-shrink-0 w-24 text-right">
+                    {/* Quick links */}
+                    <div className="hidden sm:flex flex-col gap-0.5 w-[72px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {(() => {
+                        const q = buildRawEbayQuery(it.name, it.set_name, it.card_number);
+                        const enc = encodeURIComponent(q);
+                        const cleanName = it.name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
+                        const tcgQ = encodeURIComponent([cleanName, it.set_name].filter(Boolean).join(" "));
+                        return (
+                          <>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${enc}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer"
+                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
+                              eBay Sold
+                            </a>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${enc}&_sacat=183454`} target="_blank" rel="noopener noreferrer"
+                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
+                              eBay List
+                            </a>
+                            <a href={`https://www.tcgplayer.com/search/pokemon/product?q=${tcgQ}&view=grid`} target="_blank" rel="noopener noreferrer"
+                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
+                              TCGPlayer
+                            </a>
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex-shrink-0 w-28 text-right">
                       {isRawRefreshing ? (
                         <div className="text-xs opacity-40">Fetching…</div>
                       ) : !rcp ? (
@@ -1498,22 +1812,23 @@ export default function InventoryClient({
                         >Get Price</button>
                       ) : (
                         <div>
-                          <button
-                            className="text-sm font-semibold hover:text-blue-600 transition-colors"
-                            onClick={(e) => { e.stopPropagation(); openRawCardModal(it); }}
-                          >{fmt(displayPrice)}</button>
+                          <div className="flex items-center justify-end gap-0.5">
+                            <button
+                              className="text-sm font-semibold hover:text-blue-500 transition-colors inv-price"
+                              onClick={(e) => { e.stopPropagation(); openRawCardModal(it); }}
+                            >{fmt(displayPrice)}</button>
+                            <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted opacity-40 hover:opacity-80 transition-colors" title="Refresh price from TCGPlayer" onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}>↺</button>
+                          </div>
                           <div className="text-[10px] opacity-30">TCGPlayer</div>
-                          <button className="text-[10px] opacity-30 hover:opacity-70" onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}>↺</button>
                         </div>
                       )}
-                      <div className="text-xs opacity-40">{it.owner}</div>
                     </div>
                     {/* Cost — inline editable */}
                     <div className="hidden sm:block flex-shrink-0 w-16 text-right text-sm">
                       {inlineCostId === it.id ? (
                         <input
                           autoFocus
-                          className="w-14 border rounded px-1 py-0.5 text-xs text-right bg-background"
+                          className="w-14 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
                           value={inlineCostVal}
                           inputMode="decimal"
                           onChange={(e) => setInlineCostVal(e.target.value)}
@@ -1522,25 +1837,41 @@ export default function InventoryClient({
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : it.cost != null ? (
-                        <span className="opacity-70">{fmt(it.cost)}</span>
+                        <span className="opacity-70 inv-price">{fmt(it.cost)}</span>
                       ) : (
                         <button className="text-xs opacity-30 hover:opacity-70 underline" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>set cost</button>
                       )}
                     </div>
                     {/* Margin */}
-                    <div className="hidden sm:block flex-shrink-0 w-24 text-right text-xs font-medium">
+                    <div className="hidden sm:block flex-shrink-0 w-24 text-right text-xs font-medium inv-price">
                       {marginAmt != null && marginPct != null ? (
-                        <span className={marginPct >= 0 ? "text-green-600" : "text-red-500"}>
+                        <span className={marginPct >= 0 ? "text-green-500" : "text-red-500"}>
                           {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
                         </span>
                       ) : <span className="opacity-30">—</span>}
+                      {it.acquisition_type && (
+                        <div className="mt-0.5 flex items-center justify-end gap-1">
+                          <span
+                            className={`text-[9px] px-1 py-0.5 rounded font-bold font-mono ${
+                              it.acquisition_type === "trade"
+                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                            }`}
+                            title={it.acquisition_type === "trade"
+                              ? `Trade chain depth ${it.chain_depth}${it.original_cash_invested != null ? `, orig. cash: $${it.original_cash_invested.toFixed(2)}` : ""}`
+                              : `Bought at ${it.buy_percentage != null ? it.buy_percentage + "%" : "custom price"}`}
+                          >
+                            {it.acquisition_type === "trade" ? `T${it.chain_depth > 0 ? it.chain_depth : ""}` : "B"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="flex-shrink-0">
-                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
+                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </>
           </div>
         )}
@@ -1794,8 +2125,9 @@ export default function InventoryClient({
               <span className="text-xs font-medium opacity-60">{selectedIds.size} selected</span>
               <div className="flex items-center gap-1.5">
                 <button className="text-xs px-2.5 py-1 rounded-lg bg-green-600 text-white font-medium" onClick={() => setSellOpen(true)} disabled={busy}>Sell</button>
+                <button className="text-xs px-2.5 py-1 rounded-lg border font-medium" onClick={() => setBulkCostOpen(true)} disabled={busy}>Set Cost</button>
                 <button className="text-xs px-2.5 py-1 rounded-lg border font-medium" onClick={() => setMassEditOpen(true)} disabled={busy}>Edit</button>
-<button className="text-xs px-2.5 py-1 rounded-lg border border-red-300 text-red-600 font-medium" onClick={() => setDeleteOpen(true)} disabled={busy}>Del</button>
+                <button className="text-xs px-2.5 py-1 rounded-lg border border-red-300 text-red-600 font-medium" onClick={() => setDeleteOpen(true)} disabled={busy}>Del</button>
                 <button className="text-xs px-2 py-1 rounded-lg border opacity-60" onClick={clearSelection}>Clear</button>
               </div>
             </div>
@@ -2002,6 +2334,57 @@ export default function InventoryClient({
                 {busy ? "Saving…" : "Confirm Sale"}
               </button>
               <button className="px-4 py-2 rounded-lg border opacity-60" onClick={() => setSellOpen(false)} disabled={busy}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk cost modal */}
+      {bulkCostOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setBulkCostOpen(false); }}>
+          <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">Set Cost — {selectedIds.size} card{selectedIds.size !== 1 ? "s" : ""}</div>
+              <button className="text-sm opacity-60 px-2 py-1" onClick={() => setBulkCostOpen(false)}>✕</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs opacity-60 mb-1 block">
+                  {bulkCostSplit ? "Total amount paid (split evenly)" : "Cost per card"}
+                </label>
+                <input
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+                  placeholder="0.00"
+                  inputMode="decimal"
+                  value={bulkCostVal}
+                  onChange={(e) => setBulkCostVal(e.target.value)}
+                  autoFocus
+                />
+                {bulkCostSplit && toNum(bulkCostVal) != null && (
+                  <div className="text-xs opacity-50 mt-1">
+                    = {fmt(Math.round((toNum(bulkCostVal)! / selectedIds.size) * 100) / 100)} per card
+                  </div>
+                )}
+              </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={bulkCostSplit}
+                  onChange={(e) => setBulkCostSplit(e.target.checked)}
+                  className="accent-blue-600"
+                />
+                Split total evenly across {selectedIds.size} cards
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
+                onClick={onBulkSetCost}
+                disabled={busy || !bulkCostVal || toNum(bulkCostVal) === null}
+              >
+                {busy ? "Saving…" : `Apply to ${selectedIds.size} cards`}
+              </button>
+              <button className="px-4 py-2 rounded-lg border opacity-60" onClick={() => setBulkCostOpen(false)} disabled={busy}>Cancel</button>
             </div>
           </div>
         </div>

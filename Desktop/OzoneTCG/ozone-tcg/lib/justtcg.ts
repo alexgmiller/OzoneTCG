@@ -174,14 +174,14 @@ function extractPricesForPrinting(
     // Normalise condition key: "Near Mint" → "nearmint"
     const key = v.condition.toLowerCase().replace(/\s+/g, "");
     if (!(key in condMap)) {
-  condMap[key] = v.price;
-  if (v.priceHistory?.length) {
-    histMap[key] = (v.priceHistory as unknown as Array<{ p: number; t: number }>).map((point) => ({
-      date: new Date(point.t * 1000).toISOString().split('T')[0],
-      price: point.p,
-    }));
-  }
-}
+      condMap[key] = v.price;
+      if (v.priceHistory?.length) {
+        histMap[key] = (v.priceHistory as unknown as Array<{ p: number; t: number }>).map((point) => ({
+          date: new Date(point.t * 1000).toISOString().split("T")[0],
+          price: point.p,
+        }));
+      }
+    }
   }
 
   // Use NM history; fall back to LP then any available condition
@@ -190,25 +190,6 @@ function extractPricesForPrinting(
     histMap["lightlyplayed"] ??
     Object.values(histMap)[0] ??
     null;
-
-  // Debug: log what history fields came back on the variants
-  const variantHistoryFields = [...new Set(pool.flatMap((v) => Object.keys(v)).filter((k) => k.toLowerCase().includes("history")))];
-  console.log(`[JustTCG] Variant history-related fields found: ${variantHistoryFields.length > 0 ? variantHistoryFields.join(", ") : "(none)"}`);
-  console.log(`[JustTCG] Raw history from variants: ${rawHistory ? `${rawHistory.length} data points` : "none returned"}`);
-
-  // ── Structure probe — remove once parsing is confirmed correct ────────────
-  if (pool.length > 0) {
-    const firstVariant = pool[0] as Record<string, unknown>;
-    const ph = firstVariant["priceHistory"] as unknown[] | undefined;
-    const ph30 = firstVariant["priceHistory30d"] as unknown[] | undefined;
-    console.log(`[JustTCG] priceHistory length: ${ph?.length ?? 0}, priceHistory30d length: ${ph30?.length ?? 0}`);
-    if (ph && ph.length > 0) {
-      console.log(`[JustTCG] priceHistory structure: ${JSON.stringify(ph.slice(0, 3), null, 2)}`);
-      const first = ph[0] as Record<string, unknown>;
-      console.log(`[JustTCG] priceHistory[0] keys: ${Object.keys(first).join(", ")}`);
-    }
-  }
-  // ─────────────────────────────────────────────────────────────────────────
 
   // Normalise: ensure ascending by date, deduplicate dates
   const priceHistory: PriceHistoryPoint[] | null = rawHistory
