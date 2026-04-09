@@ -192,7 +192,7 @@ export async function uploadItemImage(
     name,
     card_number: num || null,
     image_url: imageUrl,
-  }).onConflict("id");
+  }, { onConflict: "id" });
 
   // Update this item directly
   const workspaceId = await getWorkspaceId();
