@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, ArrowLeftRight, Users, Receipt, Wallet, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Package, ArrowLeftRight, Users, Receipt, Wallet, MoreHorizontal, ScanLine } from "lucide-react";
 import { Button } from "./ui/button";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -11,13 +11,14 @@ const allLinks = [
   { href: "/protected/dashboard",      label: "Dashboard",     icon: LayoutDashboard },
   { href: "/protected/inventory",      label: "Inventory",     icon: Package },
   { href: "/protected/transactions",   label: "Transactions",  icon: ArrowLeftRight },
+  { href: "/protected/scan",           label: "Scan",          icon: ScanLine },
   { href: "/protected/consigners",     label: "Consigners",    icon: Users },
   { href: "/protected/expenses",       label: "Expenses",      icon: Receipt },
   { href: "/protected/payout",         label: "Payout",        icon: Wallet },
 ];
 
 const primaryLinks = allLinks.filter((l) =>
-  ["/protected/dashboard", "/protected/inventory", "/protected/transactions"].includes(l.href)
+  ["/protected/dashboard", "/protected/inventory", "/protected/transactions", "/protected/scan"].includes(l.href)
 );
 const moreLinks = allLinks.filter((l) => !primaryLinks.includes(l));
 

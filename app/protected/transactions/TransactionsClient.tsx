@@ -2,9 +2,10 @@
 
 import { useState, useMemo, useRef } from "react";
 import type { SaleGroup, BuyExpense, TradeGroup, DealLog } from "./TransactionsServer";
-import { revertSale, recordQuickBuy, type QuickBuyCard } from "./actions";
+import { revertSale, recordQuickBuy, recordQuickSell, deleteBuyExpense, revertTrade, type QuickBuyCard } from "./actions";
 import { uploadDealPhoto, createDealLog, toggleDealResolved, deleteDealLog } from "../photos/actions";
 import TradeModal from "../inventory/TradeModal";
+import CertLookupWidget, { type CertWidgetResult } from "@/components/CertLookupWidget";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -58,13 +59,17 @@ function profitColor(v: number) {
 
 type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
 const CONDITIONS: Condition[] = ["Near Mint", "Lightly Played", "Moderately Played", "Heavily Played", "Damaged"];
+const COND_ABBR: Record<Condition, string> = {
+  "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP",
+  "Heavily Played": "HP", "Damaged": "DMG",
+};
+type Category = "single" | "slab" | "sealed";
 
 function blankCard(): QuickBuyCard & { _id: string } {
-  return { _id: crypto.randomUUID(), name: "", condition: "Near Mint", market: 0 };
+  return { _id: crypto.randomUUID(), name: "", condition: "Near Mint", market: 0, category: "single" };
 }
 
 function RecordBuyModal({ onClose }: { onClose: () => void }) {
-  const [sellerName, setSellerName] = useState("");
   const [paidBy, setPaidBy] = useState<"alex" | "mila" | "shared">("shared");
   const [paymentType, setPaymentType] = useState<string>("cash");
   const [addToInventory, setAddToInventory] = useState(true);
@@ -80,23 +85,13 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
     setCards((cs) => cs.map((c) => (c._id === id ? { ...c, ...patch } : c)));
   }
 
-  function addCard() {
-    setCards((cs) => [...cs, blankCard()]);
-  }
-
-  function removeCard(id: string) {
-    setCards((cs) => cs.filter((c) => c._id !== id));
-  }
-
   async function handleSubmit() {
-    if (!sellerName.trim()) { setErr("Seller name required"); return; }
     if (cards.length === 0) { setErr("Add at least one card"); return; }
     if (totalCost <= 0) { setErr("Total cost must be > 0"); return; }
     setBusy(true);
     setErr(null);
     try {
       await recordQuickBuy({
-        sellerName: sellerName.trim(),
         cards: cards.map(({ _id: _, ...c }) => c),
         totalCost,
         paidBy,
@@ -120,72 +115,113 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Seller */}
-          <div className="space-y-1">
-            <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Seller Name</label>
-            <input
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
-              placeholder="e.g. John D."
-              value={sellerName}
-              onChange={(e) => setSellerName(e.target.value)}
-            />
-          </div>
-
           {/* Cards */}
-          <div className="space-y-2">
-            <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Cards</label>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Cards</label>
+              <CertLookupWidget
+                onResult={(r: CertWidgetResult) => {
+                  const newCard = {
+                    _id: crypto.randomUUID(),
+                    name: r.name,
+                    condition: "Near Mint" as Condition,
+                    market: r.market ?? 0,
+                    category: "slab" as Category,
+                    grade: r.gradeLabel ? `${r.company} ${r.gradeLabel} ${r.grade}` : r.grade ? `${r.company} ${r.grade}` : "",
+                    set_name: r.setName ?? "",
+                    card_number: r.cardNumber ?? "",
+                  };
+                  // Replace the single blank card instead of appending
+                  setCards((cs) =>
+                    cs.length === 1 && !cs[0].name ? [newCard] : [...cs, newCard]
+                  );
+                  if (r.market && !totalCostStr) setTotalCostStr(r.market.toFixed(2));
+                }}
+              />
+            </div>
+
             {cards.map((card) => (
-              <div key={card._id} className="flex gap-2 items-start">
-                <input
-                  className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
-                  placeholder="Card name"
-                  value={card.name}
-                  onChange={(e) => updateCard(card._id, { name: e.target.value })}
-                />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="w-20 bg-background border border-border rounded-lg px-2 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500 inv-price"
-                  placeholder="Mkt"
-                  value={card.market || ""}
-                  onChange={(e) => updateCard(card._id, { market: parseFloat(e.target.value) || 0 })}
-                />
-                <select
-                  className="w-28 bg-background border border-border rounded-lg px-2 py-2 text-xs outline-none focus:ring-1 focus:ring-violet-500"
-                  value={card.condition}
-                  onChange={(e) => updateCard(card._id, { condition: e.target.value as Condition })}
-                >
-                  {CONDITIONS.map((c) => <option key={c} value={c}>{c.split(" ")[0]}</option>)}
-                </select>
-                {cards.length > 1 && (
-                  <button
-                    onClick={() => removeCard(card._id)}
-                    className="text-muted-foreground hover:text-red-500 transition-colors pt-2 text-sm"
-                  >✕</button>
-                )}
+              <div key={card._id} className="border border-border rounded-xl p-3 space-y-2 bg-muted/10">
+                {/* Row 1: name + market + remove */}
+                <div className="flex gap-2 items-center">
+                  <input
+                    className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-violet-500"
+                    placeholder="Card name *"
+                    value={card.name}
+                    onChange={(e) => updateCard(card._id, { name: e.target.value })}
+                  />
+                  <input
+                    type="number" min="0" step="0.01"
+                    className="w-20 bg-background border border-border rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-violet-500 inv-price"
+                    placeholder="Mkt $"
+                    value={card.market || ""}
+                    onChange={(e) => updateCard(card._id, { market: parseFloat(e.target.value) || 0 })}
+                  />
+                  {cards.length > 1 && (
+                    <button onClick={() => setCards((cs) => cs.filter((c) => c._id !== card._id))}
+                      className="text-muted-foreground hover:text-red-500 transition-colors text-sm shrink-0">✕</button>
+                  )}
+                </div>
+                {/* Row 2: category + condition + grade (slab only) */}
+                <div className="flex gap-2 flex-wrap">
+                  <select
+                    className="bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-violet-500"
+                    value={card.category ?? "single"}
+                    onChange={(e) => updateCard(card._id, { category: e.target.value as Category })}
+                  >
+                    <option value="single">Single</option>
+                    <option value="slab">Slab</option>
+                    <option value="sealed">Sealed</option>
+                  </select>
+                  <select
+                    className="bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-violet-500"
+                    value={card.condition}
+                    onChange={(e) => updateCard(card._id, { condition: e.target.value as Condition })}
+                  >
+                    {CONDITIONS.map((c) => <option key={c} value={c}>{COND_ABBR[c]}</option>)}
+                  </select>
+                  {card.category === "slab" && (
+                    <input
+                      className="w-24 bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-violet-500"
+                      placeholder="Grade (PSA 10)"
+                      value={card.grade ?? ""}
+                      onChange={(e) => updateCard(card._id, { grade: e.target.value })}
+                    />
+                  )}
+                </div>
+                {/* Row 3: set + card number */}
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-violet-500"
+                    placeholder="Set name"
+                    value={card.set_name ?? ""}
+                    onChange={(e) => updateCard(card._id, { set_name: e.target.value })}
+                  />
+                  <input
+                    className="w-24 bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-violet-500"
+                    placeholder="Card #"
+                    value={card.card_number ?? ""}
+                    onChange={(e) => updateCard(card._id, { card_number: e.target.value })}
+                  />
+                </div>
               </div>
             ))}
-            <button
-              onClick={addCard}
-              className="text-xs text-violet-500 hover:text-violet-400 transition-colors"
-            >+ Add card</button>
+            <button onClick={() => setCards((cs) => [...cs, blankCard()])}
+              className="text-xs text-violet-500 hover:text-violet-400 transition-colors">+ Add card</button>
           </div>
 
           {/* Total cost */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Total Cost Paid</label>
-              {totalMarket > 0 && (
+              {totalMarket > 0 && totalCost > 0 && (
                 <span className="text-[11px] opacity-50 inv-price">
                   {((totalCost / totalMarket) * 100).toFixed(0)}% of {fmt(totalMarket)} market
                 </span>
               )}
             </div>
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="number" min="0" step="0.01"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500 inv-price"
               placeholder="0.00"
               value={totalCostStr}
@@ -197,11 +233,8 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
           <div className="flex gap-3">
             <div className="flex-1 space-y-1">
               <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Paid By</label>
-              <select
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
-                value={paidBy}
-                onChange={(e) => setPaidBy(e.target.value as "alex" | "mila" | "shared")}
-              >
+              <select className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
+                value={paidBy} onChange={(e) => setPaidBy(e.target.value as "alex" | "mila" | "shared")}>
                 <option value="shared">Shared</option>
                 <option value="alex">Alex</option>
                 <option value="mila">Mila</option>
@@ -209,11 +242,8 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
             </div>
             <div className="flex-1 space-y-1">
               <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Payment</label>
-              <select
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
-                value={paymentType ?? ""}
-                onChange={(e) => setPaymentType(e.target.value)}
-              >
+              <select className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
+                value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
                 <option value="cash">Cash</option>
                 <option value="venmo">Venmo</option>
                 <option value="paypal">PayPal</option>
@@ -223,14 +253,9 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Add to inventory toggle */}
           <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={addToInventory}
-              onChange={(e) => setAddToInventory(e.target.checked)}
-              className="accent-violet-500 w-4 h-4"
-            />
+            <input type="checkbox" checked={addToInventory}
+              onChange={(e) => setAddToInventory(e.target.checked)} className="accent-violet-500 w-4 h-4" />
             <span className="text-sm">Add cards to inventory</span>
           </label>
 
@@ -238,15 +263,170 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex gap-3 px-5 py-4 border-t border-border">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted/40 transition-colors"
-          >Cancel</button>
-          <button
-            onClick={handleSubmit}
-            disabled={busy}
-            className="flex-1 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-          >{busy ? "Saving…" : "Record Buy"}</button>
+          <button onClick={onClose}
+            className="flex-1 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted/40 transition-colors">Cancel</button>
+          <button onClick={handleSubmit} disabled={busy}
+            className="flex-1 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+            {busy ? "Saving…" : "Record Buy"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Record Sell Modal ────────────────────────────────────────────────────────
+
+function RecordSellModal({
+  inventoryItems,
+  onClose,
+}: {
+  inventoryItems: InventoryItem[];
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [priceStr, setPriceStr] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const filtered = search.trim()
+    ? inventoryItems.filter((it) =>
+        it.name.toLowerCase().includes(search.toLowerCase()) ||
+        (it.set_name ?? "").toLowerCase().includes(search.toLowerCase())
+      )
+    : inventoryItems.slice(0, 20);
+
+  const selected = inventoryItems.find((it) => it.id === selectedId) ?? null;
+  const sellPrice = parseFloat(priceStr) || 0;
+  const cost = selected ? (selected.cost_basis ?? selected.cost ?? null) : null;
+  const profit = sellPrice > 0 && cost != null ? sellPrice - cost : null;
+  const profitPct = profit != null && cost != null && cost > 0 ? (profit / cost) * 100 : null;
+
+  async function handleSubmit() {
+    if (!selectedId) { setErr("Select a card to sell"); return; }
+    if (sellPrice <= 0) { setErr("Enter a sell price"); return; }
+    setBusy(true); setErr(null);
+    try {
+      await recordQuickSell({ itemIds: [selectedId], totalPrice: sellPrice, notes: notes.trim() || null });
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-base font-semibold inv-label">Record Sell</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">✕</button>
+        </div>
+        <div className="p-5 space-y-4">
+          {/* Card search */}
+          <div className="space-y-1">
+            <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Card</label>
+            {selected ? (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/6">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{selected.name}</div>
+                  <div className="text-xs opacity-50">{[selected.set_name, selected.card_number ? `#${selected.card_number}` : null, selected.grade].filter(Boolean).join(" · ")}</div>
+                </div>
+                <div className="text-right text-xs inv-price opacity-60 shrink-0">
+                  {selected.market != null && <div>Mkt {fmt(selected.market)}</div>}
+                  {cost != null && <div>Cost {fmt(cost)}</div>}
+                </div>
+                <button onClick={() => { setSelectedId(null); setPriceStr(""); }} className="text-xs opacity-40 hover:opacity-70 ml-1">✕</button>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <input
+                  autoFocus
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
+                  placeholder="Search inventory…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {filtered.length > 0 && (
+                  <div className="border border-border rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                    {filtered.map((it) => (
+                      <button
+                        key={it.id}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-white/5 transition-colors border-b border-border/30 last:border-0"
+                        onClick={() => {
+                          setSelectedId(it.id);
+                          setPriceStr(it.market?.toFixed(2) ?? "");
+                          setSearch("");
+                        }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm truncate">{it.name}</div>
+                          <div className="text-[11px] opacity-40">{it.set_name ?? it.category} {it.grade ? `· ${it.grade}` : ""}</div>
+                        </div>
+                        {it.market != null && <span className="text-xs inv-price opacity-50 shrink-0">{fmt(it.market)}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Sell price */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Sell Price</label>
+              {selected?.market != null && <span className="text-[11px] opacity-40 inv-price">Market {fmt(selected.market)}</span>}
+            </div>
+            <input
+              type="number" min="0" step="0.01"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-emerald-500 inv-price"
+              placeholder="0.00"
+              value={priceStr}
+              onChange={(e) => setPriceStr(e.target.value)}
+            />
+          </div>
+
+          {/* Profit preview */}
+          {profit != null && selected && (
+            <div className={`rounded-xl px-4 py-3 border text-sm space-y-0.5 ${profit >= 0 ? "bg-emerald-500/6 border-emerald-500/20" : "bg-red-500/6 border-red-500/20"}`}>
+              <div className="text-[11px] uppercase tracking-wider opacity-40 font-semibold mb-1.5">Summary</div>
+              <div className="flex justify-between inv-price">
+                <span className="opacity-60">Sell price</span>
+                <span>{fmt(sellPrice)}</span>
+              </div>
+              <div className="flex justify-between inv-price">
+                <span className="opacity-60">Cost basis</span>
+                <span className="opacity-70">{fmt(cost)}</span>
+              </div>
+              <div className={`flex justify-between font-semibold inv-price border-t border-border/40 pt-1.5 mt-1.5 ${profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                <span>Profit</span>
+                <span>{profit >= 0 ? "+" : ""}{fmt(profit)}{profitPct != null ? ` (${profitPct >= 0 ? "+" : ""}${profitPct.toFixed(0)}%)` : ""}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          <div className="space-y-1">
+            <label className="text-[11px] uppercase tracking-wider opacity-40 font-semibold">Notes <span className="opacity-50 normal-case tracking-normal">(optional)</span></label>
+            <input
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
+              placeholder="Buyer, platform, notes…"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+
+          {err && <p className="text-sm text-red-500">{err}</p>}
+        </div>
+        <div className="flex gap-3 px-5 py-4 border-t border-border">
+          <button onClick={onClose} className="flex-1 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted/40 transition-colors">Cancel</button>
+          <button onClick={handleSubmit} disabled={busy} className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+            {busy ? "Saving…" : "Record Sell"}
+          </button>
         </div>
       </div>
     </div>
@@ -255,30 +435,92 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
 
 // ─── Row components ───────────────────────────────────────────────────────────
 
-function BuyRow({ expense }: { expense: BuyExpense }) {
-  // Parse card count from description "Buy: Seller — N cards"
-  const match = expense.description.match(/—\s*(\d+)\s*card/);
-  const cardCount = match ? parseInt(match[1]) : null;
-  const sellerMatch = expense.description.match(/^Buy:\s*(.+?)\s*—/);
-  const seller = sellerMatch ? sellerMatch[1] : expense.description.replace(/^Buy:\s*/, "");
+function BuyRow({ expense, onDelete }: { expense: BuyExpense; onDelete: (id: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const itemCount = expense.items.length;
+  const label = itemCount > 0
+    ? (itemCount === 1 ? expense.items[0].name : `${itemCount} card${itemCount !== 1 ? "s" : ""}`)
+    : expense.description;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-white/[0.03] transition-colors duration-150 inv-row-buy">
-      <div className="w-14 shrink-0">
-        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold font-mono bg-blue-500/15 text-blue-500">BUY</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold inv-label truncate">{seller}</div>
-        <div className="text-xs opacity-50 mt-0.5">
-          {cardCount != null ? `${cardCount} card${cardCount !== 1 ? "s" : ""}` : expense.description}
-          {expense.paid_by && <span className="ml-2">· {expense.paid_by}</span>}
-          {expense.payment_type && <span className="ml-1">· {expense.payment_type}</span>}
+    <div className="rounded-lg overflow-hidden inv-row-buy">
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors duration-150 text-left"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div className="w-14 shrink-0">
+          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold font-mono bg-blue-500/15 text-blue-500">BUY</span>
         </div>
-      </div>
-      <div className="text-right shrink-0">
-        <div className="text-sm font-semibold inv-price text-red-400">{fmt(expense.cost)}</div>
-        <div className="text-[11px] opacity-50">{fmtDate(expense.created_at)}</div>
-      </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold inv-label truncate">{label}</div>
+          <div className="text-xs opacity-50 mt-0.5">
+            {expense.paid_by && <span>{expense.paid_by}</span>}
+            {expense.payment_type && <span className="ml-1">· {expense.payment_type}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="text-right">
+            <div className="text-sm font-semibold inv-price text-red-400">{fmt(expense.cost)}</div>
+            <div className="text-[11px] opacity-50">{fmtDate(expense.created_at)}</div>
+          </div>
+          {itemCount > 0 && (
+            <span className="text-[10px] opacity-30">{expanded ? "▲" : "▼"}</span>
+          )}
+        </div>
+      </button>
+
+      {expanded && itemCount > 0 && (
+        <div className="border-t border-border/50">
+          {expense.items.map((item, i) => (
+            <div key={item.id} className={`flex items-center justify-between px-4 py-2.5 text-sm gap-3 ${i > 0 ? "border-t border-border/30" : ""}`}>
+              <div className="flex-1 min-w-0">
+                <div className="truncate font-medium">{item.name}</div>
+                <div className="text-xs opacity-50">
+                  {item.grade && <span>{item.grade}</span>}
+                  {item.set_name && <span className="ml-1">· {item.set_name}</span>}
+                  {item.card_number && <span className="ml-1">#{item.card_number}</span>}
+                  {item.status === "sold" && <span className="ml-1 text-emerald-500/70">· sold</span>}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                {item.market != null && (
+                  <div className="text-xs opacity-50 inv-price">mkt {fmt(item.market)}</div>
+                )}
+              </div>
+            </div>
+          ))}
+          <div className="border-t border-border/50 px-4 py-2 flex items-center justify-between">
+            <span className="text-xs opacity-50">Total paid</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold inv-price text-red-400">{fmt(expense.cost)}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm("Delete this buy? Inventory items added by this buy will also be removed.")) {
+                    onDelete(expense.id);
+                  }
+                }}
+                className="text-[11px] px-2 py-1 rounded border border-border opacity-50 hover:opacity-80 hover:text-red-500 transition-all"
+              >Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {expanded && itemCount === 0 && (
+        <div className="border-t border-border/50 px-4 py-3 flex items-center justify-between">
+          <span className="text-xs opacity-40 italic">No inventory items linked</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm("Delete this buy? Inventory items added by this buy will also be removed.")) {
+                onDelete(expense.id);
+              }
+            }}
+            className="text-[11px] px-2 py-1 rounded border border-border opacity-50 hover:opacity-80 hover:text-red-500 transition-all"
+          >Delete</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -332,7 +574,7 @@ function SellRow({
             <div key={it.id} className={`flex items-center justify-between px-4 py-2.5 text-sm gap-3 ${i > 0 ? "border-t border-border/30" : ""}`}>
               <div className="flex-1 min-w-0">
                 <div className="truncate font-medium">{it.name}</div>
-                <div className="text-xs opacity-50 capitalize">{it.condition} · {it.category}</div>
+                <div className="text-xs opacity-50 capitalize">{COND_ABBR[it.condition as Condition] ?? it.condition} · {it.category}</div>
               </div>
               <div className="text-right shrink-0">
                 <div className="inv-price text-emerald-500 font-semibold">{fmt(it.sold_price)}</div>
@@ -358,7 +600,7 @@ function SellRow({
   );
 }
 
-function TradeRow({ trade }: { trade: TradeGroup }) {
+function TradeRow({ trade, onRevert }: { trade: TradeGroup; onRevert: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const outTotal = trade.goingOut.reduce((s, t) => s + (t.market_price_at_time ?? 0), 0);
   const inTotal = trade.comingIn.reduce((s, t) => s + (t.market_price_at_time ?? 0), 0);
@@ -432,6 +674,16 @@ function TradeRow({ trade }: { trade: TradeGroup }) {
           {trade.notes && (
             <div className="text-xs opacity-50 italic">{trade.notes}</div>
           )}
+          <div className="border-t border-border/50 pt-2 flex justify-end">
+            <button
+              onClick={() => {
+                if (confirm("Undo this trade? Cards that went out will be restored to inventory. Cards that came in will be removed.")) {
+                  onRevert(trade.tradeGroupId);
+                }
+              }}
+              className="text-[11px] px-2 py-1 rounded border border-border opacity-50 hover:opacity-80 hover:text-red-500 transition-all"
+            >Undo trade</button>
+          </div>
         </div>
       )}
     </div>
@@ -760,11 +1012,12 @@ function PastDealAlbum({ monthLabel, logs, onViewLog }: { monthLabel: string; lo
 // ─── Deals Tab Content ────────────────────────────────────────────────────────
 
 function DealsTabContent({
-  logs: initialLogs,
+  logs,
+  onLogsChange: setLogs,
 }: {
   logs: DealLog[];
+  onLogsChange: React.Dispatch<React.SetStateAction<DealLog[]>>;
 }) {
-  const [logs, setLogs] = useState<DealLog[]>(initialLogs);
   const [addOpen, setAddOpen] = useState(false);
   const [viewLog, setViewLog] = useState<DealLog | null>(null);
 
@@ -887,9 +1140,11 @@ export default function TransactionsClient({
   const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
   const [buyModalOpen, setBuyModalOpen] = useState(false);
+  const [sellModalOpen, setSellModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [revertingId, setRevertingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [localDealLogs, setLocalDealLogs] = useState<DealLog[]>(dealLogs);
 
   async function handleRevert(saleId: string) {
     if (revertingId === saleId) {
@@ -902,6 +1157,22 @@ export default function TransactionsClient({
       }
     } else {
       setRevertingId(saleId);
+    }
+  }
+
+  async function handleDeleteBuy(expenseId: string) {
+    try {
+      await deleteBuyExpense({ expenseId });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
+
+  async function handleRevertTrade(tradeGroupId: string) {
+    try {
+      await revertTrade({ tradeGroupId });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Undo failed");
     }
   }
 
@@ -945,16 +1216,49 @@ export default function TransactionsClient({
     });
   }, [allEntries, q]);
 
-  // Summary metrics
-  const totalSpent = buyExpenses.reduce((s, b) => s + b.cost, 0);
-  const totalRevenue = saleGroups.reduce((s, sg) => s + sg.total, 0);
-  const totalCost = saleGroups.reduce((s, sg) => s + sg.totalCost, 0);
-  const netProfit = totalRevenue - (totalCost > 0 ? totalCost : 0);
+  // ── Metrics ────────────────────────────────────────────────────────────────
   const buyCount = buyExpenses.length;
   const sellCount = saleGroups.length;
   const tradeCount = tradeGroups.length;
+  const hasData = buyCount + sellCount + tradeCount > 0;
 
-  const openDealCount = dealLogs.filter((l) => !l.resolved).length;
+  // Avg buy % — from inventory items with cash acquisitions
+  const inventoryWithCost = inventoryItems.filter((it) => it.cost != null && it.market != null && it.market > 0 && it.acquisition_type !== "trade");
+  const avgBuyPct = inventoryWithCost.length > 0
+    ? inventoryWithCost.reduce((s, it) => s + (it.cost! / it.market!) * 100, 0) / inventoryWithCost.length
+    : null;
+
+  // Avg sell margin — average ((sell_price - cost_basis) / cost_basis * 100) per sale group
+  const sellsWithMargin = saleGroups.filter((sg) => sg.totalCost > 0);
+  const avgSellMargin = sellsWithMargin.length > 0
+    ? sellsWithMargin.reduce((s, sg) => s + ((sg.total - sg.totalCost) / sg.totalCost) * 100, 0) / sellsWithMargin.length
+    : null;
+
+  // Buy tab metrics
+  const totalCashSpent = buyExpenses.reduce((s, b) => s + b.cost, 0);
+  const buyCosts = buyExpenses.map((b) => b.cost);
+  const highestBuy = buyCosts.length > 0 ? Math.max(...buyCosts) : null;
+  const lowestBuy = buyCosts.length > 0 ? Math.min(...buyCosts) : null;
+  const mostRecentBuyDate = buyExpenses.length > 0 ? buyExpenses[0].created_at : null;
+
+  // Sell tab metrics
+  const totalSellRevenue = saleGroups.reduce((s, sg) => s + sg.total, 0);
+  const sellProfits = saleGroups.filter((sg) => sg.totalCost > 0).map((sg) => sg.total - sg.totalCost);
+  const bestSellProfit = sellProfits.length > 0 ? Math.max(...sellProfits) : null;
+  const worstSellProfit = sellProfits.length > 0 ? Math.min(...sellProfits) : null;
+  const mostRecentSellDate = saleGroups.length > 0 ? saleGroups[0].soldAt : null;
+
+  // Trade tab metrics
+  const cardsIn = tradeGroups.reduce((s, t) => s + t.comingIn.length, 0);
+  const cardsOut = tradeGroups.reduce((s, t) => s + t.goingOut.length, 0);
+  const tradeValueMoved = tradeGroups.reduce((s, t) => {
+    const outVal = t.goingOut.reduce((ss, tx) => ss + (tx.market_price_at_time ?? 0), 0);
+    const inVal = t.comingIn.reduce((ss, tx) => ss + (tx.market_price_at_time ?? 0), 0);
+    return s + outVal + inVal;
+  }, 0);
+  const totalCashInTrades = tradeGroups.reduce((s, t) => s + (t.cashDiff < 0 ? Math.abs(t.cashDiff) : 0), 0);
+
+  const openDealCount = localDealLogs.filter((l) => !l.resolved).length;
 
   const TABS: { id: Tab; label: string; count: number }[] = [
     { id: "all", label: "All", count: buyCount + sellCount + tradeCount },
@@ -964,68 +1268,103 @@ export default function TransactionsClient({
     { id: "deals", label: "Deals", count: openDealCount },
   ];
 
+  const isCompletelyEmpty = !hasData;
+
   return (
     <div className="space-y-4">
-      {/* Summary bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {[
-          { label: "Total Spent", value: fmt(totalSpent), color: "text-red-400" },
-          { label: "Total Revenue", value: fmt(totalRevenue), color: "text-emerald-500" },
-          { label: "Net Profit", value: fmt(netProfit), color: profitColor(netProfit) },
-          { label: "Transactions", value: `${buyCount + sellCount + tradeCount}`, color: "text-foreground" },
-        ].map((m) => (
-          <div key={m.label} className="bg-card border border-border rounded-lg px-4 py-3">
-            <div className="text-[10px] uppercase tracking-wider opacity-40 font-semibold inv-label">{m.label}</div>
-            <div className={`text-xl font-bold inv-price mt-1 ${m.color}`}>{m.value}</div>
-          </div>
-        ))}
+      {/* Summary bar — contextual per tab */}
+      <div className="flex flex-wrap gap-2">
+        {(tab === "all" || tab === "deals") && (() => {
+          const metrics = [
+            { label: "Transactions", value: String(buyCount + sellCount + tradeCount), dim: !hasData },
+            { label: "Cards Bought", value: String(buyCount), dim: buyCount === 0 },
+            { label: "Cards Sold", value: String(sellCount), dim: sellCount === 0 },
+            { label: "Trades", value: String(tradeCount), dim: tradeCount === 0 },
+            { label: "Avg Buy %", value: avgBuyPct != null ? `${avgBuyPct.toFixed(0)}%` : "—", dim: avgBuyPct == null, color: avgBuyPct != null ? (avgBuyPct <= 65 ? "text-emerald-400" : avgBuyPct <= 80 ? undefined : "text-red-400") : undefined },
+            { label: "Avg Sell Margin", value: avgSellMargin != null ? `${avgSellMargin >= 0 ? "+" : ""}${avgSellMargin.toFixed(0)}%` : "—", dim: avgSellMargin == null, color: avgSellMargin != null ? (avgSellMargin >= 0 ? "text-emerald-400" : "text-red-400") : undefined },
+          ];
+          return metrics.map((m) => <MetricCard key={m.label} {...m} />);
+        })()}
+
+        {tab === "buys" && (() => {
+          const metrics = [
+            { label: "Cards Bought", value: String(buyCount), dim: buyCount === 0 },
+            { label: "Avg Buy %", value: avgBuyPct != null ? `${avgBuyPct.toFixed(0)}%` : "—", dim: avgBuyPct == null, color: avgBuyPct != null ? (avgBuyPct <= 65 ? "text-emerald-400" : avgBuyPct <= 80 ? undefined : "text-red-400") : undefined },
+            { label: "Cash Spent", value: totalCashSpent > 0 ? fmt(totalCashSpent) : "—", dim: totalCashSpent === 0 },
+            { label: "Highest Buy", value: highestBuy != null ? fmt(highestBuy) : "—", dim: highestBuy == null },
+            { label: "Lowest Buy", value: lowestBuy != null ? fmt(lowestBuy) : "—", dim: lowestBuy == null },
+            { label: "Last Buy", value: mostRecentBuyDate ? fmtDate(mostRecentBuyDate) : "—", dim: mostRecentBuyDate == null },
+          ];
+          return metrics.map((m) => <MetricCard key={m.label} {...m} />);
+        })()}
+
+        {tab === "sells" && (() => {
+          const metrics = [
+            { label: "Cards Sold", value: String(sellCount), dim: sellCount === 0 },
+            { label: "Total Revenue", value: totalSellRevenue > 0 ? fmt(totalSellRevenue) : "—", dim: totalSellRevenue === 0 },
+            { label: "Avg Sell Margin", value: avgSellMargin != null ? `${avgSellMargin >= 0 ? "+" : ""}${avgSellMargin.toFixed(0)}%` : "—", dim: avgSellMargin == null, color: avgSellMargin != null ? (avgSellMargin >= 0 ? "text-emerald-400" : "text-red-400") : undefined },
+            { label: "Best Sell", value: bestSellProfit != null ? fmt(bestSellProfit) : "—", dim: bestSellProfit == null, color: bestSellProfit != null && bestSellProfit > 0 ? "text-emerald-400" : undefined },
+            { label: "Worst Sell", value: worstSellProfit != null ? fmt(worstSellProfit) : "—", dim: worstSellProfit == null, color: worstSellProfit != null && worstSellProfit < 0 ? "text-red-400" : undefined },
+            { label: "Last Sell", value: mostRecentSellDate ? fmtDate(mostRecentSellDate) : "—", dim: mostRecentSellDate == null },
+          ];
+          return metrics.map((m) => <MetricCard key={m.label} {...m} />);
+        })()}
+
+        {tab === "trades" && (() => {
+          const metrics = [
+            { label: "Trades", value: String(tradeCount), dim: tradeCount === 0 },
+            { label: "Cards In", value: String(cardsIn), dim: cardsIn === 0 },
+            { label: "Cards Out", value: String(cardsOut), dim: cardsOut === 0 },
+            { label: "Value Moved", value: tradeValueMoved > 0 ? fmt(tradeValueMoved) : "—", dim: tradeValueMoved === 0 },
+            { label: "Cash Received", value: totalCashInTrades > 0 ? fmt(totalCashInTrades) : "—", dim: totalCashInTrades === 0, color: totalCashInTrades > 0 ? "text-emerald-400" : undefined },
+          ];
+          return metrics.map((m) => <MetricCard key={m.label} {...m} />);
+        })()}
       </div>
 
       {/* Action buttons — hidden on deals tab */}
-      {tab !== "deals" && <div className="flex gap-2 flex-wrap">
-        <button
-          onClick={() => setBuyModalOpen(true)}
-          className="px-4 py-2 rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-400 text-sm font-semibold hover:bg-blue-600/30 transition-colors duration-150"
-        >
-          + Record Buy
-        </button>
-        <button
-          onClick={() => setTradeModalOpen(true)}
-          className="px-4 py-2 rounded-lg bg-amber-600/20 border border-amber-500/30 text-amber-400 text-sm font-semibold hover:bg-amber-600/30 transition-colors duration-150"
-        >
-          ⇄ Record Trade
-        </button>
-      </div>}
+      {tab !== "deals" && (
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setBuyModalOpen(true)} className="px-3 py-2 rounded-lg bg-blue-600/15 border border-blue-500/25 text-blue-400 text-sm font-semibold hover:bg-blue-600/25 transition-colors duration-150 flex items-center gap-1.5">
+            <span className="text-base leading-none">+</span> Record Buy
+          </button>
+          <button onClick={() => setSellModalOpen(true)} className="px-3 py-2 rounded-lg bg-emerald-600/15 border border-emerald-500/25 text-emerald-400 text-sm font-semibold hover:bg-emerald-600/25 transition-colors duration-150 flex items-center gap-1.5">
+            <span className="text-base leading-none">$</span> Record Sell
+          </button>
+          <button onClick={() => setTradeModalOpen(true)} className="px-3 py-2 rounded-lg bg-violet-600/15 border border-violet-500/25 text-violet-400 text-sm font-semibold hover:bg-violet-600/25 transition-colors duration-150 flex items-center gap-1.5">
+            <span className="text-base leading-none">⇄</span> Record Trade
+          </button>
+        </div>
+      )}
 
-      {/* Tab bar + search — hide search on deals tab */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex gap-1">
+      {/* Tab bar */}
+      <div className="space-y-2">
+        <div className="flex gap-1 border-b border-border/40">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-3 py-1 rounded-full text-sm font-medium transition-all duration-150 ${
+              className={`px-3 py-2 text-sm font-medium transition-all duration-150 relative ${
                 tab === t.id
-                  ? "bg-violet-600 text-white"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  ? "text-violet-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-violet-500 after:rounded-t"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {t.label}
-              {t.count > 0 && (
-                <span className={`ml-1.5 text-[10px] ${tab === t.id ? "opacity-80" : "opacity-40"}`}>
-                  {t.count}
-                </span>
-              )}
+              <span className={`ml-1.5 text-[10px] tabular-nums ${tab === t.id ? "text-violet-400 opacity-80" : "opacity-35"}`}>
+                {t.count}
+              </span>
             </button>
           ))}
         </div>
+        {/* Search — hide on deals tab */}
         {tab !== "deals" && (
           <input
             type="search"
-            placeholder="Search…"
+            placeholder="Search transactions…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 min-w-[160px] bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-violet-500"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
           />
         )}
       </div>
@@ -1033,58 +1372,43 @@ export default function TransactionsClient({
       {/* Transaction list */}
       <div className="space-y-1">
         {tab === "all" && (
-          filteredAll.length === 0
-            ? <EmptyState q={q} />
-            : filteredAll.map((e) => {
-                if (e.kind === "buy") return <BuyRow key={e.data.id} expense={e.data} />;
-                if (e.kind === "sell") return (
-                  <SellRowWithRevert
-                    key={e.data.saleId}
-                    sale={e.data}
-                    revertingId={revertingId}
-                    busy={busy}
-                    onRevert={handleRevert}
-                    onCancelRevert={() => setRevertingId(null)}
-                  />
-                );
-                return <TradeRow key={e.data.tradeGroupId} trade={e.data} />;
-              })
+          isCompletelyEmpty
+            ? <GlobalEmptyState onBuy={() => setBuyModalOpen(true)} onTrade={() => setTradeModalOpen(true)} />
+            : filteredAll.length === 0
+              ? <EmptyState q={q} />
+              : filteredAll.map((e) => {
+                  if (e.kind === "buy") return <BuyRow key={e.data.id} expense={e.data} onDelete={handleDeleteBuy} />;
+                  if (e.kind === "sell") return (
+                    <SellRowWithRevert key={e.data.saleId} sale={e.data} revertingId={revertingId} busy={busy} onRevert={handleRevert} onCancelRevert={() => setRevertingId(null)} />
+                  );
+                  return <TradeRow key={e.data.tradeGroupId} trade={e.data} onRevert={handleRevertTrade} />;
+                })
         )}
         {tab === "buys" && (
           filteredBuys.length === 0
-            ? <EmptyState q={q} />
-            : filteredBuys.map((b) => <BuyRow key={b.id} expense={b} />)
+            ? <EmptyState q={q} label={q ? undefined : "No buys recorded yet."} />
+            : filteredBuys.map((b) => <BuyRow key={b.id} expense={b} onDelete={handleDeleteBuy} />)
         )}
         {tab === "sells" && (
           filteredSells.length === 0
-            ? <EmptyState q={q} />
+            ? <EmptyState q={q} label={q ? undefined : "No sells recorded yet."} />
             : filteredSells.map((s) => (
-                <SellRowWithRevert
-                  key={s.saleId}
-                  sale={s}
-                  revertingId={revertingId}
-                  busy={busy}
-                  onRevert={handleRevert}
-                  onCancelRevert={() => setRevertingId(null)}
-                />
+                <SellRowWithRevert key={s.saleId} sale={s} revertingId={revertingId} busy={busy} onRevert={handleRevert} onCancelRevert={() => setRevertingId(null)} />
               ))
         )}
         {tab === "trades" && (
           filteredTrades.length === 0
-            ? <EmptyState q={q} label="No trades recorded yet. Use 'Record Trade' to add one." />
-            : filteredTrades.map((t) => <TradeRow key={t.tradeGroupId} trade={t} />)
+            ? <EmptyState q={q} label={q ? undefined : "No trades recorded yet."} />
+            : filteredTrades.map((t) => <TradeRow key={t.tradeGroupId} trade={t} onRevert={handleRevertTrade} />)
         )}
-        {tab === "deals" && <DealsTabContent logs={dealLogs} />}
+        {tab === "deals" && <DealsTabContent logs={localDealLogs} onLogsChange={setLocalDealLogs} />}
       </div>
 
       {/* Modals */}
       {buyModalOpen && <RecordBuyModal onClose={() => setBuyModalOpen(false)} />}
+      {sellModalOpen && <RecordSellModal inventoryItems={inventoryItems} onClose={() => setSellModalOpen(false)} />}
       {tradeModalOpen && (
-        <TradeModal
-          open={tradeModalOpen}
-          onClose={() => setTradeModalOpen(false)}
-          items={inventoryItems as Parameters<typeof TradeModal>[0]["items"]}
-        />
+        <TradeModal open={tradeModalOpen} onClose={() => setTradeModalOpen(false)} items={inventoryItems as Parameters<typeof TradeModal>[0]["items"]} />
       )}
     </div>
   );
@@ -1092,10 +1416,39 @@ export default function TransactionsClient({
 
 // ─── Helper sub-components ────────────────────────────────────────────────────
 
+function MetricCard({ label, value, dim, color }: { label: string; value: string; dim?: boolean; color?: string }) {
+  return (
+    <div className="metric-card flex-1 min-w-[100px]">
+      <div className="text-[10px] uppercase tracking-wider font-semibold inv-label" style={{ color: "var(--text-muted)" }}>{label}</div>
+      <div className={`text-base font-bold inv-price mt-0.5 ${dim ? "opacity-30" : ""} ${color ?? "text-foreground"}`}>{value}</div>
+    </div>
+  );
+}
+
 function EmptyState({ q, label }: { q?: string; label?: string }) {
   return (
-    <div className="border border-border rounded-xl p-6 text-sm opacity-50 text-center">
+    <div className="border border-border/40 rounded-xl p-6 text-sm text-muted-foreground text-center opacity-60">
       {label ?? (q ? `No results for "${q}"` : "Nothing here yet.")}
+    </div>
+  );
+}
+
+function GlobalEmptyState({ onBuy, onTrade }: { onBuy: () => void; onTrade: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-5">
+      <div className="text-5xl opacity-20 select-none">⇄</div>
+      <div>
+        <div className="text-base font-semibold inv-label text-foreground/80">No transactions recorded yet</div>
+        <div className="text-sm text-muted-foreground mt-1 max-w-xs">Record your first buy or trade to start tracking your margins and profit</div>
+      </div>
+      <div className="flex gap-3 flex-wrap justify-center">
+        <button onClick={onBuy} className="px-4 py-2.5 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 text-sm font-semibold hover:bg-blue-600/30 transition-colors">
+          + Record Buy
+        </button>
+        <button onClick={onTrade} className="px-4 py-2.5 rounded-xl bg-violet-600/20 border border-violet-500/30 text-violet-400 text-sm font-semibold hover:bg-violet-600/30 transition-colors">
+          ⇄ Record Trade
+        </button>
+      </div>
     </div>
   );
 }
@@ -1157,7 +1510,7 @@ function SellRowWithRevert({
             <div key={it.id} className={`flex items-center justify-between px-4 py-2.5 text-sm gap-3 ${i > 0 ? "border-t border-border/30" : ""}`}>
               <div className="flex-1 min-w-0">
                 <div className="truncate font-medium">{it.name}</div>
-                <div className="text-xs opacity-50 capitalize">{it.condition} · {it.category}</div>
+                <div className="text-xs opacity-50 capitalize">{COND_ABBR[it.condition as Condition] ?? it.condition} · {it.category}</div>
               </div>
               <div className="text-right shrink-0">
                 <div className="inv-price text-emerald-500 font-semibold">{fmt(it.sold_price)}</div>

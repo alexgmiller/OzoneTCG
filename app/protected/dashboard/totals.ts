@@ -15,6 +15,10 @@ export type ItemRow = {
   sold_price?: number | null;
   previous_sales?: number | null;
   consigner_payout?: number | null;
+
+  // for recent activity / P&L
+  name?: string | null;
+  sold_at?: string | null;
 };
 
 export type ExpenseRow = {
@@ -131,6 +135,10 @@ export function computeDashboardTotals(items: ItemRow[], expenses: ExpenseRow[],
   market.active_total = market.inventory;
   sold.profit = sold.revenue - cost.sold;
 
+  // -------- P&L --------
+  const unrealizedPnL = market.inventory - cost.inventory;
+  const realizedPnL = sold.revenue - cost.sold - expenses_total - grading_total;
+
   // -------- who owes who (50/50 split for personal-paid) --------
   // shared expenses create no debt
   const splitRate = 0.5;
@@ -143,6 +151,12 @@ export function computeDashboardTotals(items: ItemRow[], expenses: ExpenseRow[],
     market,
     cost,
     sold,
+
+    pnl: {
+      realized: realizedPnL,
+      unrealized: unrealizedPnL,
+      total: realizedPnL + unrealizedPnL,
+    },
 
     expenses: {
       total: expenses_total,

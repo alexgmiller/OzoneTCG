@@ -181,14 +181,15 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
       .map(([k, v]) => ({ date: fmtLabel(k), bought: v.bought, sold: v.sold }));
   }, [chartItems, rangeActivity]);
 
-  /* Chart 3 – Running Portfolio Market Value (always full history) */
+  /* Chart 3 – Running Portfolio Market Value + Cost Basis (always full history) */
   const { marketData, marketWeeks } = useMemo(() => {
-    const events: { date: string; delta: number }[] = [];
+    const events: { date: string; mDelta: number; cDelta: number }[] = [];
     for (const it of chartItems) {
       const m = n(it.market);
-      events.push({ date: it.created_at.slice(0, 10), delta: m });
+      const c = n(it.cost);
+      events.push({ date: it.created_at.slice(0, 10), mDelta: m, cDelta: c });
       if (it.status === "sold") {
-        events.push({ date: it.updated_at.slice(0, 10), delta: -m });
+        events.push({ date: it.updated_at.slice(0, 10), mDelta: -m, cDelta: -c });
       }
     }
     if (!events.length) return { marketData: [], marketWeeks: false };
@@ -200,19 +201,27 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
     );
     const mWeeks = span > 60;
 
-    // Build delta map
-    const deltaMap: Record<string, number> = {};
+    // Build delta maps
+    const mDeltaMap: Record<string, number> = {};
+    const cDeltaMap: Record<string, number> = {};
     for (const e of events) {
       const k = bk(e.date, mWeeks);
-      deltaMap[k] = (deltaMap[k] ?? 0) + e.delta;
+      mDeltaMap[k] = (mDeltaMap[k] ?? 0) + e.mDelta;
+      cDeltaMap[k] = (cDeltaMap[k] ?? 0) + e.cDelta;
     }
 
-    // Generate complete date series and compute running total
+    // Generate complete date series and compute running totals
     const buckets = genBuckets(earliest, mWeeks);
-    let running = 0;
+    let runningMarket = 0;
+    let runningCost = 0;
     const data = buckets.map((k) => {
-      running += deltaMap[k] ?? 0;
-      return { date: fmtLabel(k), market: Math.max(0, running) };
+      runningMarket += mDeltaMap[k] ?? 0;
+      runningCost += cDeltaMap[k] ?? 0;
+      return {
+        date: fmtLabel(k),
+        market: Math.max(0, runningMarket),
+        cost: Math.max(0, runningCost),
+      };
     });
 
     return { marketData: data, marketWeeks: mWeeks };
@@ -238,8 +247,32 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
   );
 
   const Empty = ({ msg }: { msg: string }) => (
-    <div className="h-32 flex items-center justify-center text-sm opacity-40">{msg}</div>
+    <div className="h-32 flex flex-col items-center justify-center border-2 border-dashed rounded-lg gap-1.5" style={{ opacity: 0.35 }}>
+      <span className="text-xl">◈</span>
+      <span className="text-sm font-medium">{msg}</span>
+    </div>
   );
+
+  const PortfolioTooltip = ({ active, payload, label }: {
+    active?: boolean;
+    payload?: { dataKey: string; value: number }[];
+    label?: string;
+  }) => {
+    if (!active || !payload?.length) return null;
+    const market = Number(payload.find((p) => p.dataKey === "market")?.value ?? 0);
+    const cost = Number(payload.find((p) => p.dataKey === "cost")?.value ?? 0);
+    const unrealized = market - cost;
+    return (
+      <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 space-y-1 shadow-lg">
+        <div className="font-semibold mb-1">{label}</div>
+        <div style={{ color: "#8b5cf6" }}>Market: ${market.toFixed(2)}</div>
+        <div style={{ color: "#2dd4bf" }}>Cost Basis: ${cost.toFixed(2)}</div>
+        <div style={{ color: unrealized >= 0 ? "#22c55e" : "#ef4444" }}>
+          Unrealized: {unrealized >= 0 ? "+" : ""}${unrealized.toFixed(2)}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -305,11 +338,21 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
         )}
       </div>
 
-      {/* Chart 3: Portfolio Market Value */}
+      {/* Chart 3: Portfolio Market Value + Cost Basis */}
       <div className="border rounded-xl p-3">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-medium">Portfolio Market Value</div>
-          <div className="text-xs opacity-40">{marketWeeks ? "Weekly" : "Daily"} • Full history</div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 text-xs opacity-60">
+              <span className="inline-block w-2 h-2 rounded-full bg-violet-500" />
+              Market
+            </div>
+            <div className="flex items-center gap-1 text-xs opacity-60">
+              <span className="inline-block w-2 h-2 rounded-full" style={{ background: "#2dd4bf" }} />
+              Cost
+            </div>
+            <div className="text-xs opacity-40">{marketWeeks ? "Weekly" : "Daily"}</div>
+          </div>
         </div>
         {marketData.length === 0 ? (
           <Empty msg="No items yet" />
@@ -319,7 +362,17 @@ export default function DashboardCharts({ chartItems }: { chartItems: ChartItem[
               <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
               <XAxis dataKey="date" tick={TICK} />
               <YAxis tick={TICK} tickFormatter={TICK_FMT} width={52} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<PortfolioTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="cost"
+                name="Cost Basis"
+                stroke="#2dd4bf"
+                fill="#2dd4bf"
+                fillOpacity={0.08}
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+              />
               <Area
                 type="monotone"
                 dataKey="market"

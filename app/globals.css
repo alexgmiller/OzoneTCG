@@ -2,7 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — OzoneTCG
+   "Premium card vault meets modern trading platform"
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 @layer base {
+  /* ── shadcn HSL variables (light mode) ──────────────────────────────────── */
   :root {
     --background: 250 30% 99%;
     --foreground: 250 25% 8%;
@@ -10,7 +16,7 @@
     --card-foreground: 250 25% 8%;
     --popover: 0 0% 100%;
     --popover-foreground: 250 25% 8%;
-    --primary: 258 86% 57%;
+    --primary: 265 89% 65%;
     --primary-foreground: 0 0% 100%;
     --secondary: 258 60% 95%;
     --secondary-foreground: 258 55% 38%;
@@ -18,87 +24,614 @@
     --muted-foreground: 250 15% 46%;
     --accent: 258 60% 95%;
     --accent-foreground: 258 55% 38%;
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 347 77% 60%;
     --destructive-foreground: 0 0% 98%;
     --border: 250 30% 88%;
     --input: 250 30% 88%;
-    --ring: 258 86% 57%;
-    --chart-1: 258 86% 57%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 142 71% 45%;
-    --chart-4: 43 96% 56%;
-    --chart-5: 27 87% 60%;
-    --radius: 0.5rem;
+    --ring: 265 89% 65%;
+    --radius: 0.625rem;
   }
+
+  /* ── shadcn HSL variables (dark mode — matches new palette) ─────────────── */
   .dark {
-    --background: 237 20% 8%;
-    --foreground: 220 15% 95%;
-    --card: 237 20% 10%;
-    --card-foreground: 220 15% 95%;
-    --popover: 237 20% 10%;
-    --popover-foreground: 220 15% 95%;
-    --primary: 258 90% 70%;
-    --primary-foreground: 258 60% 10%;
-    --secondary: 237 18% 17%;
-    --secondary-foreground: 220 15% 95%;
-    --muted: 237 18% 16%;
-    --muted-foreground: 220 12% 60%;
-    --accent: 237 18% 17%;
-    --accent-foreground: 220 15% 95%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 255 29% 6%;
+    --foreground: 214 32% 96%;
+    --card: 252 31% 10%;
+    --card-foreground: 214 32% 89%;
+    --popover: 257 28% 16%;
+    --popover-foreground: 214 32% 89%;
+    --primary: 265 89% 65%;
+    --primary-foreground: 265 60% 10%;
+    --secondary: 255 22% 17%;
+    --secondary-foreground: 214 32% 89%;
+    --muted: 255 22% 14%;
+    --muted-foreground: 215 14% 56%;
+    --accent: 255 22% 17%;
+    --accent-foreground: 214 32% 89%;
+    --destructive: 347 77% 35%;
     --destructive-foreground: 0 0% 98%;
-    --border: 237 18% 18%;
-    --input: 237 18% 18%;
-    --ring: 258 90% 70%;
-    --chart-1: 258 90% 70%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 142 60% 50%;
-    --chart-4: 43 96% 60%;
-    --chart-5: 27 87% 65%;
+    --border: 255 16% 16%;
+    --input: 255 16% 16%;
+    --ring: 265 89% 65%;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+
+  html {
+    scroll-behavior: smooth;
+    /* Warm radial bloom — top-right purple, bottom-left teal */
+    --_grad1: radial-gradient(ellipse 70% 55% at 80% -5%,  rgba(139,92,246,0.06) 0%, transparent 60%);
+    --_grad2: radial-gradient(ellipse 50% 40% at -10% 100%, rgba(45,212,191,0.04) 0%, transparent 55%);
   }
-  body {
-    @apply bg-background text-foreground;
+
+  html.dark {
+    background-image: var(--_grad1), var(--_grad2);
+    background-attachment: fixed;
+    background-color: #0d0b14;
   }
 }
 
-/* Inventory-specific utilities */
+/* ── Design token CSS variables ──────────────────────────────────────────────
+   Used directly in component CSS classes below. Defined globally so they're
+   available outside of Tailwind's dark: prefix (e.g. in animations, gradients). */
+:root {
+  /* Backgrounds */
+  --bg-base:            #0d0b14;
+  --bg-surface:         #161222;
+  --bg-surface-hover:   #1e1830;
+  --bg-elevated:        #241e35;
+  --bg-glass:           rgba(22, 18, 34, 0.85);
+
+  /* Accents */
+  --accent-primary:     #8b5cf6;
+  --accent-primary-glow: rgba(139, 92, 246, 0.25);
+  --accent-gold:        #eab308;
+  --accent-gold-glow:   rgba(234, 179, 8, 0.20);
+  --accent-teal:        #2dd4bf;
+  --accent-red:         #f43f5e;
+  --accent-green:       #34d399;
+
+  /* Text */
+  --text-bright:    #f8fafc;
+  --text-primary:   #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted:     #475569;
+
+  /* Borders */
+  --border-subtle: rgba(139, 92, 246, 0.10);
+  --border-hover:  rgba(139, 92, 246, 0.22);
+
+  /* Shadows */
+  --shadow-sm:         0 1px 2px  rgba(0,0,0,0.30);
+  --shadow-md:         0 4px 12px rgba(0,0,0,0.40);
+  --shadow-lg:         0 8px 30px rgba(0,0,0,0.50);
+  --shadow-glow-purple: 0 0 20px rgba(139,92,246,0.18);
+  --shadow-glow-gold:   0 0 20px rgba(234,179,8,0.18);
+  --shadow-glow-teal:   0 0 20px rgba(45,212,191,0.18);
+
+  /* Radius */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-full: 999px;
+}
+
+/* ── Typography utilities ────────────────────────────────────────────────────*/
+.inv-label {
+  font-family: var(--font-display, "Lexend", sans-serif);
+  letter-spacing: 0.01em;
+}
 .inv-price {
-  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", monospace);
+  font-family: var(--font-mono, "Space Mono", ui-monospace, monospace);
   font-feature-settings: "tnum";
 }
-.inv-label {
-  font-family: var(--font-display, var(--font-geist-sans), sans-serif);
-  letter-spacing: 0.02em;
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────────*/
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.22);
+  border-radius: var(--radius-full);
+  transition: background 150ms;
 }
-.inv-row-slab {
-  border-left: 3px solid rgb(139 92 246 / 0.3);
-}
-.inv-row-raw {
-  border-left: 3px solid rgb(59 130 246 / 0.3);
-}
-.inv-row-sell {
-  border-left: 3px solid rgb(16 185 129 / 0.3);
-}
-.inv-row-buy {
-  border-left: 3px solid rgb(59 130 246 / 0.3);
-}
-.inv-row-trade {
-  border-left: 3px solid rgb(245 158 11 / 0.3);
+::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.45); }
+* { scrollbar-width: thin; scrollbar-color: rgba(139,92,246,0.22) transparent; }
+
+/* ── Selection & focus ───────────────────────────────────────────────────────*/
+::selection { background: rgba(139, 92, 246, 0.28); }
+:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+
+/* ── Button tactile press ────────────────────────────────────────────────────*/
+button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.nav-glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-/* Prevent iOS Safari from auto-zooming the viewport on input/select focus.
-   iOS zooms when font-size < 16px, which throws off fixed/absolute positioning
-   for all subsequent overlays (Radix UI dropdowns, popovers, etc.). */
+/* ═══════════════════════════════════════════════════════════════════════════
+   INVENTORY ROWS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Base row */
+.inv-row {
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: background 150ms ease, box-shadow 150ms ease, border-left-color 150ms ease;
+  margin-bottom: 3px;
+}
+.inv-row:hover {
+  background: var(--bg-surface-hover);
+  box-shadow: var(--shadow-md);
+}
+.inv-row-alt {
+  background: color-mix(in srgb, var(--bg-surface) 88%, var(--bg-elevated) 12%);
+}
+.inv-row-alt:hover {
+  background: var(--bg-surface-hover);
+}
+
+/* Accent left borders — 3px for visual pop */
+.inv-row-slab  { border-left: 3px solid rgba(139, 92, 246, 0.55); }
+.inv-row-slab:hover { border-left-color: var(--accent-primary); }
+.inv-row-raw   { border-left: 3px solid rgba(45, 212, 191, 0.50); }
+.inv-row-raw:hover  { border-left-color: var(--accent-teal); }
+.inv-row-sell  { border-left: 3px solid var(--accent-green); }
+.inv-row-buy   { border-left: 3px solid #60a5fa; }
+.inv-row-trade { border-left: 3px solid var(--accent-gold); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CARD THUMBNAILS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.card-thumb {
+  width: 56px;
+  height: 78px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+  object-fit: cover;
+  transition: transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow  250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: block;
+  flex-shrink: 0;
+}
+.card-thumb:hover {
+  transform: scale(1.08) rotate(1.5deg);
+  box-shadow: var(--shadow-glow-purple), var(--shadow-md);
+}
+.card-thumb-gold:hover {
+  box-shadow: var(--shadow-glow-gold), var(--shadow-md);
+}
+.card-thumb-teal:hover {
+  box-shadow: var(--shadow-glow-teal), var(--shadow-md);
+}
+.card-thumb-placeholder {
+  width: 56px;
+  height: 78px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--bg-surface-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GRADE BADGES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.grade-badge {
+  font-family: var(--font-mono, "Space Mono", monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.35);
+  color: #fff;
+}
+.grade-psa {
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+}
+.grade-psa-10 {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  box-shadow: 0 2px 8px rgba(239,68,68,0.40);
+}
+.grade-bgs {
+  background: linear-gradient(135deg, #1e3a6e, #2563eb);
+}
+.grade-bgs-10 {
+  background: linear-gradient(135deg, #1e40af, #7c3aed);
+  box-shadow: 0 2px 8px rgba(37,99,235,0.40);
+}
+.grade-cgc {
+  background: linear-gradient(135deg, #065f46, #059669);
+}
+.grade-cgc-10 {
+  background: linear-gradient(135deg, #047857, #10b981);
+  box-shadow: 0 2px 8px rgba(5,150,105,0.40);
+}
+.grade-other {
+  background: linear-gradient(135deg, #374151, #4b5563);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONDITION BADGES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.condition-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  border: 1px solid;
+  display: inline-block;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.cond-nm  { color: #34d399; border-color: rgba(52,211,153,0.35);  background: rgba(52,211,153,0.08);  }
+.cond-lp  { color: #a3e635; border-color: rgba(163,230,53,0.30);  background: rgba(163,230,53,0.07);  }
+.cond-mp  { color: #fb923c; border-color: rgba(251,146,60,0.35);  background: rgba(251,146,60,0.08);  }
+.cond-hp  { color: #f43f5e; border-color: rgba(244,63,94,0.35);   background: rgba(244,63,94,0.08);   }
+.cond-dmg { color: #64748b; border-color: rgba(100,116,139,0.25); background: rgba(100,116,139,0.06); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MARGIN PILLS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.margin-positive {
+  color: var(--accent-green);
+  background: rgba(52, 211, 153, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+.margin-negative {
+  color: var(--accent-red);
+  background: rgba(244, 63, 94, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION HEADERS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.section-header-slab {
+  background: linear-gradient(90deg, rgba(139,92,246,0.10) 0%, transparent 65%);
+  border-left: 3px solid rgba(139,92,246,0.55);
+}
+.section-header-raw {
+  background: linear-gradient(90deg, rgba(45,212,191,0.08) 0%, transparent 65%);
+  border-left: 3px solid rgba(45,212,191,0.50);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FILTER PILLS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pill-active {
+  background: rgba(139,92,246,0.15);
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary);
+  box-shadow: 0 0 10px rgba(139,92,246,0.20);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   QUICK LINK BUTTONS (dropdown items)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.quick-link {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  display: block;
+  transition: color 120ms, background 120ms;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.quick-link:hover {
+  color: var(--text-bright);
+  background: rgba(139,92,246,0.10);
+}
+
+/* ── Row link pill buttons ───────────────────────────────────────────────────*/
+
+.row-link-btn {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: color 130ms, border-color 130ms, background 130ms;
+  text-decoration: none;
+  line-height: 1;
+}
+.row-link-btn:hover {
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.08);
+}
+
+/* ── Ask price input ─────────────────────────────────────────────────────────*/
+
+.ask-auto {
+  font-family: var(--font-mono, "Space Mono", ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+  width: 80px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed rgba(255,255,255,0.15);
+  background: transparent;
+  color: var(--text-muted);
+  outline: none;
+  transition: border-color 150ms, color 150ms;
+}
+.ask-auto:focus {
+  border-color: rgba(255,255,255,0.35);
+  border-style: solid;
+  color: var(--text-primary);
+}
+.ask-custom {
+  font-family: var(--font-mono, "Space Mono", ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  width: 80px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-primary);
+  background: rgba(139, 92, 246, 0.06);
+  color: var(--text-bright);
+  outline: none;
+  transition: border-color 150ms, background 150ms;
+}
+.ask-custom:focus {
+  border-color: var(--accent-primary);
+  background: rgba(139, 92, 246, 0.10);
+}
+.ask-custom-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(139,92,246,0.7);
+}
+
+/* ── Price display ───────────────────────────────────────────────────────────*/
+
+.inv-price-display {
+  font-family: var(--font-mono, "Space Mono", ui-monospace, monospace);
+  font-feature-settings: "tnum";
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color 150ms;
+}
+.inv-price-display:hover {
+  color: var(--accent-primary);
+}
+.inv-price-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1;
+}
+.price-high-value {
+  color: var(--accent-gold) !important;
+  text-shadow: 0 0 16px rgba(234,179,8,0.35);
+}
+.price-high-value:hover {
+  color: var(--accent-gold) !important;
+  text-shadow: 0 0 24px rgba(234,179,8,0.55);
+}
+
+/* ── Cost ghost button ───────────────────────────────────────────────────────*/
+
+.cost-ghost-btn {
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms;
+  white-space: nowrap;
+}
+.cost-ghost-btn:hover {
+  color: var(--text-secondary);
+  border-color: rgba(255,255,255,0.28);
+  border-style: solid;
+}
+
+/* ── Card name / meta ────────────────────────────────────────────────────────*/
+
+.inv-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inv-card-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUMMARY METRICS BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.metric-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+}
+.metric-profit-positive {
+  background: linear-gradient(135deg, rgba(52,211,153,0.08) 0%, rgba(52,211,153,0.03) 100%);
+  border-left: 3px solid rgba(52,211,153,0.45);
+  border-top: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.metric-profit-negative {
+  background: linear-gradient(135deg, rgba(244,63,94,0.08) 0%, rgba(244,63,94,0.03) 100%);
+  border-left: 3px solid rgba(244,63,94,0.45);
+  border-top: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODALS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.modal-backdrop {
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.modal-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), var(--shadow-glow-purple);
+  animation: modal-in 200ms ease-out forwards;
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GRID VIEW TILES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.grid-tile {
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  transition: transform 200ms cubic-bezier(0.34, 1.3, 0.64, 1),
+              box-shadow 200ms ease;
+  overflow: hidden;
+}
+.grid-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md), var(--shadow-glow-purple);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRICE ANIMATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes price-up {
+  0%   { color: inherit; text-shadow: none; }
+  25%  { color: #34d399; text-shadow: 0 0 12px rgba(52,211,153,0.6); }
+  100% { color: inherit; text-shadow: none; }
+}
+@keyframes price-down {
+  0%   { color: inherit; text-shadow: none; }
+  25%  { color: #f43f5e; text-shadow: 0 0 12px rgba(244,63,94,0.6); }
+  100% { color: inherit; text-shadow: none; }
+}
+@keyframes price-new {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.price-flash-up   { animation: price-up   700ms ease forwards; }
+.price-flash-down { animation: price-down 700ms ease forwards; }
+.price-flash-new  { animation: price-new  300ms ease forwards; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SKELETON LOADERS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--bg-surface)      25%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface)      75%
+  );
+  background-size: 600px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPINNER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes spin-loop {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin { animation: spin-loop 0.7s linear infinite; display: inline-block; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROGRESS BAR (price auto-update indicator)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes progress-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1; }
+}
+.price-progress-bar {
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-teal));
+  border-radius: var(--radius-full);
+  animation: progress-pulse 1.8s ease-in-out infinite;
+  transition: width 400ms ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   IOS SAFARI ZOOM PREVENTION
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 @media screen and (max-width: 768px) {
-  select,
-  input,
-  textarea {
-    font-size: 16px !important;
-  }
+  select, input, textarea { font-size: 16px !important; }
 }

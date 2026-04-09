@@ -190,6 +190,71 @@ export async function fetchSlabSales(
   }));
 }
 
+/**
+ * Cert-aware slab search with progressive query fallbacks.
+ * Uses set name, Japanese flag, and year to improve match rates.
+ * Falls back through simpler queries until results are found.
+ */
+export async function fetchSlabSalesFromCert(params: {
+  name: string;
+  company: string;
+  grade: string;
+  setName?: string | null;
+  cardNumber?: string | null;
+  isJapanese?: boolean;
+  year?: string | null;
+}): Promise<SlabSale[]> {
+  const { name, company, grade, setName, cardNumber, isJapanese, year } = params;
+  console.log("[eBay] fetchSlabSalesFromCert", params);
+  const token = await getEbayToken();
+
+  const gradeTag = `"${company} ${grade}"`;
+  const num = baseCardNumber(cardNumber);
+  const cleanName = stripParentheticalTags(name);
+  const set = setName?.trim() || null;
+  const lang = isJapanese ? "Japanese" : null;
+  const oldYear = year && parseInt(year) < 2020 ? year : null;
+
+  // Progressive query attempts, most specific → least specific
+  const queries: string[] = [];
+
+  // Attempt 1: grade + name + set + language + card number
+  if (set && lang && num)  queries.push([gradeTag, cleanName, set, lang, num].join(" "));
+  // Attempt 2: grade + name + set + language (no card number)
+  if (set && lang)         queries.push([gradeTag, cleanName, set, lang].join(" "));
+  // Attempt 3: grade + name + set + year (drop language)
+  if (set && oldYear)      queries.push([gradeTag, cleanName, set, oldYear].join(" "));
+  // Attempt 4: grade + name + set
+  if (set)                 queries.push([gradeTag, cleanName, set].join(" "));
+  // Attempt 5: grade + name + card number (drop set)
+  if (num)                 queries.push([gradeTag, cleanName, num].join(" "));
+  // Attempt 6: grade + name only
+  queries.push([gradeTag, cleanName].join(" "));
+
+  // Deduplicate while preserving order
+  const seen = new Set<string>();
+  const uniqueQueries = queries.filter((q) => { if (seen.has(q)) return false; seen.add(q); return true; });
+
+  for (const q of uniqueQueries) {
+    const raw = await browseSearch(q, token);
+    if (raw.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return raw.map((item: any) => ({
+        price: parseFloat(item.price?.value ?? "0"),
+        title: item.title ?? "",
+        soldDate: item.itemEndDate ?? "",
+        isBestOffer: (item.buyingOptions ?? []).includes("BEST_OFFER"),
+        buyingOptions: item.buyingOptions ?? [],
+        bidCount: item.bidCount,
+        itemUrl: item.itemWebUrl ?? "",
+      }));
+    }
+    console.log(`[eBay] 0 results for: ${q} — trying next`);
+  }
+
+  return [];
+}
+
 // ── Pricing calculation ───────────────────────────────────────────────────────
 
 export type PricingResult = {
