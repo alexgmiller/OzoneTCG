@@ -103,14 +103,23 @@ const categoryColors: Record<string, string> = {
 
 function gradeStyle(grade: string): string {
   const parsed = parseGrade(grade);
-  if (!parsed) return "bg-purple-100 border border-purple-400 text-purple-800";
-  const n = parseFloat(parsed.grade);
-  if (parsed.grade.toLowerCase().includes("black") || n >= 9.5)
-    return "bg-yellow-100 border border-yellow-400 text-yellow-800 font-bold";
-  if (n >= 9)  return "bg-emerald-100 border border-emerald-400 text-emerald-800 font-semibold";
-  if (n >= 7)  return "bg-blue-100 border border-blue-400 text-blue-800";
-  if (n >= 5)  return "bg-orange-100 border border-orange-400 text-orange-800";
-  return "bg-red-100 border border-red-400 text-red-800";
+  const company = parsed?.company?.toUpperCase() ?? "";
+  const n = parsed ? parseFloat(parsed.grade) : 0;
+  const isBlack = parsed?.grade?.toLowerCase().includes("black") ?? false;
+
+  if (company === "PSA") {
+    if (n >= 10) return "grade-badge grade-psa grade-psa-10";
+    return "grade-badge grade-psa";
+  }
+  if (company === "BGS") {
+    if (isBlack || n >= 10) return "grade-badge grade-bgs grade-bgs-10";
+    return "grade-badge grade-bgs";
+  }
+  if (company === "CGC") {
+    if (n >= 10) return "grade-badge grade-cgc grade-cgc-10";
+    return "grade-badge grade-cgc";
+  }
+  return "grade-badge grade-other";
 }
 
 // ── Staleness tiers ────────────────────────────────────────────────────────
@@ -523,6 +532,10 @@ export default function InventoryClient({
   const [inlineCostId, setInlineCostId] = useState<string | null>(null);
   const [inlineCostVal, setInlineCostVal] = useState("");
 
+  // Inline ask price editing
+  const [inlineAskId, setInlineAskId] = useState<string | null>(null);
+  const [inlineAskVal, setInlineAskVal] = useState("");
+
   // Pricing detail modal — store item + slabKey; derive sp live from slabPrices prop so refresh updates it
   const [pricingDetailItem, setPricingDetailItem] = useState<{ item: Item; slabKey: string } | null>(null);
   const [soldExpanded, setSoldExpanded] = useState(false);
@@ -530,6 +543,7 @@ export default function InventoryClient({
   // Raw card pricing state
   const [rawCardRefreshing, setRawCardRefreshing] = useState<Record<string, boolean>>({});
   const [rawCardPriceOverrides, setRawCardPriceOverrides] = useState<Record<string, RawCardPrice>>({});
+  const [priceFlash, setPriceFlash] = useState<Record<string, "up" | "down">>({});
   const mergedRawCardPrices = useMemo(
     () => ({ ...rawCardPrices, ...rawCardPriceOverrides }),
     [rawCardPrices, rawCardPriceOverrides]
@@ -1127,6 +1141,9 @@ export default function InventoryClient({
   }
 
   async function handleRefreshRawCardPrice(it: Item) {
+    const lookupKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+    const oldPrice = mergedRawCardPrices[lookupKey];
+    const oldNm = oldPrice?.nm_price ?? null;
     setRawCardRefreshing((prev) => ({ ...prev, [it.id]: true }));
     try {
       const result = await refreshRawCardPrice(
@@ -1134,6 +1151,14 @@ export default function InventoryClient({
       );
       if (result.updated && result.refreshedPrice) {
         setRawCardPriceOverrides((prev) => ({ ...prev, [result.refreshedPrice!.lookup_key]: result.refreshedPrice! as RawCardPrice }));
+        const newNm = result.refreshedPrice.nm_price ?? null;
+        if (newNm != null && oldNm != null) {
+          const dir = newNm > oldNm ? "up" : newNm < oldNm ? "down" : null;
+          if (dir) {
+            setPriceFlash((prev) => ({ ...prev, [it.id]: dir }));
+            setTimeout(() => setPriceFlash((prev) => { const n = { ...prev }; delete n[it.id]; return n; }), 700);
+          }
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1148,6 +1173,13 @@ export default function InventoryClient({
     setInlineCostId(null);
     setInlineCostVal("");
     if (n !== null) await updateItem(id, { cost: n });
+  }
+
+  async function handleSaveInlineAsk(id: string) {
+    const n = toNum(inlineAskVal);
+    setInlineAskId(null);
+    setInlineAskVal("");
+    if (n !== null) await updateItem(id, { market: n });
   }
 
   async function onBulkDelete() {
@@ -1501,12 +1533,14 @@ export default function InventoryClient({
                   <span className="text-[10px] uppercase tracking-wider opacity-40 font-semibold">Cost</span>
                   <span className="text-sm font-bold opacity-50 inv-price">{fmt(inventorySummary.totalCost)}</span>
                 </div>
-                <div className={`flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg ${inventorySummary.profit >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
-                  <span className={`text-[10px] uppercase tracking-wider font-semibold ${inventorySummary.profit >= 0 ? "text-green-500 opacity-80" : "text-red-500 opacity-80"}`}>Profit</span>
-                  <span className={`text-sm font-bold inv-price ${inventorySummary.profit >= 0 ? "text-green-500 dark:text-green-400" : "text-red-500"}`}>
+                <div className={`flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg border ${inventorySummary.profit >= 0 ? "metric-profit-positive" : "metric-profit-negative"}`}>
+                  <span className={`text-[10px] uppercase tracking-wider font-semibold ${inventorySummary.profit >= 0 ? "text-emerald-400 opacity-90" : "text-red-400 opacity-90"}`}>
+                    {inventorySummary.profit >= 0 ? "✦ Profit" : "Profit"}
+                  </span>
+                  <span className={`text-base font-bold inv-label ${inventorySummary.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {inventorySummary.profit >= 0 ? "+" : ""}{fmt(inventorySummary.profit)}
                     {inventorySummary.profitPct != null && (
-                      <span className="text-xs opacity-60 font-medium ml-1">({inventorySummary.profitPct >= 0 ? "+" : ""}{inventorySummary.profitPct.toFixed(0)}%)</span>
+                      <span className="text-xs opacity-60 font-medium ml-1 inv-price">({inventorySummary.profitPct >= 0 ? "+" : ""}{inventorySummary.profitPct.toFixed(0)}%)</span>
                     )}
                   </span>
                 </div>
@@ -1533,10 +1567,10 @@ export default function InventoryClient({
                 disabled={count === 0 && !active}
                 className={`flex-shrink-0 text-[11px] px-3 py-1 rounded-full border font-medium transition-all duration-150 whitespace-nowrap ${
                   active
-                    ? "bg-violet-600 text-white border-violet-600 shadow-sm"
+                    ? "pill-active border-violet-500"
                     : count === 0
                       ? "opacity-20 cursor-default border-border"
-                      : "border-border opacity-60 hover:opacity-100 hover:border-foreground/40 hover:bg-muted/50"
+                      : "border-border opacity-60 hover:opacity-100 hover:border-white/20 hover:bg-muted/50"
                 }`}
               >
                 {label}{count > 0 ? <span className={`ml-1 ${active ? "opacity-80" : "opacity-60"}`}>({count})</span> : ""}
@@ -1551,35 +1585,37 @@ export default function InventoryClient({
             {/* Column headers */}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-background border-b text-[11px] font-semibold uppercase tracking-wider opacity-40 select-none sticky top-0 z-10">
               <div className="w-4 flex-shrink-0" />
-              <div className="w-10 flex-shrink-0" />
-              <button className="flex-1 max-w-[45%] text-left flex items-center gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "name-asc" ? "name-desc" : "name-asc")}>
+              <div className="w-[60px] flex-shrink-0" />
+              <button className="flex-1 text-left flex items-center gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "name-asc" ? "name-desc" : "name-asc")}>
                 Name {sort === "name-asc" ? "↑" : sort === "name-desc" ? "↓" : ""}
               </button>
-              <div className="w-[72px] flex-shrink-0" />
-              <button className="w-28 text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "fmv-asc" ? "fmv-desc" : "fmv-asc")}>
-                FMV / Mkt {sort === "fmv-asc" ? "↑" : sort === "fmv-desc" ? "↓" : ""}
+              <button className="w-36 text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "fmv-asc" ? "fmv-desc" : "fmv-asc")}>
+                Suggested {sort === "fmv-asc" ? "↑" : sort === "fmv-desc" ? "↓" : ""}
               </button>
-              <button className="w-16 text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "cost-asc" ? "cost-desc" : "cost-asc")}>
+              <div className="w-[88px] text-right flex-shrink-0">My Ask</div>
+              <button className="w-[100px] text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "cost-asc" ? "cost-desc" : "cost-asc")}>
                 Cost {sort === "cost-asc" ? "↑" : sort === "cost-desc" ? "↓" : ""}
               </button>
-              <button className="w-24 text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "margin-asc" ? "margin-desc" : "margin-asc")}>
+              <button className="w-[100px] text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "margin-asc" ? "margin-desc" : "margin-asc")}>
                 Margin {sort === "margin-asc" ? "↑" : sort === "margin-desc" ? "↓" : ""}
               </button>
-              <div className="w-10 flex-shrink-0" />
+              <div className="w-[60px] flex-shrink-0" />
             </div>
             {/* Slabs section */}
             <>
               <button
-                className="w-full px-3 py-2 bg-purple-500/5 dark:bg-purple-500/8 border-b border-purple-500/10 flex items-center gap-2 hover:bg-purple-500/10 transition-colors duration-150 text-left"
+                className="section-header-slab w-full px-3 py-2 border-b border-purple-500/10 flex items-center gap-2 hover:bg-purple-500/10 transition-colors duration-150 text-left"
                 onClick={() => setSlabsCollapsed((v) => !v)}
               >
                 <span className="text-[9px] opacity-40 w-3">{slabsCollapsed ? "▶" : "▼"}</span>
-                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-purple-600 dark:text-purple-400 inv-label">Slabs</span>
-                <span className="text-[11px] bg-purple-500/15 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-semibold tabular-nums">{displayedSlabs.length}</span>
+                <span className="text-base leading-none">🏆</span>
+                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-purple-400 inv-label">Slabs</span>
+                <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(167_139_250/0.2)]">{displayedSlabs.length}</span>
               </button>
               {!slabsCollapsed && (displayedSlabs.length === 0 ? (
-                <div className="px-3 py-5 text-center text-xs opacity-40">
-                  {items.some((i) => i.category === "slab" && i.status !== "grading") ? "No slabs match your filters" : "No slabs yet"}
+                <div className="px-3 py-6 text-center space-y-1">
+                  <div className="text-2xl opacity-30">🏆</div>
+                  <div className="text-xs opacity-40">{items.some((i) => i.category === "slab" && i.status !== "grading") ? "No slabs match your filters" : "No slabs yet — add your first graded card!"}</div>
                 </div>
               ) : displayedSlabs.map((it) => {
                 const isSelected = selectedIds.has(it.id);
@@ -1588,94 +1624,99 @@ export default function InventoryClient({
                 const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
                 const sp = slabKey ? mergedSlabPrices[slabKey] : null;
                 const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
-                const marginAmt = fmv != null && it.cost != null && it.cost > 0 ? fmv - it.cost : null;
-                const marginPct = fmv != null && it.cost != null && it.cost > 0 ? ((fmv - it.cost) / it.cost) * 100 : null;
                 const isRefreshing = slabRefreshing[it.id];
                 const isRateLimited = slabRateLimited[it.id];
                 const isStale = isSlabTierStale(sp, fmv);
+                // suggested = eBay cache; ask = user's saved price; margin against effective price
+                const suggested = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+                const askPrice = it.market;
+                const isCustomAsk = askPrice != null && askPrice !== suggested;
+                const effectivePrice = askPrice ?? suggested;
+                const marginAmtEff = effectivePrice != null && it.cost != null && it.cost > 0 ? effectivePrice - it.cost : null;
+                const marginPctEff = effectivePrice != null && it.cost != null && it.cost > 0 ? ((effectivePrice - it.cost) / it.cost) * 100 : null;
+                const ebayQ = buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number);
+                const ebayEnc = encodeURIComponent(ebayQ);
                 return (
                   <div
                     key={it.id}
-                    className={`inv-row-slab flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors duration-150 ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : "hover:bg-muted/40"}`}
+                    className={`inv-row inv-row-slab flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""}`}
                     onClick={() => toggleSelect(it.id)}
                   >
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
-                    <div className="flex-shrink-0 w-10">
+                    <div className="flex-shrink-0 w-[60px]">
                       {it.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.image_url} alt={it.name} className="w-10 h-14 rounded-lg object-cover shadow-md ring-1 ring-black/10 dark:ring-white/5" />
+                        <img src={it.image_url} alt={it.name} className={`card-thumb object-cover ${(() => { const n = it.grade ? parseFloat(it.grade.replace(/[^0-9.]/g, "")) : 0; return n >= 9 ? "card-thumb-gold" : ""; })()}`} />
                       ) : (
-                        <div className="w-10 h-14 rounded-lg bg-muted flex items-center justify-center ring-1 ring-black/5 dark:ring-white/5"><span className="text-[10px] opacity-30">?</span></div>
+                        <div className="card-thumb-placeholder flex items-center justify-center"><span className="text-[10px] opacity-30">?</span></div>
                       )}
                     </div>
-                    <div className="min-w-0 flex-1 max-w-[45%] space-y-0.5">
-                      <div className="text-sm font-semibold leading-tight truncate inv-label">{it.name}</div>
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="inv-card-name">{it.name}</div>
                       {(it.set_name || it.card_number) && (
-                        <div className="text-xs opacity-50 truncate">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
+                        <div className="inv-card-meta">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
                       )}
                       <div className="flex items-center gap-1 flex-wrap">
-                        {it.grade && <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full ${gradeStyle(it.grade)}`}>{it.grade}</span>}
+                        {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
                         {consigner ? (
-                          <span className="text-xs opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
+                          <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
                         ) : it.owner !== "shared" ? (
-                          <span className="text-xs opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
+                          <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
                         ) : null}
                       </div>
                     </div>
-                    {/* Quick links */}
-                    <div className="hidden sm:flex flex-col gap-0.5 w-[72px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {(() => {
-                        const q = buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number);
-                        const enc = encodeURIComponent(q);
-                        return (
-                          <>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${enc}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer"
-                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
-                              eBay Sold
-                            </a>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${enc}&_sacat=183454`} target="_blank" rel="noopener noreferrer"
-                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
-                              eBay List
-                            </a>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    {/* FMV — stale = dimmed + clock, fresh = normal; click to open detail modal */}
-                    <div className="flex-shrink-0 w-28 text-right">
+                    {/* Suggested price (eBay FMV) */}
+                    <div className="flex-shrink-0 w-36 text-right">
                       {isRefreshing ? (
-                        <div className="text-xs opacity-40">Fetching…</div>
+                        <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block">↻</span></div>
                       ) : isRateLimited ? (
                         <button className="text-xs text-orange-500 underline" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>Rate limited</button>
                       ) : !sp ? (
                         <button className="text-xs px-2 py-1 rounded-lg border font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20 whitespace-nowrap" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>Get Price</button>
-                      ) : isStale ? (
-                        <div>
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button className="text-sm font-semibold opacity-40 hover:opacity-70 inv-price" onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>{fmv != null ? fmt(fmv) : "—"} <span className="text-[10px]">🕐</span></button>
-                            <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted opacity-40 hover:opacity-80 transition-colors" title="Refresh price from eBay" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
-                          </div>
-                          <div className="text-[10px] opacity-30">eBay</div>
-                        </div>
                       ) : (
                         <div>
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button className="text-sm font-semibold hover:text-purple-500 transition-colors inv-price" onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>{fmv != null ? fmt(fmv) : "—"}</button>
-                            <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted opacity-40 hover:opacity-80 transition-colors" title="Refresh price from eBay" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button className={`inv-price-display ${isStale ? "opacity-40 hover:opacity-75" : ""} ${fmv != null && fmv >= 200 ? "price-high-value" : ""}`} onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>
+                              {fmv != null ? fmt(fmv) : "—"}{isStale ? <span className="text-[11px] ml-0.5">🕐</span> : null}
+                            </button>
+                            <button className="opacity-30 hover:opacity-70 transition-opacity text-[14px]" title="Refresh price from eBay" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
                           </div>
-                          {sp.sold_count > 0 && (
-                            <div className="text-[10px] opacity-40">{sp.sold_count} sold{sp.sold_count < 3 && <span className="text-orange-400 ml-1">low</span>}</div>
-                          )}
-                          <div className="text-[10px] opacity-30">eBay</div>
+                          <div className="inv-price-source">{isStale ? "eBay · stale" : `eBay${sp.sold_count > 0 ? ` · ${sp.sold_count} sold${sp.sold_count < 3 ? " ⚠" : ""}` : ""}`}</div>
+                          <div className="flex justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${ebayEnc}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">Sold ↗</a>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${ebayEnc}&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">List ↗</a>
+                          </div>
                         </div>
                       )}
                     </div>
-                    {/* Cost — clickable to set if missing */}
-                    <div className="hidden sm:block flex-shrink-0 w-16 text-right text-sm">
+                    {/* My Ask */}
+                    <div className="hidden sm:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      {isCustomAsk && <div className="ask-custom-dot" title="Custom price set" />}
+                      {inlineAskId === it.id ? (
+                        <input
+                          autoFocus
+                          className={isCustomAsk ? "ask-custom" : "ask-auto"}
+                          value={inlineAskVal}
+                          inputMode="decimal"
+                          onChange={(e) => setInlineAskVal(e.target.value)}
+                          onBlur={() => handleSaveInlineAsk(it.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineAsk(it.id); if (e.key === "Escape") { setInlineAskId(null); setInlineAskVal(""); } }}
+                        />
+                      ) : (
+                        <button
+                          className={isCustomAsk ? "ask-custom" : "ask-auto"}
+                          onClick={() => { setInlineAskId(it.id); setInlineAskVal(askPrice?.toFixed(2) ?? suggested?.toFixed(2) ?? ""); }}
+                        >
+                          {askPrice != null ? fmt(askPrice) : suggested != null ? fmt(suggested) : "—"}
+                        </button>
+                      )}
+                    </div>
+                    {/* Cost */}
+                    <div className="hidden sm:block flex-shrink-0 w-[100px] text-right">
                       {inlineCostId === it.id ? (
                         <input
                           autoFocus
-                          className="w-14 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
+                          className="w-20 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
                           value={inlineCostVal}
                           inputMode="decimal"
                           onChange={(e) => setInlineCostVal(e.target.value)}
@@ -1684,36 +1725,30 @@ export default function InventoryClient({
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : it.cost != null ? (
-                        <span className="opacity-70 inv-price">{fmt(it.cost)}</span>
+                        <span className="inv-price text-sm opacity-70">{fmt(it.cost)}</span>
                       ) : (
-                        <button className="text-xs opacity-30 hover:opacity-70 underline" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>set cost</button>
+                        <button className="cost-ghost-btn" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
                       )}
                     </div>
-                    {/* Margin — $amount + % + acquisition badge */}
-                    <div className="hidden sm:block flex-shrink-0 w-24 text-right text-xs font-medium inv-price">
-                      {marginAmt != null && marginPct != null ? (
-                        <span className={marginPct >= 0 ? "text-green-500" : "text-red-500"}>
-                          {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
+                    {/* Margin — against ask price */}
+                    <div className="hidden sm:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
+                      {marginAmtEff != null && marginPctEff != null ? (
+                        <span className={marginPctEff >= 0 ? "margin-positive" : "margin-negative"}>
+                          {marginPctEff >= 0 ? "+" : ""}{fmt(marginAmtEff)} <span className="opacity-70">({marginPctEff >= 0 ? "+" : ""}{marginPctEff.toFixed(0)}%)</span>
                         </span>
                       ) : <span className="opacity-30">—</span>}
                       {it.acquisition_type && (
                         <div className="mt-0.5 flex items-center justify-end gap-1">
                           <span
-                            className={`text-[9px] px-1 py-0.5 rounded font-bold font-mono ${
-                              it.acquisition_type === "trade"
-                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                                : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                            }`}
-                            title={it.acquisition_type === "trade"
-                              ? `Trade chain depth ${it.chain_depth}${it.original_cash_invested != null ? `, orig. cash: $${it.original_cash_invested.toFixed(2)}` : ""}`
-                              : `Bought at ${it.buy_percentage != null ? it.buy_percentage + "%" : "custom price"}`}
+                            className={`text-[9px] px-1 py-0.5 rounded font-bold font-mono ${it.acquisition_type === "trade" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "bg-blue-500/15 text-blue-600 dark:text-blue-400"}`}
+                            title={it.acquisition_type === "trade" ? `Trade chain depth ${it.chain_depth}${it.original_cash_invested != null ? `, orig. cash: $${it.original_cash_invested.toFixed(2)}` : ""}` : `Bought at ${it.buy_percentage != null ? it.buy_percentage + "%" : "custom price"}`}
                           >
                             {it.acquisition_type === "trade" ? `T${it.chain_depth > 0 ? it.chain_depth : ""}` : "B"}
                           </span>
                         </div>
                       )}
                     </div>
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 w-[60px] flex justify-end">
                       <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
                     </div>
                   </div>
@@ -1723,16 +1758,18 @@ export default function InventoryClient({
             {/* Raw Cards section */}
             <>
               <button
-                className="w-full px-3 py-2 bg-blue-500/5 dark:bg-blue-500/8 border-b border-blue-500/10 flex items-center gap-2 hover:bg-blue-500/10 transition-colors duration-150 text-left"
+                className="section-header-raw w-full px-3 py-2 border-b border-blue-500/10 flex items-center gap-2 hover:bg-blue-500/10 transition-colors duration-150 text-left"
                 onClick={() => setRawCollapsed((v) => !v)}
               >
                 <span className="text-[9px] opacity-40 w-3">{rawCollapsed ? "▶" : "▼"}</span>
-                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-blue-600 dark:text-blue-400 inv-label">Raw Cards</span>
-                <span className="text-[11px] bg-blue-500/15 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-semibold tabular-nums">{displayedRawCards.length}</span>
+                <span className="text-base leading-none">🃏</span>
+                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-blue-400 inv-label">Raw Cards</span>
+                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(96_165_250/0.2)]">{displayedRawCards.length}</span>
               </button>
               {!rawCollapsed && (displayedRawCards.length === 0 ? (
-                <div className="px-3 py-5 text-center text-xs opacity-40">
-                  {items.some((i) => i.category !== "slab" && i.status !== "grading") ? "No raw cards match your filters" : "No raw cards yet"}
+                <div className="px-3 py-6 text-center space-y-1">
+                  <div className="text-2xl opacity-30">🃏</div>
+                  <div className="text-xs opacity-40">{items.some((i) => i.category !== "slab" && i.status !== "grading") ? "No raw cards match your filters" : "No raw cards yet — grab some from the Transactions page!"}</div>
                 </div>
               ) : displayedRawCards.map((it) => {
                 const isSelected = selectedIds.has(it.id);
@@ -1742,93 +1779,107 @@ export default function InventoryClient({
                 const condPrice = rcp
                   ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition)
                   : null;
-                // Use condition price if available; fall back to items.market
-                const displayPrice = condPrice ?? it.market;
-                const marginAmt = displayPrice != null && it.cost != null && it.cost > 0 ? displayPrice - it.cost : null;
-                const marginPct = displayPrice != null && it.cost != null && it.cost > 0 ? ((displayPrice - it.cost) / it.cost) * 100 : null;
+                // suggested = TCGPlayer cache; ask = user's saved price; margin against effective price
+                const suggested = condPrice;
+                const askPrice = it.market;
+                const isCustomAsk = askPrice != null && askPrice !== suggested;
+                const effectivePrice = askPrice ?? suggested;
+                const marginAmt = effectivePrice != null && it.cost != null && it.cost > 0 ? effectivePrice - it.cost : null;
+                const marginPct = effectivePrice != null && it.cost != null && it.cost > 0 ? ((effectivePrice - it.cost) / it.cost) * 100 : null;
                 const isRawRefreshing = rawCardRefreshing[it.id];
+                const rawEbayQ = buildRawEbayQuery(it.name, it.set_name, it.card_number);
+                const rawEbayEnc = encodeURIComponent(rawEbayQ);
+                const cleanNameRaw = it.name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
+                const tcgQ = encodeURIComponent([cleanNameRaw, it.set_name].filter(Boolean).join(" "));
                 return (
                   <div
                     key={it.id}
-                    className={`inv-row-raw flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors duration-150 ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : "hover:bg-muted/40"}`}
+                    className={`inv-row inv-row-raw flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""}`}
                     onClick={() => toggleSelect(it.id)}
                   >
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
-                    <div className="flex-shrink-0 w-10">
+                    <div className="flex-shrink-0 w-[60px]">
                       {it.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.image_url} alt={it.name} className="w-10 h-14 rounded-lg object-cover shadow-md ring-1 ring-black/10 dark:ring-white/5" />
+                        <img src={it.image_url} alt={it.name} className="card-thumb object-cover" />
                       ) : (
-                        <div className="w-10 h-14 rounded-lg bg-muted flex items-center justify-center ring-1 ring-black/5 dark:ring-white/5"><span className="text-[10px] opacity-30">?</span></div>
+                        <div className="card-thumb-placeholder flex items-center justify-center"><span className="text-[10px] opacity-30">?</span></div>
                       )}
                     </div>
-                    <div className="min-w-0 flex-1 max-w-[45%] space-y-0.5">
-                      <div className="text-sm font-semibold leading-tight truncate inv-label">{it.name}</div>
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="inv-card-name">{it.name}</div>
                       {(it.set_name || it.card_number) && (
-                        <div className="text-xs opacity-50 truncate">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
+                        <div className="inv-card-meta">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
                       )}
                       <div className="flex items-center gap-1 flex-wrap">
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>
-                        {it.category === "single" && it.condition && <span className="text-xs opacity-50">{it.condition}</span>}
+                        {it.category === "single" && it.condition && (
+                          <span className={`condition-badge ${{ "Near Mint": "cond-nm", "Lightly Played": "cond-lp", "Moderately Played": "cond-mp", "Heavily Played": "cond-hp", "Damaged": "cond-dmg" }[it.condition] ?? "cond-nm"}`}>
+                            {{ "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "Dmg" }[it.condition] ?? it.condition}
+                          </span>
+                        )}
+                        {it.category !== "single" && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>}
                         {consigner ? (
-                          <span className="text-xs opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
+                          <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
                         ) : it.owner !== "shared" ? (
-                          <span className="text-xs opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
+                          <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
                         ) : null}
                       </div>
                     </div>
-                    {/* Quick links */}
-                    <div className="hidden sm:flex flex-col gap-0.5 w-[72px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {(() => {
-                        const q = buildRawEbayQuery(it.name, it.set_name, it.card_number);
-                        const enc = encodeURIComponent(q);
-                        const cleanName = it.name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
-                        const tcgQ = encodeURIComponent([cleanName, it.set_name].filter(Boolean).join(" "));
-                        return (
-                          <>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${enc}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer"
-                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
-                              eBay Sold
-                            </a>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${enc}&_sacat=183454`} target="_blank" rel="noopener noreferrer"
-                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
-                              eBay List
-                            </a>
-                            <a href={`https://www.tcgplayer.com/search/pokemon/product?q=${tcgQ}&view=grid`} target="_blank" rel="noopener noreferrer"
-                               className="text-[11px] py-[3px] px-2 rounded border border-white/10 dark:border-white/8 bg-white/5 dark:bg-white/4 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all duration-150 text-center whitespace-nowrap">
-                              TCGPlayer
-                            </a>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <div className="flex-shrink-0 w-28 text-right">
+                    {/* Suggested price (TCGPlayer) */}
+                    <div className="flex-shrink-0 w-36 text-right">
                       {isRawRefreshing ? (
-                        <div className="text-xs opacity-40">Fetching…</div>
+                        <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block">↻</span></div>
                       ) : !rcp ? (
                         <button
-                          className="text-xs px-2 py-1 rounded-lg border font-medium border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 whitespace-nowrap"
+                          className="text-xs px-2 py-1 rounded-lg border font-medium border-blue-400/40 text-blue-400 hover:bg-blue-500/10 whitespace-nowrap transition-colors"
                           onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}
                         >Get Price</button>
                       ) : (
                         <div>
-                          <div className="flex items-center justify-end gap-0.5">
+                          <div className="flex items-center justify-end gap-1">
                             <button
-                              className="text-sm font-semibold hover:text-blue-500 transition-colors inv-price"
+                              className={`inv-price-display ${suggested != null && suggested >= 200 ? "price-high-value" : ""} ${priceFlash[it.id] === "up" ? "price-flash-up" : priceFlash[it.id] === "down" ? "price-flash-down" : ""}`}
                               onClick={(e) => { e.stopPropagation(); openRawCardModal(it); }}
-                            >{fmt(displayPrice)}</button>
-                            <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted opacity-40 hover:opacity-80 transition-colors" title="Refresh price from TCGPlayer" onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}>↺</button>
+                            >{fmt(suggested)}</button>
+                            <button className="opacity-30 hover:opacity-70 transition-opacity text-[14px]" title="Refresh price from TCGPlayer" onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}>↺</button>
                           </div>
-                          <div className="text-[10px] opacity-30">TCGPlayer</div>
+                          <div className="inv-price-source">TCGPlayer</div>
+                          <div className="flex justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${rawEbayEnc}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">Sold ↗</a>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${rawEbayEnc}&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">List ↗</a>
+                            <a href={`https://www.tcgplayer.com/search/pokemon/product?q=${tcgQ}&view=grid`} target="_blank" rel="noopener noreferrer" className="row-link-btn">TCG ↗</a>
+                          </div>
                         </div>
                       )}
                     </div>
-                    {/* Cost — inline editable */}
-                    <div className="hidden sm:block flex-shrink-0 w-16 text-right text-sm">
+                    {/* My Ask */}
+                    <div className="hidden sm:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      {isCustomAsk && <div className="ask-custom-dot" title="Custom price set" />}
+                      {inlineAskId === it.id ? (
+                        <input
+                          autoFocus
+                          className={isCustomAsk ? "ask-custom" : "ask-auto"}
+                          value={inlineAskVal}
+                          inputMode="decimal"
+                          onChange={(e) => setInlineAskVal(e.target.value)}
+                          onBlur={() => handleSaveInlineAsk(it.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineAsk(it.id); if (e.key === "Escape") { setInlineAskId(null); setInlineAskVal(""); } }}
+                        />
+                      ) : (
+                        <button
+                          className={isCustomAsk ? "ask-custom" : "ask-auto"}
+                          onClick={() => { setInlineAskId(it.id); setInlineAskVal(askPrice?.toFixed(2) ?? suggested?.toFixed(2) ?? ""); }}
+                        >
+                          {askPrice != null ? fmt(askPrice) : suggested != null ? fmt(suggested) : "—"}
+                        </button>
+                      )}
+                    </div>
+                    {/* Cost */}
+                    <div className="hidden sm:block flex-shrink-0 w-[100px] text-right">
                       {inlineCostId === it.id ? (
                         <input
                           autoFocus
-                          className="w-14 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
+                          className="w-20 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
                           value={inlineCostVal}
                           inputMode="decimal"
                           onChange={(e) => setInlineCostVal(e.target.value)}
@@ -1837,36 +1888,30 @@ export default function InventoryClient({
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : it.cost != null ? (
-                        <span className="opacity-70 inv-price">{fmt(it.cost)}</span>
+                        <span className="inv-price text-sm opacity-70">{fmt(it.cost)}</span>
                       ) : (
-                        <button className="text-xs opacity-30 hover:opacity-70 underline" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>set cost</button>
+                        <button className="cost-ghost-btn" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
                       )}
                     </div>
-                    {/* Margin */}
-                    <div className="hidden sm:block flex-shrink-0 w-24 text-right text-xs font-medium inv-price">
+                    {/* Margin — against ask/effective price */}
+                    <div className="hidden sm:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
                       {marginAmt != null && marginPct != null ? (
-                        <span className={marginPct >= 0 ? "text-green-500" : "text-red-500"}>
+                        <span className={marginPct >= 0 ? "margin-positive" : "margin-negative"}>
                           {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
                         </span>
                       ) : <span className="opacity-30">—</span>}
                       {it.acquisition_type && (
                         <div className="mt-0.5 flex items-center justify-end gap-1">
                           <span
-                            className={`text-[9px] px-1 py-0.5 rounded font-bold font-mono ${
-                              it.acquisition_type === "trade"
-                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                                : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                            }`}
-                            title={it.acquisition_type === "trade"
-                              ? `Trade chain depth ${it.chain_depth}${it.original_cash_invested != null ? `, orig. cash: $${it.original_cash_invested.toFixed(2)}` : ""}`
-                              : `Bought at ${it.buy_percentage != null ? it.buy_percentage + "%" : "custom price"}`}
+                            className={`text-[9px] px-1 py-0.5 rounded font-bold font-mono ${it.acquisition_type === "trade" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "bg-blue-500/15 text-blue-600 dark:text-blue-400"}`}
+                            title={it.acquisition_type === "trade" ? `Trade chain depth ${it.chain_depth}${it.original_cash_invested != null ? `, orig. cash: $${it.original_cash_invested.toFixed(2)}` : ""}` : `Bought at ${it.buy_percentage != null ? it.buy_percentage + "%" : "custom price"}`}
                           >
                             {it.acquisition_type === "trade" ? `T${it.chain_depth > 0 ? it.chain_depth : ""}` : "B"}
                           </span>
                         </div>
                       )}
                     </div>
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 w-[60px] flex justify-end">
                       <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
                     </div>
                   </div>
@@ -1899,14 +1944,14 @@ export default function InventoryClient({
                     return (
                       <div
                         key={it.id}
-                        className={`border rounded-xl overflow-hidden flex flex-col transition-colors cursor-pointer ${isSelected ? "border-green-500 ring-1 ring-green-500" : "hover:border-foreground/30"}`}
+                        className={`grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
                         onClick={() => toggleSelect(it.id)}
                       >
                         <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
                         <div className="px-2 py-1.5 flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
                             <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
-                            {it.grade && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${gradeStyle(it.grade)}`}>{it.grade}</span>}
+                            {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
                           </div>
                           <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
                           <div className="text-xs">
@@ -1946,7 +1991,7 @@ export default function InventoryClient({
                     return (
                       <div
                         key={it.id}
-                        className={`border rounded-xl overflow-hidden flex flex-col transition-colors cursor-pointer ${isSelected ? "border-green-500 ring-1 ring-green-500" : "hover:border-foreground/30"}`}
+                        className={`grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
                         onClick={() => toggleSelect(it.id)}
                       >
                         <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { Lexend, Space_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 
@@ -19,24 +19,18 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  display: "swap",
-  subsets: ["latin"],
-});
-
-const plusJakarta = Plus_Jakarta_Sans({
+const lexend = Lexend({
   variable: "--font-display",
   display: "swap",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const spaceMono = Space_Mono({
   variable: "--font-mono",
   display: "swap",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "700"],
 });
 
 export default function RootLayout({
@@ -46,7 +40,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} ${plusJakarta.variable} ${jetbrainsMono.variable} antialiased`}>
+      <body className={`${lexend.variable} ${spaceMono.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

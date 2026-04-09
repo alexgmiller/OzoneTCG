@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useId } from "react";
 import { recordTrade } from "./actions";
+import CertLookupWidget, { type CertWidgetResult } from "@/components/CertLookupWidget";
 
 type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
 type Owner = "alex" | "mila" | "shared";
@@ -301,11 +302,26 @@ export default function TradeModal({
                 const credit = (mp * pct) / 100;
                 return (
                   <div key={card._id} className="border rounded-xl p-3 space-y-2.5 bg-muted/20">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-semibold opacity-60">Card {idx + 1}</span>
-                      {comingIn.length > 1 && (
-                        <button className="text-xs text-red-500 hover:opacity-80" onClick={() => removeComingIn(card._id)}>Remove</button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <CertLookupWidget
+                          label="Scan cert"
+                          onResult={(r: CertWidgetResult) => {
+                            updateComingIn(card._id, {
+                              name: r.name,
+                              setName: r.setName ?? "",
+                              cardNumber: r.cardNumber ?? "",
+                              grade: r.gradeLabel ? `${r.company} ${r.gradeLabel} ${r.grade}` : r.grade ? `${r.company} ${r.grade}` : "",
+                              category: "slab",
+                              marketPrice: r.market != null ? String(r.market) : "",
+                            });
+                          }}
+                        />
+                        {comingIn.length > 1 && (
+                          <button className="text-xs text-red-500 hover:opacity-80" onClick={() => removeComingIn(card._id)}>Remove</button>
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <input
@@ -349,7 +365,7 @@ export default function TradeModal({
                           onChange={(e) => updateComingIn(card._id, { condition: e.target.value as Condition })}
                         >
                           {(["Near Mint", "Lightly Played", "Moderately Played", "Heavily Played", "Damaged"] as Condition[]).map((c) => (
-                            <option key={c} value={c}>{c}</option>
+                            <option key={c} value={c}>{{ "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "DMG" }[c]}</option>
                           ))}
                         </select>
                       )}

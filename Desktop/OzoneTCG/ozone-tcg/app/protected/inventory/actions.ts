@@ -29,6 +29,8 @@ type ItemInput = {
   acquisition_type?: string | null;
   chain_depth?: number;
   original_cash_invested?: number | null;
+  // Grading cert
+  cert_number?: string | null;
 };
 
 export type CardTransaction = {

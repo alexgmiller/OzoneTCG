@@ -144,10 +144,20 @@ export default async function InventoryServer() {
     rawCardPriceMap = Object.fromEntries((rawPriceRows ?? []).map((r) => [r.lookup_key, r as RawCardPrice]));
   }
 
+  const totalItems = (data ?? []).length;
+  const slabCount = (data ?? []).filter((i) => i.category === "slab").length;
+
   return (
     <div className="p-4 space-y-4">
       <div>
-        <h1 className="text-xl font-semibold inv-label">Inventory</h1>
+        <h1 className="text-xl font-bold inv-label">Inventory</h1>
+        <p className="text-xs opacity-40 mt-0.5 inv-label">
+          {totalItems === 0
+            ? "Nothing here yet — let's change that 🚀"
+            : slabCount > 0
+              ? `${slabCount} slab${slabCount !== 1 ? "s" : ""} + ${totalItems - slabCount} raw — looking good ✨`
+              : `${totalItems} card${totalItems !== 1 ? "s" : ""} ready to move 🃏`}
+        </p>
       </div>
 
       <InventoryClient

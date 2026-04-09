@@ -25,6 +25,18 @@ export type SaleGroup = {
   totalCost: number;
 };
 
+export type BuyItem = {
+  id: string;
+  name: string;
+  category: string;
+  grade: string | null;
+  set_name: string | null;
+  card_number: string | null;
+  cost: number | null;
+  market: number | null;
+  status: string;
+};
+
 export type BuyExpense = {
   id: string;
   description: string;
@@ -32,6 +44,7 @@ export type BuyExpense = {
   created_at: string;
   paid_by: string | null;
   payment_type: string | null;
+  items: BuyItem[];
 };
 
 export type TradeTransaction = {
@@ -70,7 +83,7 @@ export default async function TransactionsServer() {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
-  const [soldResult, expensesResult, txResult, inventoryResult, dealsResult] = await Promise.all([
+  const [soldResult, expensesResult, txResult, inventoryResult, dealsResult, buyItemsResult] = await Promise.all([
     supabase
       .from("items")
       .select("id,name,category,owner,condition,market,cost,cost_basis,sold_price,sale_id,sold_at,acquisition_type")
@@ -104,6 +117,12 @@ export default async function TransactionsServer() {
       .from("deal_logs")
       .select("id,type,notes,photos,resolved,created_at")
       .order("created_at", { ascending: false }),
+
+    supabase
+      .from("items")
+      .select("id,name,category,grade,set_name,card_number,cost,market,status,buy_expense_id")
+      .eq("workspace_id", workspaceId)
+      .not("buy_expense_id", "is", null),
   ]);
 
   // Fetch item names for card_transactions (card_id references items)
@@ -139,8 +158,20 @@ export default async function TransactionsServer() {
     b.soldAt.localeCompare(a.soldAt)
   );
 
-  // Build buy expenses list
-  const buyExpenses = (expensesResult.data ?? []) as BuyExpense[];
+  // Build buy items map keyed by buy_expense_id
+  const buyItemRows = (buyItemsResult.data ?? []) as (BuyItem & { buy_expense_id: string })[];
+  const buyItemsMap = new Map<string, BuyItem[]>();
+  for (const row of buyItemRows) {
+    const key = row.buy_expense_id;
+    if (!buyItemsMap.has(key)) buyItemsMap.set(key, []);
+    buyItemsMap.get(key)!.push(row);
+  }
+
+  // Build buy expenses list with items attached
+  const buyExpenses = (expensesResult.data ?? []).map((e) => ({
+    ...e,
+    items: buyItemsMap.get(e.id) ?? [],
+  })) as BuyExpense[];
 
   // Build trade groups from card_transactions
   const txRows = (txResult.data ?? []) as Omit<TradeTransaction, "card_name">[];

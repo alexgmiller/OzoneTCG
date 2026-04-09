@@ -23,12 +23,23 @@ export async function AuthButton() {
     );
   }
 
+  const handle = user.email?.split("@")[0] ?? "there";
+  const initials = handle.slice(0, 2).toUpperCase();
+
   return (
     <div className="flex items-center gap-4">
       <DesktopNavLinks />
 
       <div className="flex items-center gap-3">
-        <span className="hidden md:inline text-sm opacity-80">Hey, {user.email}!</span>
+        <span className="hidden md:inline text-sm opacity-80 inv-label">
+          Hey, {handle} 👋
+        </span>
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+          style={{ background: "var(--accent-primary)", color: "#fff" }}
+        >
+          {initials}
+        </div>
         <LogoutButton />
       </div>
     </div>
