@@ -111,37 +111,42 @@ export default async function InventoryServer() {
   const data = itemsResult.data;
   const consignerRows = consignersResult.data;
 
-  const admin = createAdminClient();
-
-  // Build lookup keys for all slab items, then fetch their cached prices in one query
-  const slabs = (data ?? []).filter((it) => it.category === "slab" && it.grade);
-  const slabLookupKeys = slabs.map((it) => {
-    const parsed = it.grade?.trim().match(/^([A-Za-z]+)\s+(.+)$/);
-    if (!parsed) return null;
-    return makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed[1], parsed[2]);
-  }).filter(Boolean) as string[];
-
   let slabPriceMap: Record<string, SlabPrice> = {};
-  if (slabLookupKeys.length > 0) {
-    const { data: priceRows } = await admin
-      .from("slab_prices")
-      .select("lookup_key,median_price,avg_price,low_price,high_price,comp_count,previous_median,sold_median,sold_avg,sold_low,sold_high,sold_count,fair_market_value,last_updated,active_items,sold_items")
-      .in("lookup_key", slabLookupKeys);
-    slabPriceMap = Object.fromEntries((priceRows ?? []).map((r) => [r.lookup_key, r as SlabPrice]));
-  }
-
-  // Build lookup keys for raw cards (singles + sealed), fetch their cached TCGPlayer prices
-  const rawCards = (data ?? []).filter((it) => it.category !== "slab");
-  const rawCardKeys = rawCards.map((it) => makeRawCardPriceKey(it.name, it.set_name, it.card_number));
-  const uniqueRawKeys = [...new Set(rawCardKeys)];
-
   let rawCardPriceMap: Record<string, RawCardPrice> = {};
-  if (uniqueRawKeys.length > 0) {
-    const { data: rawPriceRows } = await admin
-      .from("raw_card_prices")
-      .select("lookup_key,justtcg_card_id,nm_price,lp_price,mp_price,hp_price,dmg_price,printing,price_source,last_updated,price_history")
-      .in("lookup_key", uniqueRawKeys);
-    rawCardPriceMap = Object.fromEntries((rawPriceRows ?? []).map((r) => [r.lookup_key, r as RawCardPrice]));
+
+  try {
+    const admin = createAdminClient();
+
+    // Build lookup keys for all slab items, then fetch their cached prices in one query
+    const slabs = (data ?? []).filter((it) => it.category === "slab" && it.grade);
+    const slabLookupKeys = slabs.map((it) => {
+      const parsed = it.grade?.trim().match(/^([A-Za-z]+)\s+(.+)$/);
+      if (!parsed) return null;
+      return makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed[1], parsed[2]);
+    }).filter(Boolean) as string[];
+
+    if (slabLookupKeys.length > 0) {
+      const { data: priceRows } = await admin
+        .from("slab_prices")
+        .select("lookup_key,median_price,avg_price,low_price,high_price,comp_count,previous_median,sold_median,sold_avg,sold_low,sold_high,sold_count,fair_market_value,last_updated,active_items,sold_items")
+        .in("lookup_key", slabLookupKeys);
+      slabPriceMap = Object.fromEntries((priceRows ?? []).map((r) => [r.lookup_key, r as SlabPrice]));
+    }
+
+    // Build lookup keys for raw cards (singles + sealed), fetch their cached TCGPlayer prices
+    const rawCards = (data ?? []).filter((it) => it.category !== "slab");
+    const rawCardKeys = rawCards.map((it) => makeRawCardPriceKey(it.name, it.set_name, it.card_number));
+    const uniqueRawKeys = [...new Set(rawCardKeys)];
+
+    if (uniqueRawKeys.length > 0) {
+      const { data: rawPriceRows } = await admin
+        .from("raw_card_prices")
+        .select("lookup_key,justtcg_card_id,nm_price,lp_price,mp_price,hp_price,dmg_price,printing,price_source,last_updated,price_history")
+        .in("lookup_key", uniqueRawKeys);
+      rawCardPriceMap = Object.fromEntries((rawPriceRows ?? []).map((r) => [r.lookup_key, r as RawCardPrice]));
+    }
+  } catch (e) {
+    console.warn("[InventoryServer] Admin client unavailable (build time?), skipping price fetch:", e instanceof Error ? e.message : e);
   }
 
   const totalItems = (data ?? []).length;
