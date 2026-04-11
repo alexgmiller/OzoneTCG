@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { Search, Camera } from "lucide-react";
 import { finalizeBuy, finalizeTrade, type CustomerCard } from "./actions";
 import CardScanner, { type ScanResult } from "@/components/CardScanner";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
@@ -342,14 +343,14 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
               className="text-sm px-2.5 py-1 border rounded-lg hover:bg-muted transition-colors"
               title="Find card by name"
             >
-              🔍 Find
+              <Search size={14} className="inline mr-1" />Find
             </button>
             <button
               onClick={() => setScanOpen(true)}
               className="text-sm px-2.5 py-1 border rounded-lg hover:bg-muted transition-colors"
               title="Scan card photo"
             >
-              📷 Scan
+              <Camera size={14} className="inline mr-1" />Scan
             </button>
             <BuyCSVImport onImport={onCSVImport} />
           </div>

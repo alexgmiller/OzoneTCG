@@ -158,10 +158,10 @@ export default async function InventoryServer() {
         <h1 className="text-xl font-bold inv-label">Inventory</h1>
         <p className="text-xs opacity-40 mt-0.5 inv-label">
           {totalItems === 0
-            ? "Nothing here yet — let's change that 🚀"
+            ? "Nothing here yet — let's change that"
             : slabCount > 0
-              ? `${slabCount} slab${slabCount !== 1 ? "s" : ""} + ${totalItems - slabCount} raw — looking good ✨`
-              : `${totalItems} card${totalItems !== 1 ? "s" : ""} ready to move 🃏`}
+              ? `${slabCount} slab${slabCount !== 1 ? "s" : ""} + ${totalItems - slabCount} raw`
+              : `${totalItems} card${totalItems !== 1 ? "s" : ""} in inventory`}
         </p>
       </div>
 

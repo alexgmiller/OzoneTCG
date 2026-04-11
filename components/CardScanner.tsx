@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { Camera } from "lucide-react";
 
 type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
 
@@ -147,7 +148,7 @@ export default function CardScanner({ open, onClose, onResult }: Props) {
               onClick={() => fileRef.current?.click()}
               className="w-full border-2 border-dashed border-muted-foreground/30 rounded-lg py-10 text-sm text-muted-foreground hover:border-foreground/50 hover:text-foreground transition-colors flex flex-col items-center gap-2"
             >
-              <span className="text-3xl">📷</span>
+              <Camera size={28} className="opacity-50" />
               <span>Take photo or upload image</span>
             </button>
             <input
