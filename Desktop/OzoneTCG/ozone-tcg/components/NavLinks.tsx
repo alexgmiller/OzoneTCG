@@ -97,7 +97,7 @@ export default function MobileBottomNav() {
       )}
 
       {/* Tab bar — icon only */}
-      <nav className="bg-background/60 backdrop-blur-md border-t border-t-primary/10 flex h-14 w-full">
+      <nav className="bg-background border-t border-t-border flex h-14 w-full">
         {primaryLinks.map((l) => {
           const active = pathname === l.href || pathname.startsWith(l.href + "/");
           const Icon = l.icon;

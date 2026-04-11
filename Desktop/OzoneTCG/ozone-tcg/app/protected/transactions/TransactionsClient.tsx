@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import { ArrowDown, DollarSign, ArrowLeftRight, Folder } from "lucide-react";
 import type { SaleGroup, BuyExpense, TradeGroup, DealLog } from "./TransactionsServer";
 import { revertSale, recordQuickBuy, recordQuickSell, deleteBuyExpense, revertTrade, type QuickBuyCard } from "./actions";
 import { uploadDealPhoto, createDealLog, toggleDealResolved, deleteDealLog } from "../photos/actions";
@@ -918,7 +919,7 @@ function DealCarouselCard({ log, onClick }: { log: DealLog; onClick: () => void 
         <div className={`w-full h-36 flex items-center justify-center text-3xl ${
           log.type === "buy" ? "bg-blue-500/8" : log.type === "sell" ? "bg-emerald-500/8" : "bg-amber-500/8"
         }`}>
-          {log.type === "buy" ? "📥" : log.type === "sell" ? "💰" : "🔄"}
+          {log.type === "buy" ? <ArrowDown size={24} /> : log.type === "sell" ? <DollarSign size={24} /> : <ArrowLeftRight size={24} />}
         </div>
       )}
       <div className="px-3 py-2.5">
@@ -956,7 +957,7 @@ function PastDealAlbum({ monthLabel, logs, onViewLog }: { monthLabel: string; lo
         {/* Album collage thumbnail */}
         <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-muted/40 grid grid-cols-2 gap-0.5">
           {allPhotos.length === 0 && (
-            <div className="col-span-2 row-span-2 flex items-center justify-center text-xl opacity-30">📁</div>
+            <div className="col-span-2 row-span-2 flex items-center justify-center opacity-30"><Folder size={20} /></div>
           )}
           {allPhotos.slice(0, 4).map((url, i) => (
             // eslint-disable-next-line @next/next/no-img-element
@@ -985,8 +986,8 @@ function PastDealAlbum({ monthLabel, logs, onViewLog }: { monthLabel: string; lo
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={log.photos[0]} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
               ) : (
-                <div className="w-10 h-10 rounded-lg bg-muted/40 flex items-center justify-center text-base shrink-0">
-                  {log.type === "buy" ? "📥" : log.type === "sell" ? "💰" : "🔄"}
+                <div className="w-10 h-10 rounded-lg bg-muted/40 flex items-center justify-center shrink-0 opacity-50">
+                  {log.type === "buy" ? <ArrowDown size={18} /> : log.type === "sell" ? <DollarSign size={18} /> : <ArrowLeftRight size={18} />}
                 </div>
               )}
               <div className="flex-1 min-w-0">

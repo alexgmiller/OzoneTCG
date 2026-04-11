@@ -868,7 +868,7 @@ export default function CertScanner() {
                   </span>
                 )}
                 {result.populationHigher === 0 && (
-                  <span className="text-xs font-semibold text-amber-400">None graded higher ✦</span>
+                  <span className="text-xs font-semibold text-amber-400">None graded higher</span>
                 )}
                 {result.populationHigher != null && result.populationHigher > 0 && (
                   <span className="text-xs opacity-50">

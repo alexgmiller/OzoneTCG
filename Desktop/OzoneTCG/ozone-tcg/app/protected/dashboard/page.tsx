@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import DashboardServer from "./DashboardServer";
+import DashboardLoading from "./loading";
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-sm opacity-70">Loading dashboard…</div>}>
+    <Suspense fallback={<DashboardLoading />}>
       <DashboardServer />
     </Suspense>
   );

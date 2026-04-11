@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import InventoryServer from "./InventoryServer";
+import InventoryLoading from "./loading";
 
 export default function InventoryPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-sm opacity-70">Loading inventory…</div>}>
+    <Suspense fallback={<InventoryLoading />}>
       <InventoryServer />
     </Suspense>
   );

@@ -32,7 +32,7 @@ export async function AuthButton() {
 
       <div className="flex items-center gap-3">
         <span className="hidden md:inline text-sm opacity-80 inv-label">
-          Hey, {handle} 👋
+          Hey, {handle}
         </span>
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { Camera, Search, Plus, List, Grid2X2, Trophy, CreditCard, Folder, Clock } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
 import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, fetchCardData, uploadCardImage, uploadItemImage, refreshSlabPrice, getEbayDailyCallCount, refreshRawCardPrice, type RefreshedSlabPrice, type RefreshedRawCardPrice } from "./actions";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -536,6 +537,10 @@ export default function InventoryClient({
   const [inlineAskId, setInlineAskId] = useState<string | null>(null);
   const [inlineAskVal, setInlineAskVal] = useState("");
 
+  // Mobile UX
+  const [mobileDetailItem, setMobileDetailItem] = useState<Item | null>(null);
+  const [fabOpen, setFabOpen] = useState(false);
+
   // Pricing detail modal — store item + slabKey; derive sp live from slabPrices prop so refresh updates it
   const [pricingDetailItem, setPricingDetailItem] = useState<{ item: Item; slabKey: string } | null>(null);
   const [soldExpanded, setSoldExpanded] = useState(false);
@@ -571,6 +576,16 @@ export default function InventoryClient({
     setRawCardDetailItem(it);
     setHistoryDuration("90d");
   }, []);
+
+  // Body scroll lock when mobile detail sheet is open
+  useEffect(() => {
+    if (mobileDetailItem) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileDetailItem]);
 
   async function fetchPsa10(id: string, name: string, setName?: string | null) {
     setPsa10Data((prev) => ({ ...prev, [id]: { medianPrice: null, count: 0, loading: true, fetched: false } }));
@@ -1233,8 +1248,8 @@ export default function InventoryClient({
         initialCardNumber={editImagePickerOpen ? editForm.cardNumber : addForm.cardNumber}
       />
 
-      {/* Add form — collapsible */}
-      <div className="border rounded-xl overflow-hidden">
+      {/* Add form — collapsible (hidden on mobile unless open) */}
+      <div className={`border rounded-xl overflow-hidden ${!addOpen ? "hidden md:block" : ""}`}>
         <div className="flex items-center justify-between px-3 py-2.5">
           <button
             className="flex items-center gap-2 font-medium text-sm"
@@ -1249,7 +1264,7 @@ export default function InventoryClient({
               className="text-sm px-2.5 py-1 border rounded-lg hover:bg-muted transition-colors"
               title="Scan a card"
             >
-              📷 Scan
+              <Camera size={14} className="inline mr-1" />Scan
             </button>
             <CSVImport consigners={consigners} />
           </div>
@@ -1369,7 +1384,8 @@ export default function InventoryClient({
       </div>
 
       {/* Search / filter / sort — collapsible */}
-      <div className="border rounded-xl overflow-hidden">
+      {/* Search & Filter — collapsible (hidden on mobile unless open) */}
+      <div className={`border rounded-xl overflow-hidden ${!searchOpen ? "hidden md:block" : ""}`}>
         <button
           className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium"
           onClick={() => setSearchOpen((o) => !o)}
@@ -1465,19 +1481,19 @@ export default function InventoryClient({
                 className={`px-2 py-1 transition-colors duration-150 ${viewMode === "list" ? "bg-foreground text-background" : "hover:bg-muted opacity-50 hover:opacity-100"}`}
                 onClick={() => setViewMode("list")}
                 title="List view"
-              >☰</button>
+              ><List size={13} /></button>
               <button
                 className={`px-2 py-1 transition-colors duration-150 ${viewMode === "grid" ? "bg-foreground text-background" : "hover:bg-muted opacity-50 hover:opacity-100"}`}
                 onClick={() => setViewMode("grid")}
                 title="Grid view"
-              >⊞</button>
+              ><Grid2X2 size={13} /></button>
             </div>
           </div>
         </div>
 
-        {/* Persistent search */}
+        {/* Persistent search — always visible on mobile when inventory is open */}
         {inventoryOpen && (
-          <div className="px-3 py-2 border-b">
+          <div className="px-3 py-2 border-b sticky top-[41px] z-10 bg-background">
             <input
               className="w-full border rounded-lg px-3 py-1.5 text-sm bg-background"
               placeholder="Search inventory…"
@@ -1512,41 +1528,63 @@ export default function InventoryClient({
 
         {/* Inventory value summary bar */}
         {inventoryOpen && displayedItems.length > 0 && (
-          <div className="px-3 py-2 border-b bg-muted/10 flex items-center gap-2 overflow-x-auto">
-            <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-muted/30">
-              <span className="text-[10px] uppercase tracking-wider opacity-40 font-semibold">Total</span>
-              <span className="text-sm font-bold inv-price">{fmt(inventorySummary.total)}</span>
-            </div>
-            <div className="w-px h-8 bg-border flex-shrink-0 opacity-20" />
-            <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-purple-500/8">
-              <span className="text-[10px] uppercase tracking-wider text-purple-500 opacity-70 font-semibold">Slabs</span>
-              <span className="text-sm font-bold text-purple-500 dark:text-purple-400 inv-price">{fmt(inventorySummary.slabValue)}</span>
-            </div>
-            <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-blue-500/8">
-              <span className="text-[10px] uppercase tracking-wider text-blue-500 opacity-70 font-semibold">Raw</span>
-              <span className="text-sm font-bold text-blue-500 dark:text-blue-400 inv-price">{fmt(inventorySummary.rawValue)}</span>
-            </div>
-            {inventorySummary.totalCost > 0 && (
-              <>
-                <div className="w-px h-8 bg-border flex-shrink-0 opacity-20" />
-                <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-muted/30">
-                  <span className="text-[10px] uppercase tracking-wider opacity-40 font-semibold">Cost</span>
-                  <span className="text-sm font-bold opacity-50 inv-price">{fmt(inventorySummary.totalCost)}</span>
+          <>
+            {/* Mobile summary — compact single row */}
+            <div className="md:hidden px-3 py-2 border-b bg-muted/10 flex items-center justify-between">
+              <div>
+                <span className="text-base font-bold inv-price">{fmt(inventorySummary.total)}</span>
+                <div className="text-[11px] opacity-50 mt-0.5">
+                  <span className="text-purple-400">{fmt(inventorySummary.slabValue)}</span>
+                  <span className="opacity-40 mx-1">·</span>
+                  <span className="text-blue-400">{fmt(inventorySummary.rawValue)}</span>
                 </div>
-                <div className={`flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg border ${inventorySummary.profit >= 0 ? "metric-profit-positive" : "metric-profit-negative"}`}>
-                  <span className={`text-[10px] uppercase tracking-wider font-semibold ${inventorySummary.profit >= 0 ? "text-emerald-400 opacity-90" : "text-red-400 opacity-90"}`}>
-                    {inventorySummary.profit >= 0 ? "✦ Profit" : "Profit"}
-                  </span>
-                  <span className={`text-base font-bold inv-label ${inventorySummary.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {inventorySummary.profit >= 0 ? "+" : ""}{fmt(inventorySummary.profit)}
-                    {inventorySummary.profitPct != null && (
-                      <span className="text-xs opacity-60 font-medium ml-1 inv-price">({inventorySummary.profitPct >= 0 ? "+" : ""}{inventorySummary.profitPct.toFixed(0)}%)</span>
-                    )}
-                  </span>
+              </div>
+              {inventorySummary.totalCost > 0 && (
+                <div className={`text-sm font-bold inv-price ${inventorySummary.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {inventorySummary.profit >= 0 ? "+" : ""}{fmt(inventorySummary.profit)}
+                  {inventorySummary.profitPct != null && (
+                    <span className="text-xs opacity-60 ml-1">({inventorySummary.profitPct >= 0 ? "+" : ""}{inventorySummary.profitPct.toFixed(0)}%)</span>
+                  )}
                 </div>
-              </>
-            )}
-          </div>
+              )}
+            </div>
+            {/* Desktop summary — full scrollable row */}
+            <div className="hidden md:flex px-3 py-2 border-b bg-muted/10 items-center gap-2 overflow-x-auto">
+              <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-muted/30">
+                <span className="text-[10px] uppercase tracking-wider opacity-40 font-semibold">Total</span>
+                <span className="text-sm font-bold inv-price">{fmt(inventorySummary.total)}</span>
+              </div>
+              <div className="w-px h-8 bg-border flex-shrink-0 opacity-20" />
+              <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-purple-500/8">
+                <span className="text-[10px] uppercase tracking-wider text-purple-500 opacity-70 font-semibold">Slabs</span>
+                <span className="text-sm font-bold text-purple-500 dark:text-purple-400 inv-price">{fmt(inventorySummary.slabValue)}</span>
+              </div>
+              <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-blue-500/8">
+                <span className="text-[10px] uppercase tracking-wider text-blue-500 opacity-70 font-semibold">Raw</span>
+                <span className="text-sm font-bold text-blue-500 dark:text-blue-400 inv-price">{fmt(inventorySummary.rawValue)}</span>
+              </div>
+              {inventorySummary.totalCost > 0 && (
+                <>
+                  <div className="w-px h-8 bg-border flex-shrink-0 opacity-20" />
+                  <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-muted/30">
+                    <span className="text-[10px] uppercase tracking-wider opacity-40 font-semibold">Cost</span>
+                    <span className="text-sm font-bold opacity-50 inv-price">{fmt(inventorySummary.totalCost)}</span>
+                  </div>
+                  <div className={`flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg border ${inventorySummary.profit >= 0 ? "metric-profit-positive" : "metric-profit-negative"}`}>
+                    <span className={`text-[10px] uppercase tracking-wider font-semibold ${inventorySummary.profit >= 0 ? "text-emerald-400 opacity-90" : "text-red-400 opacity-90"}`}>
+                      Profit
+                    </span>
+                    <span className={`text-base font-bold inv-label ${inventorySummary.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {inventorySummary.profit >= 0 ? "+" : ""}{fmt(inventorySummary.profit)}
+                      {inventorySummary.profitPct != null && (
+                        <span className="text-xs opacity-60 font-medium ml-1 inv-price">({inventorySummary.profitPct >= 0 ? "+" : ""}{inventorySummary.profitPct.toFixed(0)}%)</span>
+                      )}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </>
         )}
 
         {/* Quick filter pills */}
@@ -1583,7 +1621,7 @@ export default function InventoryClient({
         {inventoryOpen && viewMode === "list" && filteredDisplayedItems.length > 0 && (
           <div className="divide-y">
             {/* Column headers */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-background border-b text-[11px] font-semibold uppercase tracking-wider opacity-40 select-none sticky top-0 z-10">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-background border-b text-[11px] font-semibold uppercase tracking-wider opacity-40 select-none sticky top-0 z-10">
               <div className="w-4 flex-shrink-0" />
               <div className="w-[60px] flex-shrink-0" />
               <button className="flex-1 text-left flex items-center gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "name-asc" ? "name-desc" : "name-asc")}>
@@ -1608,13 +1646,13 @@ export default function InventoryClient({
                 onClick={() => setSlabsCollapsed((v) => !v)}
               >
                 <span className="text-[9px] opacity-40 w-3">{slabsCollapsed ? "▶" : "▼"}</span>
-                <span className="text-base leading-none">🏆</span>
+                <Trophy size={13} className="text-purple-400 flex-shrink-0" />
                 <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-purple-400 inv-label">Slabs</span>
                 <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(167_139_250/0.2)]">{displayedSlabs.length}</span>
               </button>
               {!slabsCollapsed && (displayedSlabs.length === 0 ? (
                 <div className="px-3 py-6 text-center space-y-1">
-                  <div className="text-2xl opacity-30">🏆</div>
+                  <div className="flex justify-center opacity-30"><Trophy size={24} /></div>
                   <div className="text-xs opacity-40">{items.some((i) => i.category === "slab" && i.status !== "grading") ? "No slabs match your filters" : "No slabs yet — add your first graded card!"}</div>
                 </div>
               ) : displayedSlabs.map((it) => {
@@ -1639,9 +1677,11 @@ export default function InventoryClient({
                 return (
                   <div
                     key={it.id}
-                    className={`inv-row inv-row-slab flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""}`}
+                    className={`relative inv-row inv-row-slab flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""}`}
                     onClick={() => toggleSelect(it.id)}
                   >
+                    {/* Mobile tap target — opens detail sheet instead of selecting */}
+                    <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
                     <div className="flex-shrink-0 w-[60px]">
                       {it.image_url ? (
@@ -1656,19 +1696,23 @@ export default function InventoryClient({
                       {(it.set_name || it.card_number) && (
                         <div className="inv-card-meta">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
                       )}
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
-                        {consigner ? (
-                          <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
-                        ) : it.owner !== "shared" ? (
-                          <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
-                        ) : null}
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
+                          {consigner ? (
+                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
+                          ) : it.owner !== "shared" ? (
+                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
+                          ) : null}
+                        </div>
+                        {/* Mobile-only price — shown inline with grade badge */}
+                        <span className={`md:hidden text-sm font-semibold inv-price flex-shrink-0${isRefreshing ? " price-refreshing" : ""}`}>{fmv != null ? fmt(fmv) : "—"}</span>
                       </div>
                     </div>
-                    {/* Suggested price (eBay FMV) */}
-                    <div className="flex-shrink-0 w-36 text-right">
+                    {/* Suggested price (eBay FMV) — desktop only */}
+                    <div className="hidden md:block flex-shrink-0 w-36 text-right">
                       {isRefreshing ? (
-                        <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block">↻</span></div>
+                        <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block price-refreshing">↻</span></div>
                       ) : isRateLimited ? (
                         <button className="text-xs text-orange-500 underline" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>Rate limited</button>
                       ) : !sp ? (
@@ -1677,9 +1721,9 @@ export default function InventoryClient({
                         <div>
                           <div className="flex items-center justify-end gap-1">
                             <button className={`inv-price-display ${isStale ? "opacity-40 hover:opacity-75" : ""} ${fmv != null && fmv >= 200 ? "price-high-value" : ""}`} onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>
-                              {fmv != null ? fmt(fmv) : "—"}{isStale ? <span className="text-[11px] ml-0.5">🕐</span> : null}
+                              {fmv != null ? fmt(fmv) : "—"}{isStale ? <Clock size={11} className="inline ml-0.5 opacity-60" /> : null}
                             </button>
-                            <button className="opacity-30 hover:opacity-70 transition-opacity text-[14px]" title="Refresh price from eBay" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
+                            <button className={`transition-opacity text-[14px] ${isRefreshing ? "opacity-50 spin" : "opacity-30 hover:opacity-70"}`} title="Refresh price from eBay" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
                           </div>
                           <div className="inv-price-source">{isStale ? "eBay · stale" : `eBay${sp.sold_count > 0 ? ` · ${sp.sold_count} sold${sp.sold_count < 3 ? " ⚠" : ""}` : ""}`}</div>
                           <div className="flex justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
@@ -1690,7 +1734,7 @@ export default function InventoryClient({
                       )}
                     </div>
                     {/* My Ask */}
-                    <div className="hidden sm:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <div className="hidden md:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       {isCustomAsk && <div className="ask-custom-dot" title="Custom price set" />}
                       {inlineAskId === it.id ? (
                         <input
@@ -1712,7 +1756,7 @@ export default function InventoryClient({
                       )}
                     </div>
                     {/* Cost */}
-                    <div className="hidden sm:block flex-shrink-0 w-[100px] text-right">
+                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right">
                       {inlineCostId === it.id ? (
                         <input
                           autoFocus
@@ -1731,7 +1775,7 @@ export default function InventoryClient({
                       )}
                     </div>
                     {/* Margin — against ask price */}
-                    <div className="hidden sm:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
+                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
                       {marginAmtEff != null && marginPctEff != null ? (
                         <span className={marginPctEff >= 0 ? "margin-positive" : "margin-negative"}>
                           {marginPctEff >= 0 ? "+" : ""}{fmt(marginAmtEff)} <span className="opacity-70">({marginPctEff >= 0 ? "+" : ""}{marginPctEff.toFixed(0)}%)</span>
@@ -1748,7 +1792,7 @@ export default function InventoryClient({
                         </div>
                       )}
                     </div>
-                    <div className="flex-shrink-0 w-[60px] flex justify-end">
+                    <div className="hidden md:flex flex-shrink-0 w-[60px] justify-end">
                       <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
                     </div>
                   </div>
@@ -1762,13 +1806,13 @@ export default function InventoryClient({
                 onClick={() => setRawCollapsed((v) => !v)}
               >
                 <span className="text-[9px] opacity-40 w-3">{rawCollapsed ? "▶" : "▼"}</span>
-                <span className="text-base leading-none">🃏</span>
+                <CreditCard size={13} className="text-blue-400 flex-shrink-0" />
                 <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-blue-400 inv-label">Raw Cards</span>
                 <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(96_165_250/0.2)]">{displayedRawCards.length}</span>
               </button>
               {!rawCollapsed && (displayedRawCards.length === 0 ? (
                 <div className="px-3 py-6 text-center space-y-1">
-                  <div className="text-2xl opacity-30">🃏</div>
+                  <div className="flex justify-center opacity-30"><CreditCard size={24} /></div>
                   <div className="text-xs opacity-40">{items.some((i) => i.category !== "slab" && i.status !== "grading") ? "No raw cards match your filters" : "No raw cards yet — grab some from the Transactions page!"}</div>
                 </div>
               ) : displayedRawCards.map((it) => {
@@ -1794,9 +1838,11 @@ export default function InventoryClient({
                 return (
                   <div
                     key={it.id}
-                    className={`inv-row inv-row-raw flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""}`}
+                    className={`relative inv-row inv-row-raw flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""}`}
                     onClick={() => toggleSelect(it.id)}
                   >
+                    {/* Mobile tap target — opens detail sheet instead of selecting */}
+                    <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
                     <div className="flex-shrink-0 w-[60px]">
                       {it.image_url ? (
@@ -1811,22 +1857,26 @@ export default function InventoryClient({
                       {(it.set_name || it.card_number) && (
                         <div className="inv-card-meta">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
                       )}
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {it.category === "single" && it.condition && (
-                          <span className={`condition-badge ${{ "Near Mint": "cond-nm", "Lightly Played": "cond-lp", "Moderately Played": "cond-mp", "Heavily Played": "cond-hp", "Damaged": "cond-dmg" }[it.condition] ?? "cond-nm"}`}>
-                            {{ "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "Dmg" }[it.condition] ?? it.condition}
-                          </span>
-                        )}
-                        {it.category !== "single" && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>}
-                        {consigner ? (
-                          <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
-                        ) : it.owner !== "shared" ? (
-                          <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
-                        ) : null}
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {it.category === "single" && it.condition && (
+                            <span className={`condition-badge ${{ "Near Mint": "cond-nm", "Lightly Played": "cond-lp", "Moderately Played": "cond-mp", "Heavily Played": "cond-hp", "Damaged": "cond-dmg" }[it.condition] ?? "cond-nm"}`}>
+                              {{ "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "Dmg" }[it.condition] ?? it.condition}
+                            </span>
+                          )}
+                          {it.category !== "single" && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>}
+                          {consigner ? (
+                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
+                          ) : it.owner !== "shared" ? (
+                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
+                          ) : null}
+                        </div>
+                        {/* Mobile-only price */}
+                        <span className={`md:hidden text-sm font-semibold inv-price flex-shrink-0${isRawRefreshing ? " price-refreshing" : ""}`}>{condPrice != null ? fmt(condPrice) : it.market != null ? fmt(it.market) : "—"}</span>
                       </div>
                     </div>
-                    {/* Suggested price (TCGPlayer) */}
-                    <div className="flex-shrink-0 w-36 text-right">
+                    {/* Suggested price (TCGPlayer) — desktop only */}
+                    <div className="hidden md:block flex-shrink-0 w-36 text-right">
                       {isRawRefreshing ? (
                         <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block">↻</span></div>
                       ) : !rcp ? (
@@ -1841,7 +1891,7 @@ export default function InventoryClient({
                               className={`inv-price-display ${suggested != null && suggested >= 200 ? "price-high-value" : ""} ${priceFlash[it.id] === "up" ? "price-flash-up" : priceFlash[it.id] === "down" ? "price-flash-down" : ""}`}
                               onClick={(e) => { e.stopPropagation(); openRawCardModal(it); }}
                             >{fmt(suggested)}</button>
-                            <button className="opacity-30 hover:opacity-70 transition-opacity text-[14px]" title="Refresh price from TCGPlayer" onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}>↺</button>
+                            <button className={`transition-opacity text-[14px] ${isRawRefreshing ? "opacity-50 spin" : "opacity-30 hover:opacity-70"}`} title="Refresh price from TCGPlayer" onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}>↺</button>
                           </div>
                           <div className="inv-price-source">TCGPlayer</div>
                           <div className="flex justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
@@ -1853,7 +1903,7 @@ export default function InventoryClient({
                       )}
                     </div>
                     {/* My Ask */}
-                    <div className="hidden sm:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <div className="hidden md:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       {isCustomAsk && <div className="ask-custom-dot" title="Custom price set" />}
                       {inlineAskId === it.id ? (
                         <input
@@ -1875,7 +1925,7 @@ export default function InventoryClient({
                       )}
                     </div>
                     {/* Cost */}
-                    <div className="hidden sm:block flex-shrink-0 w-[100px] text-right">
+                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right">
                       {inlineCostId === it.id ? (
                         <input
                           autoFocus
@@ -1894,7 +1944,7 @@ export default function InventoryClient({
                       )}
                     </div>
                     {/* Margin — against ask/effective price */}
-                    <div className="hidden sm:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
+                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
                       {marginAmt != null && marginPct != null ? (
                         <span className={marginPct >= 0 ? "margin-positive" : "margin-negative"}>
                           {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
@@ -1911,7 +1961,7 @@ export default function InventoryClient({
                         </div>
                       )}
                     </div>
-                    <div className="flex-shrink-0 w-[60px] flex justify-end">
+                    <div className="hidden md:flex flex-shrink-0 w-[60px] justify-end">
                       <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
                     </div>
                   </div>
@@ -1944,9 +1994,10 @@ export default function InventoryClient({
                     return (
                       <div
                         key={it.id}
-                        className={`grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
+                        className={`relative grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
                         onClick={() => toggleSelect(it.id)}
                       >
+                        <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
                         <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
                         <div className="px-2 py-1.5 flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
@@ -1954,9 +2005,12 @@ export default function InventoryClient({
                             {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
                           </div>
                           <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
-                          <div className="text-xs">
+                          <div className="hidden md:block text-xs">
                             <span className="opacity-50">{it.cost != null ? fmt(it.cost) : "—"} → </span>
                             <span className={`font-medium ${marketColor}`}>{fmt(it.market)}</span>
+                          </div>
+                          <div className="md:hidden text-xs font-semibold">
+                            <span className={marketColor}>{fmt(it.market)}</span>
                           </div>
                         </div>
                       </div>
@@ -1991,18 +2045,22 @@ export default function InventoryClient({
                     return (
                       <div
                         key={it.id}
-                        className={`grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
+                        className={`relative grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
                         onClick={() => toggleSelect(it.id)}
                       >
+                        <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
                         <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
                         <div className="px-2 py-1.5 flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
                             <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
                           </div>
                           <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
-                          <div className="text-xs">
+                          <div className="hidden md:block text-xs">
                             <span className="opacity-50">{it.cost != null ? fmt(it.cost) : "—"} → </span>
                             <span className={`font-medium ${marketColor}`}>{fmt(displayPrice)}</span>
+                          </div>
+                          <div className="md:hidden text-xs font-semibold">
+                            <span className={marketColor}>{fmt(displayPrice)}</span>
                           </div>
                         </div>
                       </div>
@@ -2487,16 +2545,24 @@ export default function InventoryClient({
         const activeLists = applyOutlierFilter(validActive).sort((a, b) => a.price - b.price);
 
         return (
-          <div
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
-            onClick={() => setPricingDetailItem(null)}
-          >
+          <>
+            {/* Desktop backdrop — click outside to close */}
             <div
-              className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-xl"
+              className="hidden sm:block fixed inset-0 z-[70] bg-black/50"
+              onClick={() => setPricingDetailItem(null)}
+            />
+            <div
+              className={[
+                /* Mobile: full-screen, covers nav bar */
+                "fixed inset-0 z-[75] flex flex-col bg-background",
+                /* Desktop: centered sheet above backdrop */
+                "sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
+                "sm:w-full sm:max-w-lg sm:max-h-[85vh] sm:rounded-2xl sm:shadow-xl",
+              ].join(" ")}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="px-4 pt-4 pb-3 border-b flex items-start justify-between gap-3">
+              <div className="px-4 pt-4 pb-3 border-b flex items-start justify-between gap-3 flex-shrink-0">
                 <div className="min-w-0">
                   <div className="font-semibold text-sm leading-tight truncate">{pdi.name}</div>
                   {(pdi.set_name || pdi.card_number) && (
@@ -2626,7 +2692,7 @@ export default function InventoryClient({
                 </button>
               </div>
             </div>
-          </div>
+          </>
         );
       })()}
 
@@ -2839,6 +2905,220 @@ export default function InventoryClient({
                 >
                   {isRefreshing ? "Fetching…" : "↺ Refresh"}
                 </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Mobile FAB ── */}
+      <div className="md:hidden fixed bottom-20 right-4 z-30 flex flex-col items-end gap-2">
+        {fabOpen && (
+          <>
+            <button
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-card border border-border shadow-lg text-sm font-medium whitespace-nowrap"
+              onClick={() => { setFabOpen(false); setAddOpen(true); setInventoryOpen(true); setTimeout(() => document.querySelector<HTMLElement>(".border.rounded-xl")?.scrollIntoView({ behavior: "smooth" }), 50); }}
+            >
+              <Plus size={14} />Add Item
+            </button>
+            <button
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-card border border-border shadow-lg text-sm font-medium whitespace-nowrap"
+              onClick={() => { setFabOpen(false); setSearchOpen(true); }}
+            >
+              <Search size={14} />Search &amp; Filter
+            </button>
+            <button
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-card border border-border shadow-lg text-sm font-medium whitespace-nowrap"
+              onClick={() => { setFabOpen(false); setScanOpen(true); }}
+            >
+              <Camera size={14} />Scan Card
+            </button>
+          </>
+        )}
+        <button
+          className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-2xl font-bold transition-all duration-200 ${fabOpen ? "bg-foreground text-background rotate-45" : "bg-violet-600 text-white"}`}
+          onClick={() => setFabOpen((v) => !v)}
+        >
+          +
+        </button>
+      </div>
+
+      {/* ── Mobile Detail Modal ── */}
+      {mobileDetailItem && (() => {
+        const it = mobileDetailItem;
+        const parsed = it.grade ? parseGrade(it.grade) : null;
+        const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
+        const sp = slabKey ? mergedSlabPrices[slabKey] : null;
+        const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
+        const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+        const rcp = it.category !== "slab" ? mergedRawCardPrices[rawKey] : null;
+        const condPrice = rcp ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) : null;
+        const displayPrice = it.category === "slab" ? fmv : (condPrice ?? it.market);
+        const priceSource = it.category === "slab" ? "eBay" : (rcp ? "TCGPlayer" : null);
+        const margin = displayPrice != null && it.cost != null && it.cost > 0 ? displayPrice - it.cost : null;
+        const marginPct = margin != null && it.cost != null && it.cost > 0 ? (margin / it.cost) * 100 : null;
+        const ebayQ = it.category === "slab"
+          ? buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number)
+          : buildRawEbayQuery(it.name, it.set_name, it.card_number);
+        const ebayEnc = encodeURIComponent(ebayQ);
+        const cleanName = it.name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
+        const tcgQ = encodeURIComponent([cleanName, it.set_name].filter(Boolean).join(" "));
+        const isRefreshingSlab = slabRefreshing[it.id];
+        const isRefreshingRaw = rawCardRefreshing[it.id];
+        return (
+          <div className="md:hidden fixed inset-0 z-[60] flex items-center justify-center px-5">
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+              onClick={() => setMobileDetailItem(null)}
+            />
+
+            {/* Modal card */}
+            <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl max-h-[80vh] overflow-y-auto">
+
+              {/* Close button */}
+              <button
+                onClick={() => setMobileDetailItem(null)}
+                className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-muted/60 text-muted-foreground hover:text-foreground transition-colors text-sm"
+              >✕</button>
+
+              {/* Card image — centered, generous */}
+              <div className="flex justify-center pt-5 pb-3 px-6">
+                {it.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={it.image_url} alt={it.name} className="w-32 h-auto rounded-xl object-contain shadow-md" />
+                ) : (
+                  <div className="w-32 h-44 rounded-xl bg-muted flex items-center justify-center text-2xl opacity-20">?</div>
+                )}
+              </div>
+
+              {/* Name + meta */}
+              <div className="px-4 pb-3 text-center">
+                <div className="font-bold text-base leading-snug">{it.name}</div>
+                {(it.set_name || it.card_number) && (
+                  <div className="text-[13px] opacity-50 mt-0.5">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
+                )}
+                <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
+                  {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
+                  {it.category !== "slab" && it.condition && (
+                    <span className={`condition-badge ${{ "Near Mint": "cond-nm", "Lightly Played": "cond-lp", "Moderately Played": "cond-mp", "Heavily Played": "cond-hp", "Damaged": "cond-dmg" }[it.condition] ?? "cond-nm"}`}>
+                      {{ "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "Dmg" }[it.condition] ?? it.condition}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-border/50 mx-4" />
+
+              {/* Price section */}
+              <div className="px-4 py-3 space-y-2">
+                {/* FMV / Market */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] uppercase tracking-wide opacity-40 font-semibold">{it.category === "slab" ? "FMV" : "Market"}</span>
+                    {priceSource && <span className="text-[10px] opacity-30 ml-1.5">{priceSource}{it.category === "slab" && sp?.sold_count != null ? ` · ${sp.sold_count} sold` : ""}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold inv-price">{displayPrice != null ? fmt(displayPrice) : "—"}</span>
+                    <button
+                      className="text-sm opacity-30 hover:opacity-70 transition-opacity"
+                      title="Refresh price"
+                      onClick={() => it.category === "slab" ? handleRefreshSlabPrice(it) : handleRefreshRawCardPrice(it)}
+                    >
+                      {(isRefreshingSlab || isRefreshingRaw) ? <span className="inline-block spin">↻</span> : "↺"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cost */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] uppercase tracking-wide opacity-40 font-semibold">Cost</span>
+                  {inlineCostId === it.id ? (
+                    <input
+                      autoFocus
+                      className="w-24 border rounded-lg px-2 py-1 text-sm text-right bg-background inv-price"
+                      value={inlineCostVal}
+                      inputMode="decimal"
+                      onChange={(e) => setInlineCostVal(e.target.value)}
+                      onBlur={() => handleSaveInlineCost(it.id)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
+                    />
+                  ) : it.cost != null ? (
+                    <button
+                      className="text-sm font-semibold inv-price opacity-70"
+                      onClick={() => { setInlineCostId(it.id); setInlineCostVal(String(it.cost ?? "")); }}
+                    >{fmt(it.cost)}</button>
+                  ) : (
+                    <button
+                      className="text-sm text-violet-400 hover:text-violet-300"
+                      onClick={() => { setInlineCostId(it.id); setInlineCostVal(""); }}
+                    >+ add cost</button>
+                  )}
+                </div>
+
+                {/* Margin */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] uppercase tracking-wide opacity-40 font-semibold">Margin</span>
+                  {margin != null && marginPct != null ? (
+                    <span className={`text-sm font-semibold inv-price ${margin >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                      {margin >= 0 ? "+" : ""}{fmt(margin)} <span className="opacity-60 text-xs">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
+                    </span>
+                  ) : <span className="text-sm opacity-30">—</span>}
+                </div>
+              </div>
+
+              <div className="border-t border-border/50 mx-4" />
+
+              {/* Links — full-width rows */}
+              <div className="px-4 py-3 space-y-1">
+                <a
+                  href={`https://www.ebay.com/sch/i.html?_nkw=${ebayEnc}&LH_Complete=1&LH_Sold=1&_sacat=183454`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-between w-full px-3 py-3 rounded-xl hover:bg-muted/50 transition-colors text-sm font-medium min-h-[44px]"
+                >
+                  <span>eBay Sold</span>
+                  <span className="opacity-40 text-base">→</span>
+                </a>
+                <a
+                  href={`https://www.ebay.com/sch/i.html?_nkw=${ebayEnc}&_sacat=183454`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-between w-full px-3 py-3 rounded-xl hover:bg-muted/50 transition-colors text-sm font-medium min-h-[44px]"
+                >
+                  <span>eBay Listed</span>
+                  <span className="opacity-40 text-base">→</span>
+                </a>
+                {it.category !== "slab" && (
+                  <a
+                    href={`https://www.tcgplayer.com/search/pokemon/product?q=${tcgQ}&view=grid`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-between w-full px-3 py-3 rounded-xl hover:bg-muted/50 transition-colors text-sm font-medium min-h-[44px]"
+                  >
+                    <span>TCGPlayer</span>
+                    <span className="opacity-40 text-base">→</span>
+                  </a>
+                )}
+              </div>
+
+              <div className="border-t border-border/50 mx-4" />
+
+              {/* Actions */}
+              <div className="px-4 py-3 pb-5 space-y-2">
+                {it.category === "slab" && slabKey && (
+                  <button
+                    className="w-full py-3 rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-400 text-sm font-semibold min-h-[44px] transition-colors hover:bg-purple-500/20"
+                    onClick={() => { setMobileDetailItem(null); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}
+                  >View Comps</button>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    className="flex-1 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold min-h-[44px] transition-colors"
+                    onClick={() => { setMobileDetailItem(null); openEdit(it); }}
+                  >Edit</button>
+                  <button
+                    className="flex-1 py-3 rounded-xl border border-border text-sm font-medium min-h-[44px] hover:bg-muted transition-colors"
+                    onClick={() => { setMobileDetailItem(null); toggleSelect(it.id); }}
+                  >Select</button>
+                </div>
               </div>
             </div>
           </div>
