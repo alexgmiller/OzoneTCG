@@ -25,7 +25,8 @@ type SortKey =
   | "market-desc" | "market-asc"
   | "cost-desc"   | "cost-asc"
   | "fmv-desc"    | "fmv-asc"
-  | "margin-desc" | "margin-asc";
+  | "margin-desc" | "margin-asc"
+  | "movement-desc" | "movement-asc";
 
 type ConsignerOption = { id: string; name: string; rate: number };
 
@@ -51,6 +52,8 @@ type Item = {
   chain_depth: number;
   original_cash_invested: number | null;
   sticker_price: number | null;
+  acquired_market_price: number | null;
+  acquired_date: string | null;
 };
 
 type ItemForm = {
@@ -84,6 +87,28 @@ function toNum(v: string) {
 function fmt(v: number | null) {
   if (v == null) return "-";
   return `$${v.toFixed(2)}`;
+}
+
+function getMovement(current: number | null, acquired: number | null): number | null {
+  if (current == null || acquired == null || acquired === 0) return null;
+  return ((current - acquired) / acquired) * 100;
+}
+
+function MovementBadge({ pct }: { pct: number | null }) {
+  if (pct == null) return null;
+  const abs = Math.abs(pct);
+  if (pct > 25) return <span className="text-[10px] font-semibold text-amber-500 tabular-nums whitespace-nowrap">▲ +{abs.toFixed(0)}%</span>;
+  if (pct > 10) return <span className="text-[10px] font-semibold text-green-500 tabular-nums whitespace-nowrap">▲ +{abs.toFixed(0)}%</span>;
+  if (pct < -10) return <span className="text-[10px] font-semibold text-red-500 tabular-nums whitespace-nowrap">▼ -{abs.toFixed(0)}%</span>;
+  return <span className="text-[10px] opacity-35 tabular-nums whitespace-nowrap">— {pct >= 0 ? "+" : ""}{pct.toFixed(0)}%</span>;
+}
+
+function MovementDot({ pct }: { pct: number | null }) {
+  if (pct == null) return null;
+  if (pct > 25) return <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title={`+${pct.toFixed(0)}% since acquired`} />;
+  if (pct > 10) return <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" title={`+${pct.toFixed(0)}% since acquired`} />;
+  if (pct < -10) return <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title={`${pct.toFixed(0)}% since acquired`} />;
+  return null;
 }
 
 function buildSlabEbayQuery(name: string, grade: string | null, setName: string | null, cardNumber: string | null): string {
@@ -578,6 +603,8 @@ export default function InventoryClient({
   const [filterHighValue, setFilterHighValue] = useState(false);
   const [filterLowConf, setFilterLowConf] = useState(false);
   const [filterStale, setFilterStale] = useState(false);
+  const [filterRising, setFilterRising] = useState(false);
+  const [filterDropping, setFilterDropping] = useState(false);
 
   // Bulk cost entry
   const [bulkCostOpen, setBulkCostOpen] = useState(false);
@@ -846,6 +873,22 @@ export default function InventoryClient({
           };
           return nullLast(getMargin(a), getMargin(b), sort === "margin-asc");
         }
+        case "movement-asc":
+        case "movement-desc": {
+          const getItemMovement = (it: Item) => {
+            let current = it.market;
+            if (it.category === "slab" && it.grade) {
+              const parsed = parseGrade(it.grade);
+              if (parsed) {
+                const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
+                const sp = mergedSlabPrices[key];
+                current = sp?.fair_market_value ?? sp?.sold_median ?? sp?.median_price ?? it.market;
+              }
+            }
+            return getMovement(current, it.acquired_market_price);
+          };
+          return nullLast(getItemMovement(a), getItemMovement(b), sort === "movement-asc");
+        }
         default: return 0;
       }
     });
@@ -854,14 +897,16 @@ export default function InventoryClient({
 
   // Pill filter counts — computed from base filtered set before pills applied
   const pillCounts = useMemo(() => {
-    let noPrice = 0, noCost = 0, highValue = 0, lowConf = 0, stale = 0;
+    let noPrice = 0, noCost = 0, highValue = 0, lowConf = 0, stale = 0, rising = 0, dropping = 0;
     for (const it of displayedItems) {
       if (it.cost == null) noCost++;
+      let currentPrice = it.market;
       if (it.category === "slab" && it.grade) {
         const parsed = parseGrade(it.grade);
         const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
         const sp = key ? mergedSlabPrices[key] : null;
         const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+        currentPrice = fmv ?? it.market;
         if (!sp) noPrice++;
         if (fmv != null && fmv > 200) highValue++;
         if (sp && (sp.sold_count > 0 ? sp.sold_count : sp.comp_count) < 3) lowConf++;
@@ -870,24 +915,30 @@ export default function InventoryClient({
         const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
         const rcp = mergedRawCardPrices[rawKey];
         const condPrice = rcp ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) : null;
+        currentPrice = condPrice ?? it.market;
         if (!rcp) noPrice++;
         if (condPrice != null && condPrice > 200) highValue++;
         if (!rcp || Date.now() - new Date(rcp.last_updated).getTime() > 24 * 60 * 60 * 1000) stale++;
       }
+      const mvt = getMovement(currentPrice, it.acquired_market_price);
+      if (mvt != null && mvt > 10) rising++;
+      if (mvt != null && mvt < -10) dropping++;
     }
-    return { noPrice, noCost, highValue, lowConf, stale };
+    return { noPrice, noCost, highValue, lowConf, stale, rising, dropping };
   }, [displayedItems, mergedSlabPrices, mergedRawCardPrices]);
 
   // Apply active pill filters on top of base filters
   const filteredDisplayedItems = useMemo(() => {
-    if (!filterNoPrice && !filterNoCost && !filterHighValue && !filterLowConf && !filterStale) return displayedItems;
+    if (!filterNoPrice && !filterNoCost && !filterHighValue && !filterLowConf && !filterStale && !filterRising && !filterDropping) return displayedItems;
     return displayedItems.filter((it) => {
       if (filterNoCost && it.cost != null) return false;
+      let currentPrice = it.market;
       if (it.category === "slab" && it.grade) {
         const parsed = parseGrade(it.grade);
         const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
         const sp = key ? mergedSlabPrices[key] : null;
         const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+        currentPrice = fmv ?? it.market;
         if (filterNoPrice && sp) return false;
         if (filterHighValue && !(fmv != null && fmv > 200)) return false;
         if (filterLowConf && !(sp && (sp.sold_count > 0 ? sp.sold_count : sp.comp_count) < 3)) return false;
@@ -896,14 +947,18 @@ export default function InventoryClient({
         const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
         const rcp = mergedRawCardPrices[rawKey];
         const condPrice = rcp ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) : null;
+        currentPrice = condPrice ?? it.market;
         if (filterNoPrice && rcp) return false;
         if (filterHighValue && !(condPrice != null && condPrice > 200)) return false;
         if (filterLowConf) return false; // low confidence only applies to slabs
         if (filterStale && rcp && Date.now() - new Date(rcp.last_updated).getTime() <= 24 * 60 * 60 * 1000) return false;
       }
+      const mvt = getMovement(currentPrice, it.acquired_market_price);
+      if (filterRising && !(mvt != null && mvt > 10)) return false;
+      if (filterDropping && !(mvt != null && mvt < -10)) return false;
       return true;
     });
-  }, [displayedItems, filterNoPrice, filterNoCost, filterHighValue, filterLowConf, filterStale, mergedSlabPrices, mergedRawCardPrices]);
+  }, [displayedItems, filterNoPrice, filterNoCost, filterHighValue, filterLowConf, filterStale, filterRising, filterDropping, mergedSlabPrices, mergedRawCardPrices]);
 
   // Inventory value summary
   const inventorySummary = useMemo(() => {
@@ -1611,6 +1666,8 @@ export default function InventoryClient({
                 { label: "High Value", count: pillCounts.highValue, active: filterHighValue, toggle: () => setFilterHighValue((v) => !v) },
                 { label: "Low Conf",   count: pillCounts.lowConf,   active: filterLowConf,   toggle: () => setFilterLowConf((v) => !v) },
                 { label: "Stale",      count: pillCounts.stale,     active: filterStale,     toggle: () => setFilterStale((v) => !v) },
+                { label: "▲ Rising",   count: pillCounts.rising,    active: filterRising,    toggle: () => { setFilterRising((v) => !v); setFilterDropping(false); } },
+                { label: "▼ Dropping", count: pillCounts.dropping,  active: filterDropping,  toggle: () => { setFilterDropping((v) => !v); setFilterRising(false); } },
               ] as { label: string; count: number; active: boolean; toggle: () => void }[]
             ).map(({ label, count, active, toggle }) => (
               <button
@@ -1650,6 +1707,9 @@ export default function InventoryClient({
               </button>
               <button className="w-[100px] text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "margin-asc" ? "margin-desc" : "margin-asc")}>
                 Margin {sort === "margin-asc" ? "↑" : sort === "margin-desc" ? "↓" : ""}
+              </button>
+              <button className="w-[72px] text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "movement-asc" ? "movement-desc" : "movement-asc")}>
+                Move {sort === "movement-asc" ? "↑" : sort === "movement-desc" ? "↓" : ""}
               </button>
               <div className="w-[60px] flex-shrink-0" />
             </div>
@@ -1720,7 +1780,10 @@ export default function InventoryClient({
                           ) : null}
                         </div>
                         {/* Mobile-only price — shown inline with grade badge */}
-                        <span className={`md:hidden text-sm font-semibold inv-price flex-shrink-0${isRefreshing ? " price-refreshing" : ""}`}>{fmv != null ? fmt(fmv) : "—"}</span>
+                        <div className={`md:hidden flex items-center gap-1 flex-shrink-0${isRefreshing ? " price-refreshing" : ""}`}>
+                          <span className="text-sm font-semibold inv-price">{fmv != null ? fmt(fmv) : "—"}</span>
+                          <MovementBadge pct={getMovement(fmv ?? it.market, it.acquired_market_price)} />
+                        </div>
                       </div>
                     </div>
                     {/* Suggested price (eBay FMV) — desktop only */}
@@ -1806,6 +1869,10 @@ export default function InventoryClient({
                         </div>
                       )}
                     </div>
+                    {/* Movement — desktop only */}
+                    <div className="hidden md:flex flex-shrink-0 w-[72px] justify-end items-center">
+                      <MovementBadge pct={getMovement(fmv ?? it.market, it.acquired_market_price)} />
+                    </div>
                     <div className="hidden md:flex flex-shrink-0 w-[60px] justify-end">
                       <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
                     </div>
@@ -1886,7 +1953,10 @@ export default function InventoryClient({
                           ) : null}
                         </div>
                         {/* Mobile-only price */}
-                        <span className={`md:hidden text-sm font-semibold inv-price flex-shrink-0${isRawRefreshing ? " price-refreshing" : ""}`}>{condPrice != null ? fmt(condPrice) : it.market != null ? fmt(it.market) : "—"}</span>
+                        <div className={`md:hidden flex items-center gap-1 flex-shrink-0${isRawRefreshing ? " price-refreshing" : ""}`}>
+                          <span className="text-sm font-semibold inv-price">{condPrice != null ? fmt(condPrice) : it.market != null ? fmt(it.market) : "—"}</span>
+                          <MovementBadge pct={getMovement(condPrice ?? it.market, it.acquired_market_price)} />
+                        </div>
                       </div>
                     </div>
                     {/* Suggested price (TCGPlayer) — desktop only */}
@@ -1975,6 +2045,10 @@ export default function InventoryClient({
                         </div>
                       )}
                     </div>
+                    {/* Movement — desktop only */}
+                    <div className="hidden md:flex flex-shrink-0 w-[72px] justify-end items-center">
+                      <MovementBadge pct={getMovement(effectivePrice, it.acquired_market_price)} />
+                    </div>
                     <div className="hidden md:flex flex-shrink-0 w-[60px] justify-end">
                       <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
                     </div>
@@ -2002,9 +2076,14 @@ export default function InventoryClient({
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
                   {displayedSlabs.map((it) => {
                     const isSelected = selectedIds.has(it.id);
-                    const marketColor = it.market != null && it.cost != null
-                      ? it.market >= it.cost ? "text-green-600" : "text-red-500"
+                    const parsed = it.grade ? parseGrade(it.grade) : null;
+                    const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
+                    const sp = slabKey ? mergedSlabPrices[slabKey] : null;
+                    const fmvGrid = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
+                    const marketColor = fmvGrid != null && it.cost != null
+                      ? fmvGrid >= it.cost ? "text-green-600" : "text-red-500"
                       : "opacity-60";
+                    const movePct = getMovement(fmvGrid, it.acquired_market_price);
                     return (
                       <div
                         key={it.id}
@@ -2016,15 +2095,18 @@ export default function InventoryClient({
                         <div className="px-2 py-1.5 flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
                             <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
-                            {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
+                            <div className="flex items-center gap-1">
+                              <MovementDot pct={movePct} />
+                              {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
+                            </div>
                           </div>
                           <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
                           <div className="hidden md:block text-xs">
                             <span className="opacity-50">{it.cost != null ? fmt(it.cost) : "—"} → </span>
-                            <span className={`font-medium ${marketColor}`}>{fmt(it.market)}</span>
+                            <span className={`font-medium ${marketColor}`}>{fmt(fmvGrid)}</span>
                           </div>
                           <div className="md:hidden text-xs font-semibold">
-                            <span className={marketColor}>{fmt(it.market)}</span>
+                            <span className={marketColor}>{fmt(fmvGrid)}</span>
                           </div>
                         </div>
                       </div>
@@ -2056,6 +2138,7 @@ export default function InventoryClient({
                     const marketColor = displayPrice != null && it.cost != null
                       ? displayPrice >= it.cost ? "text-green-600" : "text-red-500"
                       : "opacity-60";
+                    const movePct = getMovement(displayPrice, it.acquired_market_price);
                     return (
                       <div
                         key={it.id}
@@ -2067,6 +2150,7 @@ export default function InventoryClient({
                         <div className="px-2 py-1.5 flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
                             <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
+                            <MovementDot pct={movePct} />
                           </div>
                           <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
                           <div className="hidden md:block text-xs">
@@ -2590,10 +2674,16 @@ export default function InventoryClient({
                         <span className="text-[10px] opacity-40 font-normal">
                           {pdSp?.sold_median != null ? "Fair Market Value" : "Listed FMV (ask price)"}
                         </span>
+                        <MovementBadge pct={getMovement(fmvVal, pdi.acquired_market_price)} />
                       </div>
                     )}
                     {fmvVal == null && <span className="text-sm opacity-40">No price data</span>}
                   </div>
+                  {pdi.acquired_market_price != null && (
+                    <div className="text-[11px] opacity-40 mt-1">
+                      Acquired at {fmt(pdi.acquired_market_price)}{pdi.acquired_date ? ` · ${fmtModalDate(pdi.acquired_date)}` : ""}
+                    </div>
+                  )}
                 </div>
                 <button className="text-lg opacity-40 hover:opacity-70 flex-shrink-0 -mt-0.5" onClick={() => setPricingDetailItem(null)}>✕</button>
               </div>
@@ -2762,12 +2852,18 @@ export default function InventoryClient({
                       <div className="flex items-baseline gap-1.5">
                         <span className="text-base font-bold">{fmt(priceByKey[itemCondKey])}</span>
                         <span className="text-[10px] opacity-40 font-normal">Market Value</span>
+                        <MovementBadge pct={getMovement(priceByKey[itemCondKey] as number, it.acquired_market_price)} />
                       </div>
                     )}
                     {(!rcp || priceByKey[itemCondKey] == null) && (
                       <span className="text-sm opacity-40">{isRefreshing ? "Fetching…" : "No price data"}</span>
                     )}
                   </div>
+                  {it.acquired_market_price != null && (
+                    <div className="text-[11px] opacity-40 mt-1">
+                      Acquired at {fmt(it.acquired_market_price)}{it.acquired_date ? ` · ${fmtModalDate(it.acquired_date)}` : ""}
+                    </div>
+                  )}
                 </div>
                 <button className="text-lg opacity-40 hover:opacity-70 flex-shrink-0 -mt-0.5" onClick={() => setRawCardDetailItem(null)}>✕</button>
               </div>

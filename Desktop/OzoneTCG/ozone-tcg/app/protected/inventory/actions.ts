@@ -32,6 +32,8 @@ type ItemInput = {
   // Grading cert
   cert_number?: string | null;
   sticker_price?: number | null;
+  acquired_market_price?: number | null;
+  acquired_date?: string | null;
 };
 
 export type CardTransaction = {
@@ -60,6 +62,7 @@ export async function createItem(input: ItemInput) {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
 
+  const now = new Date().toISOString();
   const { error } = await supabase.from("items").insert({
     workspace_id: workspaceId,
     ...input,
@@ -67,6 +70,8 @@ export async function createItem(input: ItemInput) {
     condition: input.condition?.trim() || null,
     notes: input.notes?.trim() || null,
     updated_by: auth.user.id,
+    acquired_market_price: input.acquired_market_price !== undefined ? input.acquired_market_price : (input.market ?? null),
+    acquired_date: input.acquired_date !== undefined ? input.acquired_date : (input.market != null ? now : null),
   });
 
   if (error) throw new Error(error.message);
@@ -81,6 +86,7 @@ export async function createItems(inputs: ItemInput[]) {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
 
+  const now = new Date().toISOString();
   const { error } = await supabase.from("items").insert(
     inputs.map((input) => ({
       workspace_id: workspaceId,
@@ -89,6 +95,8 @@ export async function createItems(inputs: ItemInput[]) {
       condition: input.condition?.trim() || null,
       notes: input.notes?.trim() || null,
       updated_by: auth.user!.id,
+      acquired_market_price: input.acquired_market_price !== undefined ? input.acquired_market_price : (input.market ?? null),
+      acquired_date: input.acquired_date !== undefined ? input.acquired_date : (input.market != null ? now : null),
     }))
   );
 
@@ -724,11 +732,19 @@ export async function refreshRawCardPrice(
   if (marketPrice != null) {
     const supabase = await createClient();
     const workspaceId = await getWorkspaceId();
-    await supabase
+    // Fetch current acquired_market_price to check if backfill is needed
+    const { data: existing } = await supabase
       .from("items")
-      .update({ market: marketPrice })
+      .select("acquired_market_price")
       .eq("id", itemId)
-      .eq("workspace_id", workspaceId);
+      .eq("workspace_id", workspaceId)
+      .single();
+    const patch: Record<string, unknown> = { market: marketPrice };
+    if (existing?.acquired_market_price == null) {
+      patch.acquired_market_price = marketPrice;
+      patch.acquired_date = new Date().toISOString();
+    }
+    await supabase.from("items").update(patch).eq("id", itemId).eq("workspace_id", workspaceId);
   }
 
   console.log("[refreshRawCardPrice] upserted", lookupKey, "nm:", result.nm, "lp:", result.lp);
@@ -825,11 +841,11 @@ export async function refreshRawCardPrices(
           item.condition
         );
         if (marketPrice != null) {
-          await supabase
-            .from("items")
-            .update({ market: marketPrice })
-            .eq("id", item.id)
-            .eq("workspace_id", workspaceId);
+          const { data: existing } = await supabase
+            .from("items").select("acquired_market_price").eq("id", item.id).eq("workspace_id", workspaceId).single();
+          const patch: Record<string, unknown> = { market: marketPrice };
+          if (existing?.acquired_market_price == null) { patch.acquired_market_price = marketPrice; patch.acquired_date = now; }
+          await supabase.from("items").update(patch).eq("id", item.id).eq("workspace_id", workspaceId);
         }
       }
     }
@@ -870,11 +886,11 @@ export async function refreshRawCardPrices(
       item.condition
     );
     if (marketPrice != null) {
-      await supabase
-        .from("items")
-        .update({ market: marketPrice })
-        .eq("id", item.id)
-        .eq("workspace_id", workspaceId);
+      const { data: existing } = await supabase
+        .from("items").select("acquired_market_price").eq("id", item.id).eq("workspace_id", workspaceId).single();
+      const patch: Record<string, unknown> = { market: marketPrice };
+      if (existing?.acquired_market_price == null) { patch.acquired_market_price = marketPrice; patch.acquired_date = now; }
+      await supabase.from("items").update(patch).eq("id", item.id).eq("workspace_id", workspaceId);
     }
   }
 
@@ -899,6 +915,14 @@ export async function refreshItemPrices(
         if (result.imageUrl) patch.image_url = result.imageUrl;
         if (result.market != null) patch.market = result.market;
         if (Object.keys(patch).length === 0) return;
+        if (result.market != null) {
+          const { data: existing } = await supabase
+            .from("items").select("acquired_market_price").eq("id", item.id).eq("workspace_id", workspaceId).single();
+          if (existing?.acquired_market_price == null) {
+            patch.acquired_market_price = result.market;
+            patch.acquired_date = new Date().toISOString();
+          }
+        }
         await supabase.from("items").update(patch).eq("id", item.id).eq("workspace_id", workspaceId);
       })
     );
@@ -955,6 +979,8 @@ export async function recordBuy(input: {
       chain_depth: 0,
       original_cash_invested: input.cashPaid,
       updated_by: auth.user.id,
+      acquired_market_price: input.marketPrice ?? null,
+      acquired_date: new Date().toISOString(),
     })
     .select("id")
     .single();
