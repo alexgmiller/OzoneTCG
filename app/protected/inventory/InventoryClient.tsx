@@ -2254,7 +2254,7 @@ export default function InventoryClient({
 
       {/* Edit modal */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
           <div className="bg-background border rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="font-semibold">Edit item</div>
@@ -2316,7 +2316,7 @@ export default function InventoryClient({
 
       {/* Mass edit modal */}
       {massEditOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setMassEditOpen(false); }}>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setMassEditOpen(false); }}>
           <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="font-semibold">Edit {selectedIds.size} items</div>
@@ -2374,7 +2374,7 @@ export default function InventoryClient({
 
       {/* Bulk delete confirmation */}
       {deleteOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setDeleteOpen(false); }}>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setDeleteOpen(false); }}>
           <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-4">
             <div className="font-semibold">Delete {selectedIds.size} item{selectedIds.size !== 1 ? "s" : ""}?</div>
             <div className="text-sm opacity-60">This cannot be undone.</div>
@@ -2390,7 +2390,7 @@ export default function InventoryClient({
 
       {/* Sell modal */}
       {sellOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setSellOpen(false); }}>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setSellOpen(false); }}>
           <div className="bg-background border rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="font-semibold">Sell {selectedItems.length} item{selectedItems.length !== 1 ? "s" : ""}</div>
@@ -2458,7 +2458,7 @@ export default function InventoryClient({
 
       {/* Bulk cost modal */}
       {bulkCostOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setBulkCostOpen(false); }}>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setBulkCostOpen(false); }}>
           <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="font-semibold">Set Cost — {selectedIds.size} card{selectedIds.size !== 1 ? "s" : ""}</div>
@@ -2740,7 +2740,7 @@ export default function InventoryClient({
 
         return (
           <div
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+            className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
             onClick={() => setRawCardDetailItem(null)}
           >
             <div
@@ -3141,7 +3141,7 @@ export default function InventoryClient({
 
       {/* ── Mobile Filter Bottom Sheet ── */}
       {mobileFilterOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+        <div className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"

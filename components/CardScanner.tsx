@@ -133,7 +133,7 @@ export default function CardScanner({ open, onClose, onResult }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="bg-background border rounded-xl shadow-xl w-full max-w-sm flex flex-col gap-4 p-5">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-base">Scan Card</h2>

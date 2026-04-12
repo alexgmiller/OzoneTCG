@@ -201,7 +201,7 @@ export default function GuestView({ items }: { items: GuestItem[] }) {
 
       {/* Detail overlay */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDetail(null)} />
           <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
             {/* Image */}
@@ -260,7 +260,7 @@ export default function GuestView({ items }: { items: GuestItem[] }) {
 
       {/* Exit guest mode modal */}
       {exitModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setExitModal(false)} />
           <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
             <div>

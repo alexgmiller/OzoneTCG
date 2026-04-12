@@ -199,7 +199,7 @@ export function ProfileDropdown({ userHandle, initials, hasPinConfigured }: Prop
 
       {/* Set PIN modal */}
       {modal === "set-pin" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModal("none")} />
           <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
             <div>
@@ -246,7 +246,7 @@ export function ProfileDropdown({ userHandle, initials, hasPinConfigured }: Prop
 
       {/* Enter PIN modal */}
       {modal === "enter-pin" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModal("none")} />
           <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
             <div>

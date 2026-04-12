@@ -1136,7 +1136,7 @@ export default function CertScanner() {
       {/* ── Buy Modal ── */}
       {buyModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setBuyModalOpen(false);
           }}

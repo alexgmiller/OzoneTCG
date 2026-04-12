@@ -149,7 +149,7 @@ export default function BuyCSVImport({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) close(); }}
         >
           <div className="bg-background border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 space-y-4">

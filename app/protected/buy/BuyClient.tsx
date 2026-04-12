@@ -660,7 +660,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
       {/* My Cards bottom sheet */}
       {myCardsOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end bg-black/50"
+          className="fixed inset-0 z-[60] flex items-end bg-black/50"
           onClick={(e) => { if (e.target === e.currentTarget) setMyCardsOpen(false); }}
         >
           <div className="bg-background border-t rounded-t-2xl w-full max-h-[85vh] flex flex-col">
@@ -763,7 +763,7 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
       {/* Finalize modal */}
       {finalizeOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setFinalizeOpen(false);
           }}
@@ -928,7 +928,7 @@ function LiveListingsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4 pb-20 sm:pb-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4 pb-20 sm:pb-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-background border rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl">

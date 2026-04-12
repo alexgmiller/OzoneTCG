@@ -292,7 +292,7 @@ function AddDealModal({
 
   return (
     // pb-16 sm:pb-0 pushes the sheet above the fixed mobile nav bar
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 pb-16 sm:pb-0 px-4 pt-4">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 pb-16 sm:pb-0 px-4 pt-4">
       <div className="bg-background border rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
@@ -448,7 +448,7 @@ function ViewDealModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 pb-16 sm:pb-0 px-4 pt-4">
+      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 pb-16 sm:pb-0 px-4 pt-4">
         <div className="bg-background border rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-xl">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
