@@ -147,6 +147,10 @@ function gradeStyle(grade: string): string {
     if (n >= 10) return "grade-badge grade-cgc grade-cgc-10";
     return "grade-badge grade-cgc";
   }
+  if (company === "TAG") {
+    if (n >= 10) return "grade-badge grade-tag grade-tag-10";
+    return "grade-badge grade-tag";
+  }
   return "grade-badge grade-other";
 }
 

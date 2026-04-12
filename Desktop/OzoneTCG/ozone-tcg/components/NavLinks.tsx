@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, Package, ArrowLeftRight,
+  LayoutDashboard, Package, ArrowLeftRight, ScanLine,
   Users, Receipt, Wallet, MoreHorizontal,
   Settings, LogOut, Eye,
 } from "lucide-react";
@@ -16,6 +16,8 @@ const primaryLinks = [
   { href: "/protected/inventory",    label: "Inventory",    icon: Package },
   { href: "/protected/transactions", label: "Transactions", icon: ArrowLeftRight },
 ];
+
+const scanLink = { href: "/protected/scan", label: "Scan", icon: ScanLine };
 
 const moreNavLinks = [
   { href: "/protected/consigners", label: "Consigners", icon: Users },
@@ -60,7 +62,7 @@ export default function MobileBottomNav({ hasPinConfigured = false }: MobileMore
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
-  const allLinks = [...primaryLinks, ...moreNavLinks];
+  const allLinks = [...primaryLinks, scanLink, ...moreNavLinks];
 
   // Prefetch all routes on mount
   useEffect(() => {
@@ -210,7 +212,7 @@ export default function MobileBottomNav({ hasPinConfigured = false }: MobileMore
           </div>
         )}
 
-        {/* Tab bar — icon only */}
+        {/* Tab bar — icon only, 5 items: Dashboard / Inventory / Transactions / Scan / More */}
         <nav className="bg-background border-t border-t-border flex h-14 w-full">
           {primaryLinks.map((l) => {
             const active = pathname === l.href || pathname.startsWith(l.href + "/");
@@ -227,6 +229,21 @@ export default function MobileBottomNav({ hasPinConfigured = false }: MobileMore
               </Link>
             );
           })}
+
+          {/* Scan */}
+          {(() => {
+            const active = pathname === scanLink.href || pathname.startsWith(scanLink.href + "/");
+            return (
+              <Link
+                href={scanLink.href}
+                className={`flex-1 flex items-center justify-center transition-colors ${
+                  active ? "text-primary" : "text-muted-foreground"
+                }`}
+              >
+                <ScanLine size={24} strokeWidth={active ? 2.5 : 1.5} />
+              </Link>
+            );
+          })()}
 
           <button
             onClick={() => setMoreOpen((o) => !o)}

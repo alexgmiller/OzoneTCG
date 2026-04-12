@@ -70,3 +70,17 @@ export async function exitGuestMode(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete("guestMode");
 }
+
+/** Verify a PIN without entering guest mode — used by Settings to confirm before changing PIN. */
+export async function verifyGuestPin(pin: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const workspaceId = await getWorkspaceId();
+  const { data } = await admin
+    .from("guest_pins")
+    .select("pin_hash")
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!data) return false;
+  const hash = await hashPin(workspaceId, pin);
+  return hash === data.pin_hash;
+}

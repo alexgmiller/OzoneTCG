@@ -182,7 +182,8 @@ html:not(.dark) {
 :focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 
 /* ── Button tactile press ────────────────────────────────────────────────────*/
-button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); }
+/* Exclude Radix trigger buttons ([data-state]) — transform at click-time disrupts Portal position calculation */
+button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([data-state]) { transform: scale(0.97); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    NAVIGATION
@@ -300,6 +301,13 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
 .grade-cgc-10 {
   background: linear-gradient(135deg, #047857, #10b981);
   box-shadow: 0 2px 8px rgba(5,150,105,0.40);
+}
+.grade-tag {
+  background: linear-gradient(135deg, #92400e, #d97706);
+}
+.grade-tag-10 {
+  background: linear-gradient(135deg, #b45309, #f59e0b);
+  box-shadow: 0 2px 8px rgba(217,119,6,0.40);
 }
 .grade-other {
   background: linear-gradient(135deg, #374151, #4b5563);

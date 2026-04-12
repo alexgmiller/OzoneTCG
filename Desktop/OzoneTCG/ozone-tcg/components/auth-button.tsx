@@ -31,11 +31,23 @@ export async function AuthButton() {
   return (
     <div className="flex items-center gap-4">
       <DesktopNavLinks />
-      <ProfileDropdown
-        userHandle={handle}
-        initials={initials}
-        hasPinConfigured={pinConfigured}
-      />
+      {/* Desktop: full avatar dropdown */}
+      <div className="hidden md:block">
+        <ProfileDropdown
+          userHandle={handle}
+          initials={initials}
+          hasPinConfigured={pinConfigured}
+        />
+      </div>
+      {/* Mobile: avatar links directly to Settings — no dropdown, menu is in bottom nav ••• */}
+      <Link
+        href="/protected/settings"
+        className="md:hidden w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+        style={{ background: "var(--accent-primary)", color: "#fff" }}
+        aria-label="Settings"
+      >
+        {initials}
+      </Link>
     </div>
   );
 }
