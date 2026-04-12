@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { Button } from "./ui/button";
 import { createClient } from "@/lib/supabase/server";
-import { LogoutButton } from "./logout-button";
 import { DesktopNavLinks } from "./NavLinks";
+import { ProfileDropdown } from "./ProfileDropdown";
+import { hasPinConfigured } from "@/app/protected/guest/actions";
 
 export async function AuthButton() {
   const supabase = await createClient();
@@ -25,23 +26,16 @@ export async function AuthButton() {
 
   const handle = user.email?.split("@")[0] ?? "there";
   const initials = handle.slice(0, 2).toUpperCase();
+  const pinConfigured = await hasPinConfigured().catch(() => false);
 
   return (
     <div className="flex items-center gap-4">
       <DesktopNavLinks />
-
-      <div className="flex items-center gap-3">
-        <span className="hidden md:inline text-sm opacity-80 inv-label">
-          Hey, {handle}
-        </span>
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-          style={{ background: "var(--accent-primary)", color: "#fff" }}
-        >
-          {initials}
-        </div>
-        <LogoutButton />
-      </div>
+      <ProfileDropdown
+        userHandle={handle}
+        initials={initials}
+        hasPinConfigured={pinConfigured}
+      />
     </div>
   );
 }
