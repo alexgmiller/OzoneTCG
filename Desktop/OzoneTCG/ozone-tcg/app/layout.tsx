@@ -40,7 +40,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${lexend.variable} ${spaceMono.variable} antialiased`} style={{ backgroundColor: "#0d0b14" }}>
+      <body className={`${lexend.variable} ${spaceMono.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

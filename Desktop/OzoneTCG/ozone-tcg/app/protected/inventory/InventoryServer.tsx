@@ -31,6 +31,7 @@ type Item = {
   acquisition_type: string | null;
   chain_depth: number;
   original_cash_invested: number | null;
+  sticker_price: number | null;
 };
 
 export type ConsignerOption = {
@@ -83,7 +84,7 @@ export default async function InventoryServer() {
   const [itemsResult, consignersResult] = await Promise.all([
     supabase
       .from("items")
-      .select("id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested")
+      .select("id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested,sticker_price")
       .eq("workspace_id", workspaceId)
       .neq("status", "sold")
       .order("updated_at", { ascending: false }),

@@ -5,12 +5,15 @@ import MobileBottomNav from "@/components/NavLinks";
 import { hasEnvVars } from "@/lib/utils";
 import Link from "next/link";
 import { Suspense } from "react";
+import { hasPinConfigured } from "@/app/protected/guest/actions";
 
-export default function ProtectedLayout({
+export default async function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pinConfigured = await hasPinConfigured().catch(() => false);
+
   return (
     <main className="min-h-screen flex flex-col">
       <div className="flex-1 w-full flex flex-col">
@@ -39,7 +42,7 @@ export default function ProtectedLayout({
         </div>
       </div>
       {/* Rendered outside the sticky/backdrop-blur nav to keep fixed positioning intact on Safari */}
-      <MobileBottomNav />
+      <MobileBottomNav hasPinConfigured={pinConfigured} />
     </main>
   );
 }

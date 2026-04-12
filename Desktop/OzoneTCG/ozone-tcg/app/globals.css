@@ -72,6 +72,10 @@
     background-attachment: fixed;
     background-color: #0d0b14;
   }
+
+  html:not(.dark) {
+    background-color: #fafbfc;
+  }
 }
 
 /* ── Design token CSS variables ──────────────────────────────────────────────
@@ -118,6 +122,38 @@
   --radius-lg:   16px;
   --radius-xl:   20px;
   --radius-full: 999px;
+}
+
+/* ── Light mode token overrides ─────────────────────────────────────────────
+   Applied when next-themes uses class strategy (html without .dark class).
+   Only overrides tokens — dark mode stays untouched. */
+html:not(.dark) {
+  --bg-base:            #fafbfc;
+  --bg-surface:         #f1f3f6;
+  --bg-surface-hover:   #eceef2;
+  --bg-elevated:        #ffffff;
+  --bg-glass:           rgba(250, 251, 252, 0.90);
+
+  /* Accents stay the same — purple/teal look great on light too */
+  --accent-primary-glow: rgba(139, 92, 246, 0.15);
+
+  /* Text — dark on light background */
+  --text-bright:    #0f172a;
+  --text-primary:   #1e293b;
+  --text-secondary: #475569;
+  --text-muted:     #94a3b8;
+
+  /* Borders — subtle on white */
+  --border-subtle: rgba(0, 0, 0, 0.07);
+  --border-hover:  rgba(139, 92, 246, 0.30);
+
+  /* Shadows — lighter */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.10);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.14);
+  --shadow-glow-purple: 0 0 16px rgba(139,92,246,0.12);
+  --shadow-glow-gold:   0 0 16px rgba(234,179,8,0.12);
+  --shadow-glow-teal:   0 0 16px rgba(45,212,191,0.12);
 }
 
 /* ── Typography utilities ────────────────────────────────────────────────────*/
@@ -199,7 +235,7 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
   width: 56px;
   height: 78px;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(0,0,0,0.08);
   object-fit: cover;
   transition: transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
               box-shadow  250ms cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -220,7 +256,7 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
   width: 56px;
   height: 78px;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(0,0,0,0.08);
   background: var(--bg-surface-hover);
   display: flex;
   align-items: center;
@@ -358,8 +394,8 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
   letter-spacing: 0.04em;
   padding: 3px 7px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle);
+  background: transparent;
   color: var(--text-muted);
   white-space: nowrap;
   display: inline-flex;
@@ -371,8 +407,8 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
 }
 .row-link-btn:hover {
   color: var(--text-primary);
-  border-color: rgba(255,255,255,0.25);
-  background: rgba(255,255,255,0.08);
+  border-color: var(--border-hover);
+  background: var(--bg-surface-hover);
 }
 
 /* ── Ask price input ─────────────────────────────────────────────────────────*/
@@ -385,14 +421,14 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
   width: 80px;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  border: 1px dashed rgba(255,255,255,0.15);
+  border: 1px dashed var(--border-subtle);
   background: transparent;
   color: var(--text-muted);
   outline: none;
   transition: border-color 150ms, color 150ms;
 }
 .ask-auto:focus {
-  border-color: rgba(255,255,255,0.35);
+  border-color: var(--text-secondary);
   border-style: solid;
   color: var(--text-primary);
 }
@@ -462,7 +498,7 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
 .cost-ghost-btn {
   font-size: 11px;
   color: var(--text-muted);
-  border: 1px dashed rgba(255,255,255,0.12);
+  border: 1px dashed var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 2px 6px;
   background: transparent;
@@ -472,7 +508,7 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
 }
 .cost-ghost-btn:hover {
   color: var(--text-secondary);
-  border-color: rgba(255,255,255,0.28);
+  border-color: var(--text-secondary);
   border-style: solid;
 }
 
@@ -582,6 +618,188 @@ button:active:not(:disabled), a[role="button"]:active { transform: scale(0.97); 
 .price-flash-up   { animation: price-up   700ms ease forwards; }
 .price-flash-down { animation: price-down 700ms ease forwards; }
 .price-flash-new  { animation: price-new  300ms ease forwards; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT MODE — COMPREHENSIVE OVERRIDES
+   Direct class overrides so light mode doesn't depend on token cascade.
+   Only affects html without the .dark class (next-themes light mode).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Nav ── */
+html:not(.dark) .nav-glass {
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* ── Inventory rows ── */
+html:not(.dark) .inv-row {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  border: 1px solid #e5e7eb;
+  border-left-width: 1px; /* reset — accent border set per-variant below */
+}
+html:not(.dark) .inv-row:hover {
+  background: #f9fafb;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+}
+html:not(.dark) .inv-row-alt {
+  background: #fafafa;
+}
+html:not(.dark) .inv-row-alt:hover {
+  background: #f3f4f6;
+}
+
+/* Accent left borders — keep color, just restate so 3px overrides the 1px above */
+html:not(.dark) .inv-row-slab  { border-left: 3px solid rgba(139,92,246,0.55);  border-right: 1px solid #e5e7eb; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+html:not(.dark) .inv-row-raw   { border-left: 3px solid rgba(45,212,191,0.55);  border-right: 1px solid #e5e7eb; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+html:not(.dark) .inv-row-sell  { border-left: 3px solid #34d399; border-right: 1px solid #e5e7eb; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+html:not(.dark) .inv-row-buy   { border-left: 3px solid #60a5fa; border-right: 1px solid #e5e7eb; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+html:not(.dark) .inv-row-trade { border-left: 3px solid #eab308; border-right: 1px solid #e5e7eb; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+
+/* ── Card text ── */
+html:not(.dark) .inv-card-name {
+  color: #111827;
+}
+html:not(.dark) .inv-card-meta {
+  color: #6b7280;
+  opacity: 1;
+}
+
+/* ── Prices ── */
+html:not(.dark) .inv-price-display {
+  color: #111827;
+}
+html:not(.dark) .inv-price-source {
+  color: #9ca3af;
+}
+
+/* ── Ask inputs ── */
+html:not(.dark) .ask-auto {
+  border-color: #d1d5db;
+  color: #374151;
+}
+html:not(.dark) .ask-auto:focus {
+  border-color: #6b7280;
+  color: #111827;
+}
+html:not(.dark) .ask-custom {
+  background: rgba(139,92,246,0.06);
+  color: #111827;
+}
+html:not(.dark) .cost-ghost-btn {
+  border-color: #d1d5db;
+  color: #9ca3af;
+}
+html:not(.dark) .cost-ghost-btn:hover {
+  border-color: #9ca3af;
+  color: #6b7280;
+}
+
+/* ── Row link buttons ── */
+html:not(.dark) .row-link-btn {
+  border-color: #d1d5db;
+  background: #f9fafb;
+  color: #6b7280;
+}
+html:not(.dark) .row-link-btn:hover {
+  border-color: #9ca3af;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* ── Section headers ── */
+html:not(.dark) .section-header-slab {
+  background: linear-gradient(90deg, rgba(139,92,246,0.07) 0%, transparent 65%);
+  border-left: 3px solid rgba(139,92,246,0.45);
+}
+html:not(.dark) .section-header-raw {
+  background: linear-gradient(90deg, rgba(45,212,191,0.06) 0%, transparent 65%);
+  border-left: 3px solid rgba(45,212,191,0.45);
+}
+
+/* ── Grid tiles ── */
+html:not(.dark) .grid-tile {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+html:not(.dark) .grid-tile:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+}
+
+/* ── Metric / summary cards ── */
+html:not(.dark) .metric-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+html:not(.dark) .metric-profit-positive {
+  background: linear-gradient(135deg, rgba(22,163,74,0.06) 0%, rgba(22,163,74,0.02) 100%);
+  border-left: 3px solid rgba(22,163,74,0.45);
+  border-top: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+html:not(.dark) .metric-profit-negative {
+  background: linear-gradient(135deg, rgba(225,29,72,0.06) 0%, rgba(225,29,72,0.02) 100%);
+  border-left: 3px solid rgba(225,29,72,0.45);
+  border-top: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* ── Filter pills ── */
+html:not(.dark) .pill-active {
+  background: #ede9fe;
+  border-color: #7c3aed !important;
+  color: #7c3aed;
+  box-shadow: none;
+}
+
+/* ── Condition badges ── */
+html:not(.dark) .cond-nm  { color: #16a34a; border-color: rgba(22,163,74,0.4);   background: rgba(22,163,74,0.08);  }
+html:not(.dark) .cond-lp  { color: #65a30d; border-color: rgba(101,163,13,0.4);  background: rgba(101,163,13,0.08); }
+html:not(.dark) .cond-mp  { color: #ea580c; border-color: rgba(234,88,12,0.4);   background: rgba(234,88,12,0.08);  }
+html:not(.dark) .cond-hp  { color: #e11d48; border-color: rgba(225,29,72,0.4);   background: rgba(225,29,72,0.08);  }
+html:not(.dark) .cond-dmg { color: #64748b; border-color: rgba(100,116,139,0.35); background: rgba(100,116,139,0.07); }
+
+/* ── Margin pills ── */
+html:not(.dark) .margin-positive {
+  color: #16a34a;
+  background: rgba(22,163,74,0.08);
+}
+html:not(.dark) .margin-negative {
+  color: #e11d48;
+  background: rgba(225,29,72,0.08);
+}
+
+/* ── Modals ── */
+html:not(.dark) .modal-panel {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.14);
+}
+
+/* ── Quick links ── */
+html:not(.dark) .quick-link {
+  color: #374151;
+}
+html:not(.dark) .quick-link:hover {
+  color: #111827;
+  background: rgba(139,92,246,0.07);
+}
+
+/* ── Card thumbnails ── */
+html:not(.dark) .card-thumb-placeholder {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+}
+
+/* ── Skeleton ── */
+html:not(.dark) .skeleton {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e9eaec 50%, #f3f4f6 75%);
+  background-size: 600px 100%;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SKELETON LOADERS

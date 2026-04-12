@@ -50,6 +50,7 @@ type Item = {
   acquisition_type: string | null;
   chain_depth: number;
   original_cash_invested: number | null;
+  sticker_price: number | null;
 };
 
 type ItemForm = {
@@ -68,6 +69,7 @@ type ItemForm = {
   setName: string;
   cardNumber: string;
   grade: string;
+  stickerPrice: string;
 };
 
 type StagedItem = ItemForm & { _id: string };
@@ -160,6 +162,7 @@ const blankForm = (): ItemForm => ({
   setName: "",
   cardNumber: "",
   grade: "",
+  stickerPrice: "",
 });
 
 function itemToForm(it: Item): ItemForm {
@@ -179,6 +182,7 @@ function itemToForm(it: Item): ItemForm {
     setName: it.set_name ?? "",
     cardNumber: it.card_number ?? "",
     grade: it.grade ?? "",
+    stickerPrice: it.sticker_price != null ? String(it.sticker_price) : "",
   };
 }
 
@@ -415,6 +419,13 @@ function ItemFormFields({
           inputMode="decimal"
           onChange={(e) => setForm({ ...form, cost: e.target.value, buyPct: "" })}
         />
+        <input
+          className="border rounded-lg px-3 py-2 text-sm bg-background col-span-2"
+          placeholder="Sticker price (shown to guests)"
+          value={form.stickerPrice}
+          inputMode="decimal"
+          onChange={(e) => setForm({ ...form, stickerPrice: e.target.value })}
+        />
       </div>
 
       <textarea
@@ -511,6 +522,7 @@ export default function InventoryClient({
   const [addOpen, setAddOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [cardSearchOpen, setCardSearchOpen] = useState(false);
   const [editImagePickerOpen, setEditImagePickerOpen] = useState(false);
@@ -1036,6 +1048,7 @@ export default function InventoryClient({
           set_name: item.setName || null,
           card_number: item.cardNumber || null,
           grade: item.grade || null,
+          sticker_price: toNum(item.stickerPrice),
         }))
       );
       setStagedItems([]);
@@ -1062,6 +1075,7 @@ export default function InventoryClient({
         set_name: editForm.setName || null,
         card_number: editForm.cardNumber || null,
         grade: editForm.grade || null,
+        sticker_price: toNum(editForm.stickerPrice),
       });
       closeEdit();
     } finally { setBusy(false); }
@@ -1677,7 +1691,7 @@ export default function InventoryClient({
                 return (
                   <div
                     key={it.id}
-                    className={`relative inv-row inv-row-slab flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""}`}
+                    className={`relative inv-row inv-row-slab flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""} ${consigner ? "border-l-2 border-l-amber-500/60" : ""}`}
                     onClick={() => toggleSelect(it.id)}
                   >
                     {/* Mobile tap target — opens detail sheet instead of selecting */}
@@ -1700,7 +1714,7 @@ export default function InventoryClient({
                         <div className="flex items-center gap-1 flex-wrap">
                           {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
                           {consigner ? (
-                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
+                            <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">{consigner.name}</span>
                           ) : it.owner !== "shared" ? (
                             <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
                           ) : null}
@@ -1838,7 +1852,7 @@ export default function InventoryClient({
                 return (
                   <div
                     key={it.id}
-                    className={`relative inv-row inv-row-raw flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""}`}
+                    className={`relative inv-row inv-row-raw flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""} ${consigner ? "border-l-2 border-l-amber-500/60" : ""}`}
                     onClick={() => toggleSelect(it.id)}
                   >
                     {/* Mobile tap target — opens detail sheet instead of selecting */}
@@ -1866,7 +1880,7 @@ export default function InventoryClient({
                           )}
                           {it.category !== "single" && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>}
                           {consigner ? (
-                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{consigner.name}</span>
+                            <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">{consigner.name}</span>
                           ) : it.owner !== "shared" ? (
                             <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
                           ) : null}
@@ -2923,7 +2937,7 @@ export default function InventoryClient({
             </button>
             <button
               className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-card border border-border shadow-lg text-sm font-medium whitespace-nowrap"
-              onClick={() => { setFabOpen(false); setSearchOpen(true); }}
+              onClick={() => { setFabOpen(false); setMobileFilterOpen(true); }}
             >
               <Search size={14} />Search &amp; Filter
             </button>
@@ -3124,6 +3138,90 @@ export default function InventoryClient({
           </div>
         );
       })()}
+
+      {/* ── Mobile Filter Bottom Sheet ── */}
+      {mobileFilterOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setMobileFilterOpen(false)}
+          />
+          {/* Sheet */}
+          <div className="relative bg-card border-t border-border rounded-t-2xl shadow-2xl px-4 pt-3 pb-10 space-y-3 max-h-[80vh] overflow-y-auto">
+            {/* Drag handle */}
+            <div className="w-10 h-1 rounded-full bg-border mx-auto mb-2" />
+            {/* Title row */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Search &amp; Filter</span>
+              <button
+                onClick={() => setMobileFilterOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-muted/60 text-muted-foreground text-sm"
+              >✕</button>
+            </div>
+            {/* Search input */}
+            <input
+              className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
+              placeholder="Search by name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {/* Filter dropdowns */}
+            <div className="grid grid-cols-2 gap-2">
+              <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value as Category | "all")}>
+                <option value="all">All types</option>
+                <option value="single">Singles</option>
+                <option value="slab">Slabs</option>
+                <option value="sealed">Sealed</option>
+              </select>
+              <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as Status | "all")}>
+                <option value="all">All statuses</option>
+                <option value="inventory">Inventory</option>
+              </select>
+              <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={filterOwner} onChange={(e) => setFilterOwner(e.target.value as Owner | "all")}>
+                <option value="all">All owners</option>
+                <option value="alex">Alex</option>
+                <option value="mila">Mila</option>
+                <option value="shared">Shared</option>
+              </select>
+              {consigners.length > 0 && (
+                <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={filterConsigner} onChange={(e) => setFilterConsigner(e.target.value)}>
+                  <option value="all">All consigners</option>
+                  <option value="none">Own inventory</option>
+                  {consigners.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+              <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+                <option value="date-desc">Newest first</option>
+                <option value="date-asc">Oldest first</option>
+                <option value="name-asc">Name A→Z</option>
+                <option value="name-desc">Name Z→A</option>
+                <option value="market-desc">Market ↓</option>
+                <option value="market-asc">Market ↑</option>
+                <option value="cost-desc">Cost ↓</option>
+                <option value="cost-asc">Cost ↑</option>
+              </select>
+            </div>
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-1">
+              {isFiltered ? (
+                <button
+                  className="text-xs underline opacity-60"
+                  onClick={() => { setSearch(""); setFilterCategory("all"); setFilterStatus("all"); setFilterOwner("all"); setFilterConsigner("all"); }}
+                >
+                  Clear filters
+                </button>
+              ) : <span />}
+              <button
+                className="px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold min-h-[44px]"
+                onClick={() => setMobileFilterOpen(false)}
+              >Done</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

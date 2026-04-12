@@ -31,6 +31,7 @@ type ItemInput = {
   original_cash_invested?: number | null;
   // Grading cert
   cert_number?: string | null;
+  sticker_price?: number | null;
 };
 
 export type CardTransaction = {

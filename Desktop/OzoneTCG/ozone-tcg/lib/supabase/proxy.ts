@@ -13,6 +13,24 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  const { pathname } = request.nextUrl;
+  const guestMode = request.cookies.get("guestMode")?.value;
+
+  // ── Guest mode routing ──────────────────────────────────────────────────
+  // If guest mode is active, block access to all protected routes
+  if (guestMode && pathname.startsWith("/protected")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/guest";
+    return NextResponse.redirect(url);
+  }
+
+  // If not in guest mode, block access to /guest
+  if (!guestMode && (pathname === "/guest" || pathname.startsWith("/guest/"))) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/protected/dashboard";
+    return NextResponse.redirect(url);
+  }
+
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
@@ -48,11 +66,13 @@ export async function updateSession(request: NextRequest) {
   const user = data?.claims;
 
   if (
-    request.nextUrl.pathname !== "/" &&
+    pathname !== "/" &&
     !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth") &&
-    !request.nextUrl.pathname.startsWith("/api/admin")
+    !pathname.startsWith("/login") &&
+    !pathname.startsWith("/auth") &&
+    !pathname.startsWith("/api/admin") &&
+    !pathname.startsWith("/guest") &&
+    !pathname.startsWith("/consigner")
   ) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();
