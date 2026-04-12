@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchSlabSalesFromCert, calculateSlabPricing } from "@/lib/ebay";
 
-export type GradingCompany = "PSA" | "BGS" | "CGC";
+export type GradingCompany = "PSA" | "BGS" | "CGC" | "TAG";
 
 export type CertLookupResult = {
   certNumber: string;
@@ -194,10 +194,11 @@ async function lookupPSA(certNumber: string): Promise<PSALookupResult | PSAError
   return result;
 }
 
-// ── BGS / CGC: no public API ──────────────────────────────────────────────────
+// ── BGS / CGC / TAG: no public API ────────────────────────────────────────────
 
 async function lookupBGS(_: string): Promise<null> { return null; }
 async function lookupCGC(_: string): Promise<null> { return null; }
+async function lookupTAG(_: string): Promise<null> { return null; }
 
 // ── route handler ─────────────────────────────────────────────────────────────
 
@@ -225,10 +226,13 @@ export async function POST(req: NextRequest) {
       }
     } else if (company === "BGS") {
       await lookupBGS(certNumber);
-      lookupErrorMsg = "BGS cert lookup is not yet supported. Enter card details manually.";
-    } else {
+      lookupErrorMsg = "BGS cert lookup not supported yet — enter card details manually.";
+    } else if (company === "CGC") {
       await lookupCGC(certNumber);
-      lookupErrorMsg = "CGC cert lookup is not yet supported. Enter card details manually.";
+      lookupErrorMsg = "CGC cert lookup not supported yet — enter card details manually.";
+    } else if (company === "TAG") {
+      await lookupTAG(certNumber);
+      lookupErrorMsg = "TAG does not have a public cert API — enter card details manually.";
     }
 
     if (!certDetails) {

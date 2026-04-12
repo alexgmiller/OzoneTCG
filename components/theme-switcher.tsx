@@ -28,6 +28,7 @@ const ThemeSwitcher = () => {
   const ICON_SIZE = 16;
 
   return (
+    <div className="relative">
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size={"sm"}>
@@ -72,6 +73,7 @@ const ThemeSwitcher = () => {
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+    </div>
   );
 };
 
