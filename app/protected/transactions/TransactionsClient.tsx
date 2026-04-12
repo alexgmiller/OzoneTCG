@@ -1015,11 +1015,14 @@ function PastDealAlbum({ monthLabel, logs, onViewLog }: { monthLabel: string; lo
 function DealsTabContent({
   logs,
   onLogsChange: setLogs,
+  addOpen,
+  onAddClose,
 }: {
   logs: DealLog[];
   onLogsChange: React.Dispatch<React.SetStateAction<DealLog[]>>;
+  addOpen: boolean;
+  onAddClose: () => void;
 }) {
-  const [addOpen, setAddOpen] = useState(false);
   const [viewLog, setViewLog] = useState<DealLog | null>(null);
 
   const activeLogs = logs.filter((l) => !l.resolved);
@@ -1057,15 +1060,9 @@ function DealsTabContent({
   return (
     <div className="space-y-6">
       {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm font-semibold inv-label">Active Deals</div>
-          <div className="text-xs opacity-40">{activeLogs.length} open</div>
-        </div>
-        <button
-          onClick={() => setAddOpen(true)}
-          className="px-3 py-1.5 rounded-lg bg-violet-600/20 border border-violet-500/30 text-violet-400 text-sm font-semibold hover:bg-violet-600/30 transition-colors"
-        >+ Log Deal</button>
+      <div>
+        <div className="text-sm font-semibold inv-label">Active Deals</div>
+        <div className="text-xs opacity-40">{activeLogs.length} open</div>
       </div>
 
       {/* Active carousel — scroll-snap horizontal */}
@@ -1100,8 +1097,8 @@ function DealsTabContent({
       {/* Modals */}
       {addOpen && (
         <AddDealModal
-          onClose={() => setAddOpen(false)}
-          onAdded={(log) => { setLogs((prev) => [log, ...prev]); }}
+          onClose={onAddClose}
+          onAdded={(log) => { setLogs((prev) => [log, ...prev]); onAddClose(); }}
         />
       )}
       {viewLog && (
@@ -1143,6 +1140,7 @@ export default function TransactionsClient({
   const [buyModalOpen, setBuyModalOpen] = useState(false);
   const [sellModalOpen, setSellModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [dealLogOpen, setDealLogOpen] = useState(false);
   const [revertingId, setRevertingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localDealLogs, setLocalDealLogs] = useState<DealLog[]>(dealLogs);
@@ -1323,20 +1321,25 @@ export default function TransactionsClient({
         })()}
       </div>
 
-      {/* Action buttons — hidden on deals tab */}
-      {tab !== "deals" && (
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => setBuyModalOpen(true)} className="px-3 py-2 rounded-lg bg-blue-600/15 border border-blue-500/25 text-blue-400 text-sm font-semibold hover:bg-blue-600/25 transition-colors duration-150 flex items-center gap-1.5">
-            <span className="text-base leading-none">+</span> Record Buy
+      {/* Action buttons — always visible */}
+      <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-2">
+          <button onClick={() => setBuyModalOpen(true)} className="py-2 rounded-lg bg-blue-600/15 border border-blue-500/25 text-blue-400 text-sm font-semibold hover:bg-blue-600/25 transition-colors duration-150 flex items-center justify-center gap-1.5">
+            <span className="text-base leading-none">+</span> Buy
           </button>
-          <button onClick={() => setSellModalOpen(true)} className="px-3 py-2 rounded-lg bg-emerald-600/15 border border-emerald-500/25 text-emerald-400 text-sm font-semibold hover:bg-emerald-600/25 transition-colors duration-150 flex items-center gap-1.5">
-            <span className="text-base leading-none">$</span> Record Sell
+          <button onClick={() => setSellModalOpen(true)} className="py-2 rounded-lg bg-emerald-600/15 border border-emerald-500/25 text-emerald-400 text-sm font-semibold hover:bg-emerald-600/25 transition-colors duration-150 flex items-center justify-center gap-1.5">
+            <span className="text-base leading-none">$</span> Sell
           </button>
-          <button onClick={() => setTradeModalOpen(true)} className="px-3 py-2 rounded-lg bg-violet-600/15 border border-violet-500/25 text-violet-400 text-sm font-semibold hover:bg-violet-600/25 transition-colors duration-150 flex items-center gap-1.5">
-            <span className="text-base leading-none">⇄</span> Record Trade
+          <button onClick={() => setTradeModalOpen(true)} className="py-2 rounded-lg bg-violet-600/15 border border-violet-500/25 text-violet-400 text-sm font-semibold hover:bg-violet-600/25 transition-colors duration-150 flex items-center justify-center gap-1.5">
+            <span className="text-base leading-none">⇄</span> Trade
           </button>
         </div>
-      )}
+        {tab === "deals" && (
+          <button onClick={() => setDealLogOpen(true)} className="w-full py-2 rounded-lg bg-violet-600/20 border border-violet-500/30 text-violet-400 text-sm font-semibold hover:bg-violet-600/30 transition-colors flex items-center justify-center gap-1.5">
+            + Log Deal
+          </button>
+        )}
+      </div>
 
       {/* Tab bar */}
       <div className="space-y-2">
@@ -1402,7 +1405,7 @@ export default function TransactionsClient({
             ? <EmptyState q={q} label={q ? undefined : "No trades recorded yet."} />
             : filteredTrades.map((t) => <TradeRow key={t.tradeGroupId} trade={t} onRevert={handleRevertTrade} />)
         )}
-        {tab === "deals" && <DealsTabContent logs={localDealLogs} onLogsChange={setLocalDealLogs} />}
+        {tab === "deals" && <DealsTabContent logs={localDealLogs} onLogsChange={setLocalDealLogs} addOpen={dealLogOpen} onAddClose={() => setDealLogOpen(false)} />}
       </div>
 
       {/* Modals */}
