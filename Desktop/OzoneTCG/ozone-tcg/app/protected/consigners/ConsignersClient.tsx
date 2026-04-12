@@ -199,7 +199,7 @@ function ReceiveCardsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -367,7 +367,7 @@ function RecordPayoutModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl">
@@ -549,7 +549,7 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
       {/* Add modal */}
       {showAdd && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowAdd(false); }}
         >
           <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-3">
@@ -568,7 +568,7 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
       {/* Edit modal */}
       {editingId && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setEditingId(null); }}
         >
           <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-3">
