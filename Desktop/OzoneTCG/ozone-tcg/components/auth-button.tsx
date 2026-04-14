@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DesktopNavLinks } from "./NavLinks";
 import { ProfileDropdown } from "./ProfileDropdown";
 import { hasPinConfigured } from "@/app/protected/guest/actions";
+import { getActiveShow } from "@/app/protected/show/actions";
 
 export async function AuthButton() {
   const supabase = await createClient();
@@ -26,11 +27,14 @@ export async function AuthButton() {
 
   const handle = user.email?.split("@")[0] ?? "there";
   const initials = handle.slice(0, 2).toUpperCase();
-  const pinConfigured = await hasPinConfigured().catch(() => false);
+  const [pinConfigured, activeShow] = await Promise.all([
+    hasPinConfigured().catch(() => false),
+    getActiveShow().catch(() => null),
+  ]);
 
   return (
     <div className="flex items-center gap-4">
-      <DesktopNavLinks />
+      <DesktopNavLinks hasActiveShow={!!activeShow} />
       {/* Desktop: full avatar dropdown */}
       <div className="hidden md:block">
         <ProfileDropdown

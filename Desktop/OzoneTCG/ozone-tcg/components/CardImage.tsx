@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 
 type Props = {
   src: string | null | undefined;
@@ -10,6 +10,10 @@ type Props = {
   className?: string;
   /** If provided, the placeholder shows an upload button */
   onUpload?: (file: File) => Promise<void>;
+  /** If provided, shows a small flag button on the image for reporting incorrect images */
+  onReport?: () => Promise<void>;
+  /** Show an "Unverified" badge — for images that came from automated sources */
+  unverified?: boolean;
 };
 
 /**
@@ -17,19 +21,63 @@ type Props = {
  * Shows the card image if available, otherwise renders a styled placeholder.
  * If onUpload is provided, the placeholder has a tap-to-upload button.
  */
-export default function CardImage({ src, name, setName, cardNumber, className = "", onUpload }: Props) {
+export default function CardImage({ src, name, setName, cardNumber, className = "", onUpload, onReport, unverified }: Props) {
   const [failed, setFailed] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [reported, setReported] = useState(false);
+
+  const handleReport = useCallback(async () => {
+    if (!onReport || reporting || reported) return;
+    setReporting(true);
+    try {
+      await onReport();
+      setReported(true);
+    } finally {
+      setReporting(false);
+    }
+  }, [onReport, reporting, reported]);
 
   if (src && !failed) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt={name}
-        loading="lazy"
-        className={`w-full h-auto rounded-lg ${className}`}
-        onError={() => setFailed(true)}
-      />
+      <div className={`relative group ${className}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={name}
+          loading="lazy"
+          className="w-full h-auto rounded-lg"
+          onError={() => setFailed(true)}
+        />
+        {/* Unverified badge */}
+        {unverified && (
+          <span className="absolute top-1 left-1 text-[8px] font-semibold px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 pointer-events-none">
+            Unverified
+          </span>
+        )}
+        {/* Report button — visible on hover */}
+        {onReport && !reported && (
+          <button
+            type="button"
+            onClick={handleReport}
+            disabled={reporting}
+            title="Report wrong image"
+            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full bg-black/60 text-white/70 hover:text-white flex items-center justify-center"
+          >
+            {reporting ? (
+              <span className="text-[8px] animate-spin">⟳</span>
+            ) : (
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="currentColor">
+                <path d="M1.5 1h4.5l-1 2 1 2H2.5L1.5 1zM1.5 1v7" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none"/>
+              </svg>
+            )}
+          </button>
+        )}
+        {reported && (
+          <span className="absolute top-1 right-1 text-[8px] font-semibold px-1 py-0.5 rounded bg-rose-500/20 text-rose-400">
+            Reported
+          </span>
+        )}
+      </div>
     );
   }
 
@@ -50,13 +98,7 @@ function CardPlaceholder({
   cardNumber,
   className = "",
   onUpload,
-}: {
-  name: string;
-  setName?: string | null;
-  cardNumber?: string | null;
-  className?: string;
-  onUpload?: (file: File) => Promise<void>;
-}) {
+}: Pick<Props, "name" | "setName" | "cardNumber" | "className" | "onUpload">) {
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);

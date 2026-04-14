@@ -199,19 +199,19 @@ function ReceiveCardsModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="modal-panel w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold">Receive Cards</h2>
+            <h2 className="modal-title">Receive Cards</h2>
             <p className="text-xs opacity-50 mt-0.5">
               {consigner.name} · {Math.round(consigner.rate * 100)}% rate
             </p>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors text-lg">✕</button>
+          <button onClick={onClose} className="modal-close-btn">✕</button>
         </div>
 
         <div className="p-5 space-y-3">
@@ -300,14 +300,11 @@ function ReceiveCardsModal({
         </div>
 
         <div className="flex gap-3 px-5 py-4 border-t border-border">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted/40 transition-colors"
-          >Cancel</button>
+          <button onClick={onClose} className="modal-btn-ghost flex-1">Cancel</button>
           <button
             onClick={handleSubmit}
             disabled={busy}
-            className="flex-1 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+            className="modal-btn-primary flex-1"
           >
             {busy ? "Saving…" : `Add ${cards.filter((c) => c.name.trim()).length || ""} Card${cards.filter((c) => c.name.trim()).length !== 1 ? "s" : ""}`}
           </button>
@@ -367,16 +364,16 @@ function RecordPayoutModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl">
+      <div className="modal-panel w-full max-w-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold">Record Payout</h2>
+            <h2 className="modal-title">Record Payout</h2>
             <p className="text-xs opacity-50 mt-0.5">{consigner.name}</p>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">✕</button>
+          <button onClick={onClose} className="modal-close-btn">✕</button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -460,14 +457,11 @@ function RecordPayoutModal({
         </div>
 
         <div className="flex gap-3 px-5 py-4 border-t border-border">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted/40 transition-colors"
-          >Cancel</button>
+          <button onClick={onClose} className="modal-btn-ghost flex-1">Cancel</button>
           <button
             onClick={handleSubmit}
             disabled={busy || amount <= 0}
-            className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+            className="modal-btn-confirm flex-1"
           >
             {busy ? "Saving…" : `Record ${amount > 0 ? fmt(amount) : "Payout"}`}
           </button>
@@ -549,17 +543,17 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
       {/* Add modal */}
       {showAdd && (
         <div
-          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowAdd(false); }}
         >
-          <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-3">
-            <div className="font-semibold">New Consigner</div>
+          <div className="modal-panel w-full max-w-sm p-5 space-y-3">
+            <div className="modal-title">New Consigner</div>
             <ConsignerFormFields form={addForm} setForm={setAddForm} />
             <div className="flex gap-2">
-              <button className="flex-1 px-4 py-2 rounded-lg border font-medium" onClick={onAdd} disabled={busy}>
+              <button className="modal-btn-primary flex-1" onClick={onAdd} disabled={busy}>
                 {busy ? "Saving…" : "Create"}
               </button>
-              <button className="px-4 py-2 rounded-lg border opacity-60" onClick={() => setShowAdd(false)} disabled={busy}>Cancel</button>
+              <button className="modal-btn-ghost" onClick={() => setShowAdd(false)} disabled={busy}>Cancel</button>
             </div>
           </div>
         </div>
@@ -568,17 +562,17 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
       {/* Edit modal */}
       {editingId && (
         <div
-          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setEditingId(null); }}
         >
-          <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-3">
-            <div className="font-semibold">Edit Consigner</div>
+          <div className="modal-panel w-full max-w-sm p-5 space-y-3">
+            <div className="modal-title">Edit Consigner</div>
             <ConsignerFormFields form={editForm} setForm={setEditForm} />
             <div className="flex gap-2">
-              <button className="flex-1 px-4 py-2 rounded-lg border font-medium" onClick={() => onSaveEdit(editingId)} disabled={busy}>
+              <button className="modal-btn-primary flex-1" onClick={() => onSaveEdit(editingId)} disabled={busy}>
                 {busy ? "Saving…" : "Save"}
               </button>
-              <button className="px-4 py-2 rounded-lg border opacity-60" onClick={() => setEditingId(null)} disabled={busy}>Cancel</button>
+              <button className="modal-btn-ghost" onClick={() => setEditingId(null)} disabled={busy}>Cancel</button>
             </div>
           </div>
         </div>

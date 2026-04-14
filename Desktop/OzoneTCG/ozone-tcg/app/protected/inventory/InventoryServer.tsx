@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { makeSlabPriceKey, type SlabSale } from "@/lib/ebay";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
+import { loadSettings } from "@/app/protected/settings/actions";
 import InventoryClient from "./InventoryClient";
 
 type Category = "single" | "slab" | "sealed";
@@ -34,6 +35,10 @@ type Item = {
   sticker_price: number | null;
   acquired_market_price: number | null;
   acquired_date: string | null;
+  // Sealed product metadata
+  product_type: string | null;
+  quantity: number;
+  language: string;
 };
 
 export type ConsignerOption = {
@@ -83,10 +88,10 @@ export default async function InventoryServer() {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
-  const [itemsResult, consignersResult] = await Promise.all([
+  const [itemsResult, consignersResult, settings] = await Promise.all([
     supabase
       .from("items")
-      .select("id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested,sticker_price,acquired_market_price,acquired_date")
+      .select("id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested,sticker_price,acquired_market_price,acquired_date,product_type,quantity,language")
       .eq("workspace_id", workspaceId)
       .neq("status", "sold")
       .order("updated_at", { ascending: false }),
@@ -95,19 +100,25 @@ export default async function InventoryServer() {
       .select("id,name,rate")
       .eq("workspace_id", workspaceId)
       .order("name"),
+    loadSettings().catch(() => null),
   ]);
 
-  // Log the actual error object so we can see what's failing
+  // Log the actual error object so we can see what's failing.
+  // JSON.stringify with getOwnPropertyNames captures non-enumerable properties that
+  // are lost when Next.js serializes the error across the dev-server→browser boundary.
   if (itemsResult.error) {
-    console.error("[InventoryServer] items query failed:", {
-      message: itemsResult.error.message,
-      code: itemsResult.error.code,
-      details: itemsResult.error.details,
-      hint: itemsResult.error.hint,
-    });
+    const e = itemsResult.error;
+    console.error(
+      "[InventoryServer] items query failed:",
+      JSON.stringify(e, Object.getOwnPropertyNames(e))
+    );
   }
   if (consignersResult.error) {
-    console.error("[InventoryServer] consigners query failed:", consignersResult.error.message);
+    const e = consignersResult.error;
+    console.error(
+      "[InventoryServer] consigners query failed:",
+      JSON.stringify(e, Object.getOwnPropertyNames(e))
+    );
   }
 
   // Never crash the page on a DB error — render with whatever data we have
@@ -154,6 +165,8 @@ export default async function InventoryServer() {
 
   const totalItems = (data ?? []).length;
   const slabCount = (data ?? []).filter((i) => i.category === "slab").length;
+  const sealedCount = (data ?? []).filter((i) => i.category === "sealed").length;
+  const singleCount = (data ?? []).filter((i) => i.category === "single").length;
 
   return (
     <div className="p-4 space-y-4">
@@ -162,9 +175,11 @@ export default async function InventoryServer() {
         <p className="text-xs opacity-40 mt-0.5 inv-label">
           {totalItems === 0
             ? "Nothing here yet — let's change that"
-            : slabCount > 0
-              ? `${slabCount} slab${slabCount !== 1 ? "s" : ""} + ${totalItems - slabCount} raw`
-              : `${totalItems} card${totalItems !== 1 ? "s" : ""} in inventory`}
+            : [
+                slabCount > 0 ? `${slabCount} slab${slabCount !== 1 ? "s" : ""}` : null,
+                sealedCount > 0 ? `${sealedCount} sealed` : null,
+                singleCount > 0 ? `${singleCount} single${singleCount !== 1 ? "s" : ""}` : null,
+              ].filter(Boolean).join(" · ")}
         </p>
       </div>
 
@@ -174,6 +189,8 @@ export default async function InventoryServer() {
         workspaceId={workspaceId}
         slabPrices={slabPriceMap}
         rawCardPrices={rawCardPriceMap}
+        pricingStrategy={settings?.pricing_strategy ?? "auto"}
+        gradingCost={settings?.grading_cost ?? 20}
       />
     </div>
   );

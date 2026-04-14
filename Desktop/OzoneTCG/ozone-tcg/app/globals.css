@@ -69,7 +69,6 @@
 
   html.dark {
     background-image: var(--_grad1), var(--_grad2);
-    background-attachment: fixed;
     background-color: #0d0b14;
   }
 
@@ -184,6 +183,16 @@ html:not(.dark) {
 /* ── Button tactile press ────────────────────────────────────────────────────*/
 /* Exclude Radix trigger buttons ([data-state]) — transform at click-time disrupts Portal position calculation */
 button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([data-state]) { transform: scale(0.97); }
+
+/* ── Show mode bottom nav — hardened fixed positioning ──────────────────────*/
+/* Uses !important to override any stacking context created by sticky/backdrop-filter ancestors */
+.show-mode-bottom-nav {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 9999 !important;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    NAVIGATION
@@ -572,7 +581,7 @@ button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([dat
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .modal-backdrop {
-  background: rgba(0,0,0,0.65);
+  background: rgba(0,0,0,0.70);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -586,6 +595,286 @@ button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([dat
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Modal form elements — auto-styled via .modal-panel descendant ───────────
+   All inputs, selects, textareas inside .modal-panel get the dark field style
+   automatically. No need to add individual classes on each element.
+   Excludes checkboxes, radios, file inputs, and hidden inputs.            */
+
+.modal-panel input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]),
+.modal-panel select,
+.modal-panel textarea {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+  font-size: 13px;
+}
+.modal-panel input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"])::placeholder,
+.modal-panel textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+.modal-panel input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]):focus,
+.modal-panel select:focus,
+.modal-panel textarea:focus {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
+}
+.modal-panel select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+}
+.modal-panel select option  { background: var(--bg-elevated); color: var(--text-primary); }
+.modal-panel select optgroup { background: var(--bg-elevated); color: var(--text-muted); }
+
+/* Explicit classes still available for standalone use outside .modal-panel */
+.modal-input {
+  background: var(--bg-surface);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+  width: 100%;
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.modal-input::placeholder { color: var(--text-muted); }
+.modal-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
+}
+.modal-select {
+  appearance: none;
+  cursor: pointer;
+  background: var(--bg-surface);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 9px 30px 9px 12px;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+  width: 100%;
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.modal-select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
+}
+.modal-select option  { background: var(--bg-elevated); color: var(--text-primary); }
+.modal-select optgroup { background: var(--bg-elevated); color: var(--text-muted); }
+
+/* ── Modal typography ────────────────────────────────────────────────────────*/
+.modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-bright);
+  line-height: 1.3;
+  font-family: var(--font-display, "Lexend", sans-serif);
+  letter-spacing: 0.005em;
+}
+.modal-field-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 5px;
+}
+.modal-section-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Modal close button ──────────────────────────────────────────────────────*/
+.modal-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  transition: color 120ms, background 120ms;
+  flex-shrink: 0;
+  padding: 0;
+}
+.modal-close-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+
+/* ── Modal buttons ───────────────────────────────────────────────────────────*/
+/* Primary: solid purple — main action (Save, Record, Submit) */
+.modal-btn-primary {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+  transition: filter 150ms;
+  box-shadow: 0 2px 8px rgba(139,92,246,0.28);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.modal-btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+.modal-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Ghost: borderless secondary — Cancel */
+.modal-btn-ghost {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 13px;
+  border: 1px solid rgba(255,255,255,0.10);
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background 150ms;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.modal-btn-ghost:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.04);
+}
+.modal-btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Outline: ghost with accent border — Find Image, secondary accent actions */
+.modal-btn-outline {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--accent-primary);
+  font-weight: 500;
+  font-size: 13px;
+  border: 1px solid rgba(139,92,246,0.40);
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background 150ms;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.modal-btn-outline:hover:not(:disabled) {
+  background: rgba(139,92,246,0.08);
+  border-color: var(--accent-primary);
+}
+.modal-btn-outline:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Warning outline: amber — Send to Grading, caution actions */
+.modal-btn-warning {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: #f59e0b;
+  font-weight: 500;
+  font-size: 13px;
+  border: 1px solid rgba(245,158,11,0.35);
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background 150ms;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.modal-btn-warning:hover:not(:disabled) {
+  background: rgba(245,158,11,0.07);
+  border-color: #f59e0b;
+}
+.modal-btn-warning:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Danger outline: red — Delete (pending confirm) */
+.modal-btn-danger {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--accent-red);
+  font-weight: 500;
+  font-size: 13px;
+  border: 1px solid rgba(244,63,94,0.35);
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background 150ms;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.modal-btn-danger:hover:not(:disabled) {
+  background: rgba(244,63,94,0.08);
+  border-color: var(--accent-red);
+}
+.modal-btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Destructive: solid red — confirmed delete / irreversible */
+.modal-btn-destructive {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  background: var(--accent-red);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+  transition: filter 150ms;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.modal-btn-destructive:hover:not(:disabled) { filter: brightness(1.1); }
+.modal-btn-destructive:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Confirm: solid green — Confirm Sale, complete transaction */
+.modal-btn-confirm {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  background: var(--accent-green);
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+  transition: filter 150ms;
+  box-shadow: 0 2px 8px rgba(52,211,153,0.22);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.modal-btn-confirm:hover:not(:disabled) { filter: brightness(1.05); }
+.modal-btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Modal card/item row (within transaction modals) ─────────────────────────*/
+.modal-card-row {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+/* ── Slab pricing detail panel (full-screen mobile → floating modal desktop) ─*/
+@media (min-width: 640px) {
+  .slab-pricing-panel {
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-lg), var(--shadow-glow-purple);
+    animation: modal-in 200ms ease-out forwards;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -603,6 +892,98 @@ button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([dat
 .grid-tile:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-md), var(--shadow-glow-purple);
+}
+
+/* ── Slab case overlay (grid view) ──────────────────────────────────────── */
+
+/* Slab tile overrides default hover with scale + company glow */
+.slab-tile:hover {
+  transform: scale(1.05) !important;
+}
+.slab-tile[data-company="psa"]:hover  { box-shadow: 0 8px 28px rgba(220,38,38,0.50),  0 2px 8px rgba(0,0,0,0.30) !important; }
+.slab-tile[data-company="bgs"]:hover  { box-shadow: 0 8px 28px rgba(37,99,235,0.50),  0 2px 8px rgba(0,0,0,0.30) !important; }
+.slab-tile[data-company="cgc"]:hover  { box-shadow: 0 8px 28px rgba(5,150,105,0.50),  0 2px 8px rgba(0,0,0,0.30) !important; }
+.slab-tile[data-company="tag"]:hover  { box-shadow: 0 8px 28px rgba(217,119,6,0.50),  0 2px 8px rgba(0,0,0,0.30) !important; }
+.slab-tile[data-company="other"]:hover { box-shadow: 0 8px 28px rgba(107,114,128,0.35), 0 2px 8px rgba(0,0,0,0.25) !important; }
+
+/* Outer case wrapper — neutral "clear plastic" look */
+.slab-case {
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.02);
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.20);
+}
+/* Light mode neutral case */
+html:not(.dark) .slab-case {
+  border-color: rgba(0,0,0,0.12);
+  background: rgba(0,0,0,0.02);
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.06);
+}
+
+/* Label bar at top — company color only here */
+.slab-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  color: #fff;
+}
+.slab-label-psa   { background: linear-gradient(90deg, #991b1b 0%, #dc2626 100%); }
+.slab-label-bgs   { background: linear-gradient(90deg, #1e3a6e 0%, #1d4ed8 100%); }
+.slab-label-cgc   { background: linear-gradient(90deg, #064e3b 0%, #059669 100%); }
+.slab-label-tag   { background: linear-gradient(90deg, #78350f 0%, #d97706 100%); }
+.slab-label-other { background: linear-gradient(90deg, #1f2937 0%, #374151 100%); }
+
+/* Label text: grade name (small left side) */
+.slab-label-text {
+  font-family: var(--font-mono, "Space Mono", monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.92;
+  line-height: 1;
+  flex: 1;
+}
+/* Label number: grade score (large right side) */
+.slab-label-num {
+  font-family: var(--font-mono, "Space Mono", monospace);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  flex-shrink: 0;
+}
+
+/* Card image — 6-8px padding so it doesn't touch the case sides */
+.slab-card-area {
+  padding: 6px 6px 0;
+}
+
+/* Bottom cert strip — mirrors the real slab's cert area below the card */
+.slab-bottom {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding: 3px 6px;
+  min-height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html:not(.dark) .slab-bottom {
+  border-top-color: rgba(0,0,0,0.07);
+}
+.slab-cert {
+  font-family: var(--font-mono, "Space Mono", monospace);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.30;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -787,6 +1168,61 @@ html:not(.dark) .modal-panel {
   border-color: #e5e7eb;
   box-shadow: 0 8px 30px rgba(0,0,0,0.14);
 }
+/* Descendant overrides for light mode */
+html:not(.dark) .modal-panel input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]),
+html:not(.dark) .modal-panel select,
+html:not(.dark) .modal-panel textarea {
+  background-color: #ffffff !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 8px !important;
+  color: #111827 !important;
+}
+html:not(.dark) .modal-panel input::placeholder,
+html:not(.dark) .modal-panel textarea::placeholder { color: #9ca3af !important; }
+html:not(.dark) .modal-panel select {
+  background-color: #ffffff !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  background-size: 12px !important;
+  -webkit-appearance: none !important;
+}
+html:not(.dark) .modal-panel select option  { background: #ffffff; color: #1e293b; }
+html:not(.dark) .modal-panel select optgroup { background: #f9fafb; color: #6b7280; }
+/* Standalone class overrides */
+html:not(.dark) .modal-input {
+  background-color: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #111827;
+}
+html:not(.dark) .modal-input::placeholder { color: #9ca3af; }
+html:not(.dark) .modal-select {
+  background-color: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #111827;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  -webkit-appearance: none;
+}
+html:not(.dark) .modal-select option  { background: #ffffff; color: #111827; }
+html:not(.dark) .modal-select optgroup { background: #f9fafb; color: #6b7280; }
+html:not(.dark) .modal-title { color: #0f172a; }
+html:not(.dark) .modal-close-btn { color: #9ca3af; }
+html:not(.dark) .modal-close-btn:hover { background: rgba(0,0,0,0.05); color: #374151; }
+html:not(.dark) .modal-btn-ghost {
+  border-color: #e5e7eb;
+  color: #6b7280;
+}
+html:not(.dark) .modal-btn-ghost:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #374151;
+}
+html:not(.dark) .modal-card-row {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+html:not(.dark) .modal-field-label { color: #9ca3af; }
+html:not(.dark) .modal-section-header { color: #9ca3af; }
 
 /* ── Quick links ── */
 html:not(.dark) .quick-link {

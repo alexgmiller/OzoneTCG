@@ -1,5 +1,6 @@
 import { searchBaseNames, nameVariants, isJapaneseName, extractEmbeddedNumber } from "./cardNameUtils";
 import { makeLookupKey, getCardCache, setCardCache, getManualImage } from "./cardCache";
+import { getCardImage } from "./cardImages";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
 const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
@@ -265,6 +266,14 @@ export async function lookupCard(
   // ── Fallback chain for singles and slabs ──────────────────────────────────
 
   const cacheKey = makeLookupKey(name, setName, cardNumber);
+
+  // Step 0: Check card_images (our authoritative database — manually curated + bulk-imported)
+  const lang = category === "slab" ? "English" : "English"; // extend when JP/CN slabs needed
+  const ownImage = await getCardImage(name, setName, cardNumber, lang, category);
+  if (ownImage) {
+    console.log(`[PriceTracker] card_images hit for "${name}" (verified=${ownImage.verified})`);
+    return { imageUrl: ownImage.imageUrl, market: null };
+  }
 
   // Step 1: Check local cache (Supabase card_image_cache)
   const cached = await getCardCache(cacheKey);

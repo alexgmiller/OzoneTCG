@@ -660,10 +660,10 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
       {/* My Cards bottom sheet */}
       {myCardsOpen && (
         <div
-          className="fixed inset-0 z-[60] flex items-end bg-black/50"
+          className="fixed inset-0 z-[60] flex items-end modal-backdrop"
           onClick={(e) => { if (e.target === e.currentTarget) setMyCardsOpen(false); }}
         >
-          <div className="bg-background border-t rounded-t-2xl w-full max-h-[85vh] flex flex-col">
+          <div className="bg-background border-t border-border rounded-t-2xl w-full max-h-[85vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-4 pt-4 pb-2 shrink-0">
               <div className="font-semibold">
@@ -763,13 +763,13 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
       {/* Finalize modal */}
       {finalizeOpen && (
         <div
-          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setFinalizeOpen(false);
           }}
         >
-          <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-3">
-            <div className="font-semibold">
+          <div className="modal-panel w-full max-w-sm p-4 space-y-3">
+            <div className="modal-title">
               {mode === "buy" ? "Finalize Buy" : "Finalize Trade"}
             </div>
 
@@ -854,17 +854,13 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
 
             <div className="flex gap-2">
               <button
-                className="flex-1 px-4 py-2 rounded-lg bg-green-600 text-white font-medium disabled:opacity-40"
+                className="modal-btn-confirm flex-1"
                 onClick={mode === "buy" ? onFinalizeBuy : onFinalizeTrade}
                 disabled={busy || (mode === "buy" && !sellerName.trim())}
               >
                 {busy ? "Saving…" : "Confirm"}
               </button>
-              <button
-                className="px-4 py-2 rounded-lg border opacity-60"
-                onClick={() => setFinalizeOpen(false)}
-                disabled={busy}
-              >
+              <button className="modal-btn-ghost" onClick={() => setFinalizeOpen(false)} disabled={busy}>
                 Cancel
               </button>
             </div>
@@ -928,14 +924,14 @@ function LiveListingsModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4 pb-20 sm:pb-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4 pb-20 sm:pb-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-background border rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl">
+      <div className="modal-panel w-full max-w-md max-h-[80vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-start justify-between px-4 py-3 border-b shrink-0">
+        <div className="flex items-start justify-between px-4 py-3 border-b border-border shrink-0">
           <div>
-            <div className="font-semibold text-sm truncate">{card.name}</div>
+            <div className="modal-title truncate">{card.name}</div>
             {card.setName && <div className="text-xs text-muted-foreground">{card.setName}</div>}
             {lowest != null && !loading && (
               <div className="text-xs text-emerald-600 font-medium mt-0.5">
@@ -943,12 +939,7 @@ function LiveListingsModal({
               </div>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="flex items-center justify-center w-10 h-10 -mr-1 text-muted-foreground rounded-xl shrink-0"
-          >
-            ✕
-          </button>
+          <button onClick={onClose} className="modal-close-btn shrink-0">✕</button>
         </div>
 
         <div className="overflow-y-auto flex-1">
@@ -987,13 +978,8 @@ function LiveListingsModal({
           )}
         </div>
 
-        <div className="px-4 py-3 border-t shrink-0">
-          <button
-            onClick={load}
-            className="w-full py-2 rounded-xl border text-sm text-muted-foreground"
-          >
-            Refresh
-          </button>
+        <div className="px-4 py-3 border-t border-border shrink-0">
+          <button onClick={load} className="modal-btn-outline w-full">Refresh</button>
         </div>
       </div>
     </div>

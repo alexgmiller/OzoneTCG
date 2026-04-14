@@ -199,44 +199,35 @@ export function ProfileDropdown({ userHandle, initials, hasPinConfigured }: Prop
 
       {/* Set PIN modal */}
       {modal === "set-pin" && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModal("none")} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setModal("none"); }}
+        >
+          <div className="modal-panel w-full max-w-xs p-6 space-y-4">
             <div>
-              <h2 className="text-base font-semibold">Set Guest PIN</h2>
+              <h2 className="modal-title">Set Guest PIN</h2>
               <p className="text-xs opacity-50 mt-1">Customers will use this PIN-free view. You&apos;ll need your PIN to exit.</p>
             </div>
             <input
-              type="number"
+              type="password"
               inputMode="numeric"
               placeholder="Choose a PIN (4+ digits)"
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
               value={pin}
-              onChange={(e) => setPin(e.target.value.slice(0, 8))}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
               autoFocus
             />
             <input
-              type="number"
+              type="password"
               inputMode="numeric"
               placeholder="Confirm PIN"
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
               value={confirmPin}
-              onChange={(e) => setConfirmPin(e.target.value.slice(0, 8))}
+              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
               onKeyDown={(e) => e.key === "Enter" && handleSetPin()}
             />
             {pinError && <p className="text-xs text-red-500">{pinError}</p>}
             <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded-lg border text-sm hover:bg-muted transition-colors"
-                onClick={() => setModal("none")}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-50"
-                onClick={handleSetPin}
-                disabled={pinLoading}
-              >
+              <button className="modal-btn-ghost flex-1" onClick={() => setModal("none")}>Cancel</button>
+              <button className="modal-btn-primary flex-1" onClick={handleSetPin} disabled={pinLoading}>
                 {pinLoading ? "Saving…" : "Set PIN"}
               </button>
             </div>
@@ -246,36 +237,28 @@ export function ProfileDropdown({ userHandle, initials, hasPinConfigured }: Prop
 
       {/* Enter PIN modal */}
       {modal === "enter-pin" && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModal("none")} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setModal("none"); }}
+        >
+          <div className="modal-panel w-full max-w-xs p-6 space-y-4">
             <div>
-              <h2 className="text-base font-semibold">Enter PIN</h2>
+              <h2 className="modal-title">Enter PIN</h2>
               <p className="text-xs opacity-50 mt-1">Enter your PIN to switch to Guest Mode.</p>
             </div>
             <input
-              type="number"
+              type="password"
               inputMode="numeric"
               placeholder="Your PIN"
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
               value={pin}
-              onChange={(e) => setPin(e.target.value.slice(0, 8))}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
               onKeyDown={(e) => e.key === "Enter" && handleEnterPin()}
               autoFocus
             />
             {pinError && <p className="text-xs text-red-500">{pinError}</p>}
             <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded-lg border text-sm hover:bg-muted transition-colors"
-                onClick={() => setModal("none")}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-50"
-                onClick={handleEnterPin}
-                disabled={pinLoading}
-              >
+              <button className="modal-btn-ghost flex-1" onClick={() => setModal("none")}>Cancel</button>
+              <button className="modal-btn-primary flex-1" onClick={handleEnterPin} disabled={pinLoading}>
                 {pinLoading ? "Checking…" : "Enter Guest Mode"}
               </button>
             </div>

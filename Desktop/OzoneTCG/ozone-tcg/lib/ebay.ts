@@ -71,9 +71,15 @@ export function makeSlabPriceKey(
 
 // ── Query building ────────────────────────────────────────────────────────────
 
-/** Strip parenthetical language/variant tags: (JP), (EN), (CHN), etc. */
+/** Strip parenthetical language/variant tags and TCG descriptor tags from a card name. */
 function stripParentheticalTags(name: string): string {
-  return name.replace(/\s*\([A-Z]{2,3}\)\s*/gi, " ").replace(/\s{2,}/g, " ").trim();
+  return name
+    // Language codes: (JP), (EN), (CHN), etc.
+    .replace(/\s*\([A-Z]{2,3}\)\s*/gi, " ")
+    // TCG variant/rarity descriptors that pollute eBay search results
+    .replace(/\s*\((Secret Rare|Special Art Rare|Illustration Rare|Alternate Full Art|Alternate Art|Full Art|Hyper Rare|Ultra Rare|Art Rare|Secret)\)\s*/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 /** Base card number without the /total denominator: "143a/236" → "143a", "260/172" → "260" */
@@ -93,6 +99,46 @@ function buildPrimaryQuery(company: string, grade: string, name: string, cardNum
 /** Fallback: grade + name only, no card number */
 function buildFallbackQuery(company: string, grade: string, name: string): string {
   return `"${company} ${grade}" ${stripParentheticalTags(name)}`;
+}
+
+// ── URL resolution ────────────────────────────────────────────────────────────
+
+/**
+ * Pick the best URL for an eBay Browse API item.
+ *
+ * Priority:
+ *   1. itemWebUrl that already contains /itm/ — direct listing URL
+ *   2. itemHref  — always contains "v1|{numericId}|{variantId}"; extract and build /itm/
+ *   3. Fallback  — eBay keyword search so the vendor still lands somewhere useful
+ *
+ * itemWebUrl for catalog-matched items points to /p/{productId} (product page),
+ * not the individual listing, which is the root cause of the reported bug.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveEbayItemUrl(item: any, searchQuery: string, sold = false): string {
+  const webUrl  = String(item.itemWebUrl  ?? "");
+  const href    = String(item.itemHref    ?? "");
+  const itemId  = String(item.itemId      ?? "");
+
+  // 1. itemWebUrl already points to a specific listing
+  const webItmMatch = webUrl.match(/\/itm\/(\d+)/);
+  if (webItmMatch) return `https://www.ebay.com/itm/${webItmMatch[1]}`;
+
+  // 2. itemHref: "https://api.ebay.com/buy/browse/v1/item/v1|123456789|0"
+  const hrefMatch = href.match(/\/item\/v1\|(\d+)/);
+  if (hrefMatch) return `https://www.ebay.com/itm/${hrefMatch[1]}`;
+
+  // 3. itemId may also look like "v1|123456789|0"
+  const idMatch = itemId.replace(/^v1\|/, "").match(/^(\d+)/);
+  if (idMatch) return `https://www.ebay.com/itm/${idMatch[1]}`;
+
+  // 4. Log and fall back to search
+  console.log("[eBay] URL: no /itm/ found — using search fallback.",
+    "itemWebUrl:", webUrl.slice(0, 80),
+    "itemHref:", href.slice(0, 80));
+  const params = new URLSearchParams({ _nkw: searchQuery, _sacat: POKEMON_CATEGORY_ID });
+  if (sold) { params.set("LH_Complete", "1"); params.set("LH_Sold", "1"); }
+  return `https://www.ebay.com/sch/i.html?${params}`;
 }
 
 // ── Browse API search ─────────────────────────────────────────────────────────
@@ -178,6 +224,7 @@ export async function fetchSlabSales(
     raw = await browseSearch(fallbackQ, token);
   }
 
+  const q = primaryQ; // use the last successful query for search fallback
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return raw.map((item: any) => ({
     price: parseFloat(item.price?.value ?? "0"),
@@ -186,7 +233,7 @@ export async function fetchSlabSales(
     isBestOffer: (item.buyingOptions ?? []).includes("BEST_OFFER"),
     buyingOptions: item.buyingOptions ?? [],
     bidCount: item.bidCount,
-    itemUrl: item.itemWebUrl ?? "",
+    itemUrl: resolveEbayItemUrl(item, q),
   }));
 }
 
@@ -246,7 +293,7 @@ export async function fetchSlabSalesFromCert(params: {
         isBestOffer: (item.buyingOptions ?? []).includes("BEST_OFFER"),
         buyingOptions: item.buyingOptions ?? [],
         bidCount: item.bidCount,
-        itemUrl: item.itemWebUrl ?? "",
+        itemUrl: resolveEbayItemUrl(item, q),
       }));
     }
     console.log(`[eBay] 0 results for: ${q} — trying next`);
@@ -259,6 +306,8 @@ export async function fetchSlabSalesFromCert(params: {
 
 export type PricingResult = {
   median: number | null;
+  q1: number | null;
+  q3: number | null;
   avg: number | null;
   low: number | null;
   high: number | null;
@@ -286,39 +335,30 @@ function weightedMedian(entries: Array<{ price: number; weight: number }>): numb
 }
 
 export function calculateSlabPricing(sales: SlabSale[]): PricingResult {
-  // 1. Exclude Best Offer and sub-$1 noise
-  const valid = sales.filter((s) => !s.isBestOffer && s.price > 1);
-  console.log(`[eBay] pricing: ${sales.length} raw → ${valid.length} valid (excluded Best Offer / <$1)`);
+  // 1. Exclude sub-$1 noise. Keep all active listings including Best Offer —
+  //    asking price is a valid market signal regardless of offer options.
+  const valid = sales.filter((s) => s.price > 1);
+  console.log(`[eBay] pricing: ${sales.length} raw → ${valid.length} valid (excluded <$1)`);
 
   if (valid.length === 0) {
-    return { median: null, avg: null, low: null, high: null, compCount: 0, lowConfidence: true };
+    return { median: null, q1: null, q3: null, avg: null, low: null, high: null, compCount: 0, lowConfidence: true };
   }
 
-  // 2. Rough unweighted median to anchor outlier cutoff
+  // 2. IQR outlier filter
   const sortedPrices = valid.map((s) => s.price).sort((a, b) => a - b);
-  const roughMedian = calcMedian(sortedPrices);
+  const { filtered: cleaned } = applyIQRFilter(valid, sortedPrices, "pricing");
 
-  // 3. Remove outliers beyond 2.5× rough median
-  const cleaned = valid.filter((s) => s.price <= roughMedian * 2.5);
-  console.log(`[eBay] pricing: ${cleaned.length} after outlier filter (cutoff=${r2(roughMedian * 2.5)})`);
-
-  if (cleaned.length === 0) {
-    return { median: null, avg: null, low: null, high: null, compCount: 0, lowConfidence: true };
-  }
-
-  // 4. Weighted entries: recent sales count fully, older count half
+  // 3. Weighted median: recent sales count fully, older count half
   const weighted = cleaned.map((s) => ({ price: s.price, weight: saleWeight(s.soldDate) }));
   const totalWeight = weighted.reduce((s, e) => s + e.weight, 0);
-
   const med = weightedMedian(weighted);
   const avg = weighted.reduce((s, e) => s + e.price * e.weight, 0) / totalWeight;
-
   const cleanedPrices = cleaned.map((s) => s.price).sort((a, b) => a - b);
 
-  console.log(`[eBay] pricing result: median=${r2(med)} avg=${r2(avg)} comps=${cleaned.length}`);
-
   return {
-    median: r2(med),
+    median: Math.round(med),
+    q1: Math.round(pctValue(cleanedPrices, 0.25)),
+    q3: Math.round(pctValue(cleanedPrices, 0.75)),
     avg: r2(avg),
     low: r2(cleanedPrices[0]),
     high: r2(cleanedPrices[cleanedPrices.length - 1]),
@@ -336,8 +376,153 @@ function r2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// ── IQR outlier filtering ─────────────────────────────────────────────────────
+
+/** Linear-interpolation percentile on a sorted array (0 ≤ p ≤ 1). */
+function pctValue(sorted: number[], p: number): number {
+  if (sorted.length === 1) return sorted[0];
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const frac = idx - lo;
+  return frac === 0 ? sorted[lo] : sorted[lo] * (1 - frac) + sorted[lo + 1] * frac;
+}
+
+type IQRBounds = { q1: number; q3: number; iqr: number; lower: number; upper: number };
+
+/**
+ * Tukey IQR filter. Requires ≥ 4 prices for meaningful quartiles.
+ * Returns null when the array is too small (caller should skip filtering).
+ */
+function calcIQRBounds(sorted: number[]): IQRBounds | null {
+  if (sorted.length < 4) return null;
+  const q1 = pctValue(sorted, 0.25);
+  const q3 = pctValue(sorted, 0.75);
+  const iqr = q3 - q1;
+  return { q1, q3, iqr, lower: q1 - 1.5 * iqr, upper: q3 + 1.5 * iqr };
+}
+
+/**
+ * Apply IQR outlier filter to a set of items. Logs algorithm steps.
+ * Falls back to the full set when IQR filter removes everything (high-variance fallback).
+ * Returns { filtered, fallback } where fallback=true means the filter was skipped.
+ */
+function applyIQRFilter<T extends { price: number }>(
+  items: T[],
+  sortedPrices: number[],
+  label: string
+): { filtered: T[]; fallback: boolean } {
+  const bounds = calcIQRBounds(sortedPrices);
+
+  if (!bounds) {
+    // Too few items for meaningful IQR — return unchanged
+    return { filtered: items, fallback: false };
+  }
+
+  const { q1, q3, iqr, lower, upper } = bounds;
+
+  // Filter and log each outlier
+  const filtered = items.filter((s) => {
+    if (s.price < lower) {
+      console.log(`[eBay] ${label} Excluded outlier: $${r2(s.price)} (below lower bound $${r2(lower)})`);
+      return false;
+    }
+    if (s.price > upper) {
+      console.log(`[eBay] ${label} Excluded outlier: $${r2(s.price)} (above upper bound $${r2(upper)})`);
+      return false;
+    }
+    return true;
+  });
+
+  const filteredPrices = filtered.map((s) => s.price).sort((a, b) => a - b);
+  const med = filteredPrices.length > 0 ? calcMedian(filteredPrices) : null;
+
+  console.log(
+    `[eBay] ${label} IQR pricing: ${sortedPrices.length} raw → Q1=$${r2(q1)} Q3=$${r2(q3)} IQR=$${r2(iqr)} → bounds [$${r2(lower)}, $${r2(upper)}] → ${filtered.length} valid → median=$${med != null ? r2(med) : "n/a"}`
+  );
+
+  if (med != null && iqr > 0.5 * med) {
+    console.warn(`[eBay] ${label} Warning: high price variance (IQR > 50% of median) — results may include mixed variants`);
+  }
+
+  // High-variance fallback: if IQR filter removed everything, use unfiltered set
+  if (filtered.length === 0) {
+    const fallbackMed = calcMedian(sortedPrices);
+    console.log(`[eBay] ${label} IQR filter removed all items — falling back to unfiltered median=$${r2(fallbackMed)} (high variance)`);
+    return { filtered: items, fallback: true };
+  }
+
+  return { filtered, fallback: false };
+}
+
 export function isSlabPriceStale(lastUpdated: string): boolean {
   return Date.now() - new Date(lastUpdated).getTime() > 24 * 60 * 60 * 1000;
+}
+
+// ── Sealed product search ─────────────────────────────────────────────────────
+
+/**
+ * Search eBay active listings for a sealed product (booster box, ETB, tin, etc.)
+ * Returns active fixed-price + auction listings sorted by price ascending.
+ */
+export async function fetchSealedListings(
+  name: string,
+  setName?: string | null
+): Promise<SlabSale[]> {
+  const token = await getEbayToken();
+  const cleanName = stripParentheticalTags(name);
+
+  // Build queries most-specific first
+  const queries: string[] = [];
+  if (setName?.trim()) queries.push(`${cleanName} ${setName.trim()}`);
+  queries.push(cleanName);
+
+  const seen = new Set<string>();
+  const unique = queries.filter((q) => { if (seen.has(q)) return false; seen.add(q); return true; });
+
+  for (const q of unique) {
+    const raw = await browseSearch(q, token);
+    if (raw.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return raw.map((item: any) => ({
+        price: parseFloat(item.price?.value ?? "0"),
+        title: item.title ?? "",
+        soldDate: item.itemEndDate ?? "",
+        isBestOffer: (item.buyingOptions ?? []).includes("BEST_OFFER"),
+        buyingOptions: item.buyingOptions ?? [],
+        bidCount: item.bidCount,
+        itemUrl: resolveEbayItemUrl(item, q),
+      }));
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Derive a market price for a sealed product from eBay active listings.
+ * Uses median of fixed-price listings, excluding Best Offer and sub-$5 noise.
+ */
+export function calculateSealedPricing(listings: SlabSale[]): {
+  median: number | null;
+  low: number | null;
+  high: number | null;
+  compCount: number;
+} {
+  const valid = listings.filter(
+    (s) => s.price >= 5 && s.buyingOptions.includes("FIXED_PRICE")
+  );
+  if (valid.length === 0) return { median: null, low: null, high: null, compCount: 0 };
+
+  const sorted = valid.map((s) => s.price).sort((a, b) => a - b);
+  const { filtered } = applyIQRFilter(valid, sorted, "sealed");
+  const cleanedPrices = filtered.map((s) => s.price).sort((a, b) => a - b);
+
+  return {
+    median: Math.round(calcMedian(cleanedPrices)),
+    low: r2(cleanedPrices[0]),
+    high: r2(cleanedPrices[cleanedPrices.length - 1]),
+    compCount: filtered.length,
+  };
 }
 
 // ── Sold listings (Marketplace Insights → eBay completed-search scraper) ─────
@@ -421,9 +606,16 @@ export async function fetchSlabSoldSales(
       }
     }
 
+    const soldSearchParams = new URLSearchParams({
+      _nkw: primaryQ, _sacat: POKEMON_CATEGORY_ID, LH_Complete: "1", LH_Sold: "1",
+    });
+    const soldSearchUrl = `https://www.ebay.com/sch/i.html?${soldSearchParams}`;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sales: SlabSale[] = itemSales.map((item: any) => {
       const numId = (item.itemId ?? "").replace(/^v1\|/, "").split("|")[0];
+      const itemUrl = numId ? `https://www.ebay.com/itm/${numId}` : soldSearchUrl;
+      console.log("[eBay-sold] Insights item URL:", itemUrl, "| itemId:", item.itemId);
       return {
         price: parseFloat(item.lastSoldPrice?.value ?? "0"),
         title: item.title ?? "",
@@ -431,7 +623,7 @@ export async function fetchSlabSoldSales(
         isBestOffer: (item.buyingOption ?? "") === "BEST_OFFER",
         buyingOptions: item.buyingOption ? [item.buyingOption] : [],
         bidCount: item.bidCount,
-        itemUrl: numId ? `https://www.ebay.com/itm/${numId}` : "",
+        itemUrl,
       };
     });
     return { sales, source: "insights" };
@@ -452,6 +644,8 @@ export async function fetchSlabSoldSales(
 
 export type SoldPricingResult = {
   median: number | null;
+  q1: number | null;
+  q3: number | null;
   avg: number | null;
   low: number | null;
   high: number | null;
@@ -460,25 +654,26 @@ export type SoldPricingResult = {
   source: "insights" | "ebay_scraper" | "none";
 };
 
-/** Same weighting and outlier logic as calculateSlabPricing, applied to sold data. */
+/** Same weighting and IQR outlier logic as calculateSlabPricing, applied to sold data. */
 export function calculateSoldPricing(
   sales: SlabSale[],
   source: "insights" | "ebay_scraper" | "none"
 ): SoldPricingResult {
-  const valid = sales.filter((s) => !s.isBestOffer && s.price > 1);
-  console.log(`[eBay-sold] calculateSoldPricing: ${sales.length} raw → ${valid.length} valid`);
+  // Exclude sub-$1 noise and listings that were purely a Best Offer acceptance
+  // (no fixed price component). Fixed Price listings that also accept Best Offers
+  // have buyingOptions ["FIXED_PRICE","BEST_OFFER"] — those are valid sold prices.
+  const valid = sales.filter(
+    (s) => !(s.buyingOptions.length === 1 && s.buyingOptions[0] === "BEST_OFFER") && s.price > 1
+  );
+  console.log(`[eBay-sold] calculateSoldPricing: ${sales.length} raw → ${valid.length} valid (excluded pure-BO / <$1)`);
 
   if (valid.length === 0) {
-    return { median: null, avg: null, low: null, high: null, compCount: 0, lowConfidence: true, source };
+    return { median: null, q1: null, q3: null, avg: null, low: null, high: null, compCount: 0, lowConfidence: true, source };
   }
 
+  // IQR outlier filter
   const sortedPrices = valid.map((s) => s.price).sort((a, b) => a - b);
-  const roughMedian = calcMedian(sortedPrices);
-  const cleaned = valid.filter((s) => s.price <= roughMedian * 2.5);
-
-  if (cleaned.length === 0) {
-    return { median: null, avg: null, low: null, high: null, compCount: 0, lowConfidence: true, source };
-  }
+  const { filtered: cleaned } = applyIQRFilter(valid, sortedPrices, "sold");
 
   const weighted = cleaned.map((s) => ({ price: s.price, weight: saleWeight(s.soldDate) }));
   const totalWeight = weighted.reduce((s, e) => s + e.weight, 0);
@@ -486,10 +681,10 @@ export function calculateSoldPricing(
   const avg = weighted.reduce((s, e) => s + e.price * e.weight, 0) / totalWeight;
   const cleanedPrices = cleaned.map((s) => s.price).sort((a, b) => a - b);
 
-  console.log(`[eBay-sold] sold result: median=${r2(med)} comps=${cleaned.length} source=${source}`);
-
   return {
-    median: r2(med),
+    median: Math.round(med),
+    q1: Math.round(pctValue(cleanedPrices, 0.25)),
+    q3: Math.round(pctValue(cleanedPrices, 0.75)),
     avg: r2(avg),
     low: r2(cleanedPrices[0]),
     high: r2(cleanedPrices[cleanedPrices.length - 1]),

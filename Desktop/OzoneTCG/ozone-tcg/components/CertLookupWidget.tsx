@@ -24,14 +24,24 @@ export type CertWidgetResult = {
 interface Props {
   onResult: (r: CertWidgetResult) => void;
   defaultCompany?: GradingCompany;
-  label?: string; // button label override
+  label?: string;
+  /** Always-open mode for embedding in tab UIs (no trigger button). */
+  embedded?: boolean;
+  /** Start camera scanning immediately when embedded. */
+  defaultCameraOn?: boolean;
 }
 
-export default function CertLookupWidget({ onResult, defaultCompany = "PSA", label }: Props) {
-  const [open, setOpen] = useState(false);
+export default function CertLookupWidget({
+  onResult,
+  defaultCompany = "PSA",
+  label,
+  embedded = false,
+  defaultCameraOn = false,
+}: Props) {
+  const [open, setOpen] = useState(embedded ? true : false);
   const [company, setCompany] = useState<GradingCompany>(defaultCompany);
   const [certInput, setCertInput] = useState("");
-  const [cameraOn, setCameraOn] = useState(false);
+  const [cameraOn, setCameraOn] = useState(embedded && defaultCameraOn ? true : false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -146,17 +156,23 @@ export default function CertLookupWidget({ onResult, defaultCompany = "PSA", lab
           certNumber: data.certNumber,
         });
 
-        // Reset and close
+        // Reset inputs
         setCertInput("");
         setError(null);
-        setOpen(false);
+        if (embedded) {
+          // In embedded mode: stay open, restart camera for next scan
+          if (defaultCameraOn) setTimeout(() => setCameraOn(true), 400);
+        } else {
+          setOpen(false);
+        }
       } catch {
         setError("Network error");
       } finally {
         setLoading(false);
       }
     },
-    [onResult]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onResult, embedded, defaultCameraOn]
   );
 
   function handleSubmit() {
@@ -196,13 +212,15 @@ export default function CertLookupWidget({ onResult, defaultCompany = "PSA", lab
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => { setOpen(false); setCameraOn(false); setError(null); }}
-          className="p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity"
-        >
-          <X size={13} />
-        </button>
+        {!embedded && (
+          <button
+            type="button"
+            onClick={() => { setOpen(false); setCameraOn(false); setError(null); }}
+            className="p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity"
+          >
+            <X size={13} />
+          </button>
+        )}
       </div>
 
       {/* Camera strip */}

@@ -392,6 +392,16 @@ export default function SettingsClient({
             onChange={(v) => updateImmediate("default_consigner_rate", v)}
           />
         </SettingRow>
+        <SettingRow label="Grading cost per card" description="PSA standard service fee — used in grading ROI calculations">
+          <NumInput
+            value={settings.grading_cost}
+            onChange={(v) => updateImmediate("grading_cost", v)}
+            min={0}
+            max={500}
+            unit="$"
+            width="w-24"
+          />
+        </SettingRow>
         <div className="px-4 py-2 bg-muted/10">
           <div className="text-[11px] uppercase tracking-wider opacity-40 font-semibold mb-1">Price movement thresholds</div>
         </div>
@@ -415,6 +425,31 @@ export default function SettingsClient({
             onChange={(v) => updateImmediate("spike_threshold", v)}
             width="w-24"
           />
+        </SettingRow>
+        <div className="px-4 py-2 bg-muted/10">
+          <div className="text-[11px] uppercase tracking-wider opacity-40 font-semibold mb-1">FMV strategy</div>
+        </div>
+        <SettingRow label="Slab pricing strategy" description="Which percentile to use as FMV for graded cards">
+          <div className="flex rounded-lg border overflow-hidden text-sm">
+            {([
+              { value: "auto", label: "Auto" },
+              { value: "q1", label: "Q1" },
+              { value: "median", label: "Median" },
+              { value: "q3", label: "Q3" },
+            ] as const).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => updateImmediate("pricing_strategy", value)}
+                className={`px-3 py-1.5 transition-colors ${
+                  settings.pricing_strategy === value
+                    ? "bg-foreground text-background font-medium"
+                    : "hover:bg-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </SettingRow>
       </Section>
 
@@ -631,11 +666,13 @@ export default function SettingsClient({
 
       {/* ══ PIN CHANGE MODAL ══════════════════════════════════════════════ */}
       {pinModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setPinModal(false)} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setPinModal(false); }}
+        >
+          <div className="modal-panel w-full max-w-xs p-6 space-y-4">
             <div>
-              <h2 className="text-base font-semibold">
+              <h2 className="modal-title">
                 {pinStep === "verify" ? "Verify Current PIN" : pinConfigured ? "Set New PIN" : "Set Guest PIN"}
               </h2>
               <p className="text-xs opacity-50 mt-1">
@@ -702,14 +739,11 @@ export default function SettingsClient({
             {pinError && <p className="text-xs text-red-500">{pinError}</p>}
 
             <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded-lg border text-sm hover:bg-muted transition-colors"
-                onClick={() => setPinModal(false)}
-              >
+              <button className="modal-btn-ghost flex-1" onClick={() => setPinModal(false)}>
                 Cancel
               </button>
               <button
-                className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-50"
+                className="modal-btn-primary flex-1"
                 onClick={pinStep === "verify" ? handlePinVerify : handlePinSave}
                 disabled={pinLoading}
               >
@@ -724,11 +758,13 @@ export default function SettingsClient({
 
       {/* ══ DELETE ACCOUNT MODAL ═════════════════════════════════════════ */}
       {deleteModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteModal(false)} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setDeleteModal(false); }}
+        >
+          <div className="modal-panel w-full max-w-sm p-6 space-y-4">
             <div>
-              <h2 className="text-base font-semibold text-red-500">Delete Account</h2>
+              <h2 className="modal-title text-red-500">Delete Account</h2>
               <p className="text-xs opacity-60 mt-1">
                 This will permanently delete your account and all associated data including inventory,
                 transactions, consigners, and expenses. This cannot be undone.
@@ -746,15 +782,11 @@ export default function SettingsClient({
             </div>
             {deleteError && <p className="text-xs text-red-500">{deleteError}</p>}
             <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded-lg border text-sm hover:bg-muted transition-colors"
-                onClick={() => setDeleteModal(false)}
-                disabled={deleteLoading}
-              >
+              <button className="modal-btn-ghost flex-1" onClick={() => setDeleteModal(false)} disabled={deleteLoading}>
                 Cancel
               </button>
               <button
-                className="flex-1 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-40"
+                className="modal-btn-destructive flex-1"
                 onClick={handleDeleteAccount}
                 disabled={deleteConfirmText !== "DELETE" || deleteLoading}
               >

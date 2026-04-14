@@ -27,6 +27,8 @@ export type CertLookupResult = {
   populationHigher?: number | null; // PSA pop of grades above this one
   isJapanese?: boolean;
   market: number | null;
+  q1: number | null;
+  q3: number | null;
   compCount: number;
   lookupFailed: boolean;
   lookupError?: string;
@@ -238,7 +240,7 @@ export async function POST(req: NextRequest) {
     if (!certDetails) {
       return NextResponse.json({
         certNumber, company, name: "", grade: "",
-        market: null, compCount: 0, lookupFailed: true,
+        market: null, q1: null, q3: null, compCount: 0, lookupFailed: true,
         lookupError: lookupErrorMsg ?? "Cert lookup failed",
       } satisfies CertLookupResult);
     }
@@ -256,6 +258,8 @@ export async function POST(req: NextRequest) {
     });
 
     let market: number | null = null;
+    let q1: number | null = null;
+    let q3: number | null = null;
     let compCount = 0;
 
     try {
@@ -270,8 +274,10 @@ export async function POST(req: NextRequest) {
       });
       const pricing = calculateSlabPricing(sales);
       market = pricing.median;
+      q1 = pricing.q1;
+      q3 = pricing.q3;
       compCount = pricing.compCount;
-      console.log("[cert-lookup] eBay pricing result:", { market, compCount });
+      console.log("[cert-lookup] eBay pricing result:", { market, q1, q3, compCount });
     } catch (e) {
       console.error("[cert-lookup] eBay pricing failed (non-fatal):", e);
     }
@@ -290,6 +296,8 @@ export async function POST(req: NextRequest) {
       populationHigher: certDetails.populationHigher ?? null,
       isJapanese: certDetails.isJapanese,
       market,
+      q1,
+      q3,
       compCount,
       lookupFailed: false,
     };

@@ -6,6 +6,47 @@ import { getWorkspaceId } from "@/lib/getWorkspaceId";
 
 type PaidBy = "alex" | "mila" | "shared";
 
+// ── Active show helpers ───────────────────────────────────────────────────────
+
+async function getActiveShowId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workspaceId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("show_sessions")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+  return (data?.id as string) ?? null;
+}
+
+async function bumpShowStats(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sessionId: string,
+  delta: { total_spent?: number; total_revenue?: number; cards_bought?: number; cards_sold?: number }
+) {
+  const { data: curr } = await supabase
+    .from("show_sessions")
+    .select("total_spent,total_revenue,cards_bought,cards_sold")
+    .eq("id", sessionId)
+    .single();
+  if (!curr) return;
+  const newSpent = (curr.total_spent ?? 0) + (delta.total_spent ?? 0);
+  const newRevenue = (curr.total_revenue ?? 0) + (delta.total_revenue ?? 0);
+  await supabase
+    .from("show_sessions")
+    .update({
+      total_spent: newSpent,
+      total_revenue: newRevenue,
+      cards_bought: (curr.cards_bought ?? 0) + (delta.cards_bought ?? 0),
+      cards_sold: (curr.cards_sold ?? 0) + (delta.cards_sold ?? 0),
+      net_pl: newRevenue - newSpent,
+    })
+    .eq("id", sessionId);
+}
+
 export async function revertSale({ saleId }: { saleId: string }) {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
@@ -55,6 +96,7 @@ export async function recordQuickBuy(input: {
   const userId = auth.user.id;
 
   const desc = `Buy: ${input.cards.length} card${input.cards.length !== 1 ? "s" : ""}`;
+  const showId = await getActiveShowId(supabase, workspaceId);
 
   const { data: expenseRow, error: expErr } = await supabase
     .from("expenses")
@@ -64,6 +106,7 @@ export async function recordQuickBuy(input: {
       cost: parseFloat(input.totalCost.toFixed(2)),
       paid_by: input.paidBy,
       payment_type: input.paymentType,
+      show_session_id: showId ?? undefined,
       updated_by: userId,
     })
     .select("id")
@@ -95,9 +138,17 @@ export async function recordQuickBuy(input: {
     }
   }
 
+  if (showId) {
+    await bumpShowStats(supabase, showId, {
+      total_spent: input.totalCost,
+      cards_bought: input.cards.length,
+    });
+  }
+
   revalidatePath("/protected/transactions");
   revalidatePath("/protected/expenses");
   revalidatePath("/protected/inventory");
+  if (showId) revalidatePath("/protected/show");
 }
 
 export async function deleteBuyExpense({ expenseId }: { expenseId: string }): Promise<void> {
@@ -225,16 +276,25 @@ export async function recordQuickSell(input: {
     if (error) throw new Error(error.message);
   }
 
+  const showId = await getActiveShowId(supabase, workspaceId);
+  if (showId) {
+    await bumpShowStats(supabase, showId, {
+      total_revenue: input.totalPrice,
+      cards_sold: items.length,
+    });
+  }
+
   revalidatePath("/protected/transactions");
   revalidatePath("/protected/inventory");
   revalidatePath("/protected/dashboard");
+  if (showId) revalidatePath("/protected/show");
 }
 
 // ── Cert-based buy: records expense + adds slab to inventory ─────────────────
 
 export type CertBuyItem = {
   certNumber: string;
-  company: "PSA" | "BGS" | "CGC";
+  company: "PSA" | "BGS" | "CGC" | "TAG";
   grade: string;
   gradeLabel?: string | null;
   name: string;
@@ -257,6 +317,8 @@ export async function recordCertBuy(input: {
   if (!auth.user) throw new Error("Not logged in");
   const userId = auth.user.id;
 
+  const showId = await getActiveShowId(supabase, workspaceId);
+
   const { data: expenseRow, error: expErr } = await supabase
     .from("expenses")
     .insert({
@@ -265,6 +327,7 @@ export async function recordCertBuy(input: {
       cost: parseFloat(input.totalCost.toFixed(2)),
       paid_by: input.paidBy,
       payment_type: input.paymentType,
+      show_session_id: showId ?? undefined,
       updated_by: userId,
     })
     .select("id")
@@ -294,7 +357,15 @@ export async function recordCertBuy(input: {
     if (error) throw new Error(error.message);
   }
 
+  if (showId) {
+    await bumpShowStats(supabase, showId, {
+      total_spent: input.totalCost,
+      cards_bought: input.cards.length,
+    });
+  }
+
   revalidatePath("/protected/transactions");
   revalidatePath("/protected/inventory");
   revalidatePath("/protected/dashboard");
+  if (showId) revalidatePath("/protected/show");
 }

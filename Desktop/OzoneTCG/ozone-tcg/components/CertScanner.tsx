@@ -12,11 +12,13 @@ import { createItem } from "@/app/protected/inventory/actions";
 import { recordCertBuy, type CertBuyItem } from "@/app/protected/transactions/actions";
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 import type { SlabSale, PricingResult, SoldPricingResult } from "@/lib/ebay";
+import { selectTierFMV, type PricingStrategyOverride } from "@/lib/fmv";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const OFFER_PRESETS = [70, 75, 80, 85, 90];
 const HISTORY_KEY = "ozone_cert_scan_history";
+const CAMERA_PREF_KEY = "ozone_cert_camera_pref";
 const MAX_HISTORY = 50;
 
 // Standard grade ladder (ascending). Used for adjacent-grade lookup.
@@ -61,7 +63,7 @@ interface HistoryEntry {
 
 type ActiveListingsState = { items: SlabSale[]; lowest: number | null; loading: boolean };
 type SoldState = { items: SlabSale[]; pricing: SoldPricingResult | null; loading: boolean; showAll: boolean };
-type GradeData = { market: number | null; compCount: number; listings: ActiveListingsState; sold: SoldState };
+type GradeData = { market: number | null; q1: number | null; q3: number | null; compCount: number; listings: ActiveListingsState; sold: SoldState };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -196,7 +198,7 @@ function OfferCalc({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function CertScanner() {
+export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrategy?: PricingStrategyOverride }) {
   // ── phase / company
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [company, setCompany] = useState<GradingCompany>("PSA");
@@ -214,6 +216,13 @@ export default function CertScanner() {
   const detectedRef = useRef(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  // Camera on/off preference — default: OFF on desktop (≥768px), ON on mobile (<768px)
+  const [cameraEnabled, setCameraEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const stored = localStorage.getItem(CAMERA_PREF_KEY);
+    if (stored !== null) return stored === "true";
+    return window.innerWidth < 768;
+  });
 
   // ── result state
   const [result, setResult] = useState<CertLookupResult | null>(null);
@@ -288,7 +297,7 @@ export default function CertScanner() {
   // ── Camera scanning (html5-qrcode) ───────────────────────────────────────
 
   useEffect(() => {
-    if (phase !== "idle") {
+    if (phase !== "idle" || !cameraEnabled) {
       // Only stop if scanner actually started successfully
       if (scannerRef.current && scannerStartedRef.current) {
         scannerStartedRef.current = false;
@@ -379,7 +388,7 @@ export default function CertScanner() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, [phase, cameraEnabled]);
 
   // ── Per-grade/company data fetching ─────────────────────────────────────────
 
@@ -396,6 +405,8 @@ export default function CertScanner() {
       ...prev,
       [key]: {
         market: prev[key]?.market ?? null,
+        q1: prev[key]?.q1 ?? null,
+        q3: prev[key]?.q3 ?? null,
         compCount: prev[key]?.compCount ?? 0,
         listings: { items: [], lowest: null, loading: true },
         sold: { items: [], pricing: null, loading: true, showAll: false },
@@ -428,6 +439,8 @@ export default function CertScanner() {
           [key]: {
             ...prev[key],
             market: pricing.median ?? prev[key]?.market ?? null,
+            q1: pricing.q1 ?? prev[key]?.q1 ?? null,
+            q3: pricing.q3 ?? prev[key]?.q3 ?? null,
             compCount: pricing.compCount,
             listings: { items: sorted, lowest: sorted[0]?.price ?? null, loading: false },
           },
@@ -530,6 +543,8 @@ export default function CertScanner() {
         setGradeCache({
           [cacheKey(data.company, data.grade)]: {
             market: data.market,
+            q1: data.q1 ?? null,
+            q3: data.q3 ?? null,
             compCount: data.compCount,
             listings: { items: [], lowest: null, loading: true },
             sold: { items: [], pricing: null, loading: true, showAll: false },
@@ -575,6 +590,8 @@ export default function CertScanner() {
         cardNumber: fallbackCardNum.trim() || null,
         grade,
         market,
+        q1: null,
+        q3: null,
         compCount,
         lookupFailed: false,
       };
@@ -588,6 +605,8 @@ export default function CertScanner() {
       setGradeCache({
         [cacheKey(r.company, r.grade)]: {
           market: r.market,
+          q1: r.q1 ?? null,
+          q3: r.q3 ?? null,
           compCount: r.compCount,
           listings: { items: [], lowest: null, loading: true },
           sold: { items: [], pricing: null, loading: true, showAll: false },
@@ -637,6 +656,14 @@ export default function CertScanner() {
     fetchingGrades.current.clear();
     fetchedGrades.current.clear();
     detectedRef.current = false;
+  }
+
+  // ── Camera toggle ─────────────────────────────────────────────────────────
+
+  function toggleCamera() {
+    const next = !cameraEnabled;
+    setCameraEnabled(next);
+    try { localStorage.setItem(CAMERA_PREF_KEY, String(next)); } catch {}
   }
 
   // ── Toast helper ──────────────────────────────────────────────────────────
@@ -768,7 +795,17 @@ export default function CertScanner() {
   // Derive display values from selected company + grade cache
   const displayKey = cacheKey(selectedViewCompany, selectedGrade);
   const displayGrade = gradeCache[displayKey];
-  const displayMarket = displayGrade?.market ?? null;
+  const rawDisplayMarket = displayGrade?.market ?? null;
+  const displayYear = result?.year ? parseInt(result.year) : null;
+  const displayPopulation = result?.population ?? null;
+  const fmvSel = selectTierFMV(
+    displayGrade?.q1 ?? null,
+    rawDisplayMarket,
+    displayGrade?.q3 ?? null,
+    { year: displayYear, population: displayPopulation, strategy: pricingStrategy }
+  );
+  const displayMarket = fmvSel.fmv;
+  const displayTierLabel = fmvSel.label;
   const displayCompCount = displayGrade?.compCount ?? 0;
   const displayListings: ActiveListingsState = displayGrade?.listings ?? { items: [], lowest: null, loading: !!selectedGrade };
   const displaySold: SoldState = displayGrade?.sold ?? { items: [], pricing: null, loading: !!selectedGrade, showAll: false };
@@ -808,8 +845,8 @@ export default function CertScanner() {
       {/* ── Camera + manual input (idle phase) ── */}
       {phase === "idle" && (
         <div className="space-y-2">
-          {/* Viewfinder */}
-          <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3]">
+          {/* Viewfinder — container always in DOM so html5-qrcode can find it by ID */}
+          <div className={!cameraEnabled ? "hidden" : "relative rounded-2xl overflow-hidden bg-black aspect-[4/3]"}>
             <div
               id="cert-scanner-container"
               className="w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
@@ -853,6 +890,15 @@ export default function CertScanner() {
               Look up
             </button>
           </div>
+
+          {/* Camera toggle */}
+          <button
+            onClick={toggleCamera}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border text-sm opacity-50 hover:opacity-80 transition-opacity"
+          >
+            <ScanLine size={14} />
+            {cameraEnabled ? "Stop Camera" : "Scan with Camera"}
+          </button>
         </div>
       )}
 
@@ -1033,7 +1079,7 @@ export default function CertScanner() {
           {/* Market + Lowest listed */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="bg-black/5 dark:bg-white/5 rounded-xl px-3 py-2.5">
-              <div className="text-xs opacity-40 mb-0.5">Market (median)</div>
+              <div className="text-xs opacity-40 mb-0.5 capitalize">{displayTierLabel} · FMV</div>
               {displayGrade?.listings.loading && displayMarket == null ? (
                 <div className="h-8 mt-0.5 w-24 bg-black/10 dark:bg-white/10 rounded animate-pulse" />
               ) : (
@@ -1310,14 +1356,16 @@ export default function CertScanner() {
 
       {/* ── History slide-in ── */}
       {historyOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={() => setHistoryOpen(false)}>
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center modal-backdrop"
+          onClick={(e) => { if (e.target === e.currentTarget) setHistoryOpen(false); }}
+        >
           <div
-            className="relative bg-background border border-border rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-lg max-h-[70vh] flex flex-col"
+            className="modal-panel w-full max-w-lg max-h-[70vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-              <div className="text-sm font-semibold">Recent Scans</div>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+              <div className="modal-title">Recent Scans</div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
@@ -1331,7 +1379,7 @@ export default function CertScanner() {
                 >
                   Clear
                 </button>
-                <button onClick={() => setHistoryOpen(false)} className="p-1 rounded-lg opacity-40 hover:opacity-100">
+                <button onClick={() => setHistoryOpen(false)} className="modal-close-btn">
                   <X size={15} />
                 </button>
               </div>
@@ -1376,15 +1424,15 @@ export default function CertScanner() {
       {/* ── Buy modal ── */}
       {buyModalOpen && (
         <div
-          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setBuyModalOpen(false); }}
         >
-          <div className="w-full max-w-sm bg-background border rounded-2xl shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b">
-              <div className="font-semibold">
+          <div className="modal-panel w-full max-w-sm overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="modal-title">
                 {bulkBuyMode ? `Bulk Buy (${batch.length} slabs)` : "Record Buy"}
               </div>
-              <button onClick={() => setBuyModalOpen(false)} className="p-1.5 rounded-lg opacity-40 hover:opacity-100">
+              <button onClick={() => setBuyModalOpen(false)} className="modal-close-btn">
                 <X size={16} />
               </button>
             </div>
@@ -1454,7 +1502,7 @@ export default function CertScanner() {
               <button
                 onClick={handleConfirmBuy}
                 disabled={actionLoading}
-                className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-semibold text-sm transition-colors"
+                className="modal-btn-confirm w-full py-3.5"
               >
                 {actionLoading ? "Recording…" : "Confirm Buy"}
               </button>

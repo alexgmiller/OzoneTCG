@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Search, Plus, List, Grid2X2, Trophy, CreditCard, Folder, Clock } from "lucide-react";
+import { Camera, Search, Plus, List, Grid2X2, Trophy, CreditCard, Folder, Clock, ChevronDown } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
-import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, fetchCardData, uploadCardImage, uploadItemImage, refreshSlabPrice, getEbayDailyCallCount, refreshRawCardPrice, type RefreshedSlabPrice, type RefreshedRawCardPrice } from "./actions";
+import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, fetchCardData, uploadCardImage, uploadItemImage, refreshSlabPrice, getEbayDailyCallCount, refreshRawCardPrice, refreshSealedPrice, type RefreshedSlabPrice, type RefreshedRawCardPrice } from "./actions";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
 import { makeSlabPriceKey, parseGrade, type SlabSale } from "@/lib/ebay";
 import { makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
+import { selectTierFMV, type PricingStrategyOverride } from "@/lib/fmv";
 import CSVImport from "./CSVImport";
 import CardScanner, { type ScanResult } from "@/components/CardScanner";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
@@ -54,6 +55,10 @@ type Item = {
   sticker_price: number | null;
   acquired_market_price: number | null;
   acquired_date: string | null;
+  // Sealed product metadata
+  product_type: string | null;
+  quantity: number;
+  language: string;
 };
 
 type ItemForm = {
@@ -73,6 +78,10 @@ type ItemForm = {
   cardNumber: string;
   grade: string;
   stickerPrice: string;
+  // Sealed product metadata
+  productType: string;
+  quantity: string;
+  language: string;
 };
 
 type StagedItem = ItemForm & { _id: string };
@@ -87,6 +96,16 @@ function toNum(v: string) {
 function fmt(v: number | null) {
   if (v == null) return "-";
   return `$${v.toFixed(2)}`;
+}
+
+/**
+ * Returns the effective cost for an item: prefer cost_basis (trade chain cash invested)
+ * over manual cost. Returns null if neither is set (item is uncosted).
+ */
+function effectiveCost(it: { cost: number | null; cost_basis: number | null }): number | null {
+  if (it.cost_basis != null) return it.cost_basis;
+  if (it.cost != null) return it.cost;
+  return null;
 }
 
 function getMovement(current: number | null, acquired: number | null): number | null {
@@ -111,6 +130,22 @@ function MovementDot({ pct }: { pct: number | null }) {
   return null;
 }
 
+const PRODUCT_TYPE_LABELS: Record<string, string> = {
+  booster_box: "Booster Box",
+  etb: "ETB",
+  tin: "Tin",
+  collection_box: "Collection Box",
+  bundle: "Bundle",
+  booster_pack: "Booster Pack",
+  promo_box: "Promo Box",
+  other: "Sealed",
+};
+
+function sealedTypeLabel(productType: string | null): string {
+  if (!productType) return "Sealed";
+  return PRODUCT_TYPE_LABELS[productType] ?? productType;
+}
+
 function buildSlabEbayQuery(name: string, grade: string | null, setName: string | null, cardNumber: string | null): string {
   const cleanName = name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
   const num = cardNumber?.split("/")[0]?.trim() ?? "";
@@ -121,6 +156,48 @@ function buildRawEbayQuery(name: string, setName: string | null, cardNumber: str
   const cleanName = name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
   const num = cardNumber?.split("/")[0]?.trim() ?? "";
   return [cleanName, setName, num].filter(Boolean).join(" ");
+}
+
+// ── Tiered FMV helpers ──────────────────────────────────────────────────────
+
+/** Linear-interpolation percentile on a sorted array (mirrors lib/ebay.ts). */
+function iqrPctile(sorted: number[], p: number): number {
+  if (sorted.length === 1) return sorted[0];
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const frac = idx - lo;
+  return frac === 0 ? sorted[lo] : sorted[lo] * (1 - frac) + sorted[lo + 1] * frac;
+}
+
+/** Compute Q1/median/Q3 from a SlabPrice's active_items with IQR outlier removal. */
+function computeSlabStats(sp: SlabPrice | null | undefined): { q1: number | null; median: number | null; q3: number | null } {
+  const fallbackMedian = sp?.sold_median ?? sp?.median_price ?? null;
+  const rawItems = sp?.active_items;
+  if (!rawItems || rawItems.length < 2) return { q1: null, median: fallbackMedian, q3: null };
+  const prices = rawItems.map((i) => i.price).filter((p) => p > 1).sort((a, b) => a - b);
+  if (prices.length === 0) return { q1: null, median: fallbackMedian, q3: null };
+  let clean = prices;
+  if (prices.length >= 4) {
+    const q1b = iqrPctile(prices, 0.25);
+    const q3b = iqrPctile(prices, 0.75);
+    const iqr = q3b - q1b;
+    const lower = q1b - 1.5 * iqr;
+    const upper = q3b + 1.5 * iqr;
+    const filtered = prices.filter((p) => p >= lower && p <= upper);
+    if (filtered.length > 0) clean = filtered;
+  }
+  return {
+    q1: Math.round(iqrPctile(clean, 0.25)),
+    median: Math.round(iqrPctile(clean, 0.5)),
+    q3: Math.round(iqrPctile(clean, 0.75)),
+  };
+}
+
+/** Extract a 4-digit year from a set name (e.g. "2019 Sun & Moon" → 2019). */
+function inferCardYear(setName: string | null | undefined): number | null {
+  if (!setName) return null;
+  const m = setName.match(/\b(19[0-9]{2}|20[0-9]{2})\b/);
+  return m ? parseInt(m[1]) : null;
 }
 
 const categoryColors: Record<string, string> = {
@@ -152,6 +229,35 @@ function gradeStyle(grade: string): string {
     return "grade-badge grade-tag";
   }
   return "grade-badge grade-other";
+}
+
+/** Maps a grade string to the slab label bar details for grid view rendering. */
+function slabGradeLabel(grade: string | null): { company: string; companyKey: string; gradeNum: string; labelText: string } | null {
+  if (!grade) return null;
+  const parsed = parseGrade(grade);
+  if (!parsed) return null;
+  const gradeStr = parsed.grade;
+  const n = parseFloat(gradeStr);
+  const isBlack = gradeStr.toLowerCase().includes("black");
+  let labelText: string;
+  if (isBlack)   labelText = "PRISTINE";
+  else if (n >= 10)  labelText = "GEM MT";
+  else if (n >= 9.5) labelText = "GEM MT";
+  else if (n >= 9)   labelText = "MINT";
+  else if (n >= 8.5) labelText = "NM-MT+";
+  else if (n >= 8)   labelText = "NM-MT";
+  else if (n >= 7.5) labelText = "NM+";
+  else if (n >= 7)   labelText = "NM";
+  else if (n >= 6)   labelText = "EX-MT";
+  else if (n >= 5)   labelText = "EX";
+  else if (n >= 4)   labelText = "VG-EX";
+  else if (n >= 3)   labelText = "VG";
+  else if (n >= 2)   labelText = "GOOD";
+  else if (n >= 1)   labelText = "POOR";
+  else labelText = gradeStr.toUpperCase();
+  const company = parsed.company.toUpperCase();
+  const companyKey = ["PSA", "BGS", "CGC", "TAG"].includes(company) ? company.toLowerCase() : "other";
+  return { company, companyKey, gradeNum: isBlack ? "10" : gradeStr, labelText };
 }
 
 // ── Staleness tiers ────────────────────────────────────────────────────────
@@ -192,6 +298,9 @@ const blankForm = (): ItemForm => ({
   cardNumber: "",
   grade: "",
   stickerPrice: "",
+  productType: "",
+  quantity: "1",
+  language: "english",
 });
 
 function itemToForm(it: Item): ItemForm {
@@ -212,8 +321,32 @@ function itemToForm(it: Item): ItemForm {
     cardNumber: it.card_number ?? "",
     grade: it.grade ?? "",
     stickerPrice: it.sticker_price != null ? String(it.sticker_price) : "",
+    productType: it.product_type ?? "",
+    quantity: it.quantity != null ? String(it.quantity) : "1",
+    language: it.language ?? "english",
   };
 }
+
+// Grade options per company: top = most-used (shown first), rest = full list
+const GRADE_OPTIONS: Record<string, { top: string[]; rest: string[] }> = {
+  PSA: {
+    top: ["10", "9", "8"],
+    rest: ["7", "6", "5", "4", "3", "2", "1"],
+  },
+  BGS: {
+    top: ["10 Black Label", "10", "9.5", "9", "8.5", "8"],
+    rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4.5", "4", "3.5", "3", "2.5", "2", "1.5", "1"],
+  },
+  CGC: {
+    top: ["10 Perfect", "10 Pristine", "9.5", "9", "8.5", "8"],
+    rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4.5", "4", "3.5", "3", "2.5", "2", "1.5", "1"],
+  },
+  TAG: {
+    top: ["10", "9.5", "9", "8.5", "8"],
+    rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4", "3", "2", "1"],
+  },
+};
+const GRADE_COMPANIES = ["PSA", "BGS", "CGC", "TAG"] as const;
 
 function ItemFormFields({
   form,
@@ -234,6 +367,22 @@ function ItemFormFields({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Two-dropdown grade state: company is tracked locally, grade score derived from form.grade
+  const [gradeCompany, setGradeCompany] = useState<string>(() => {
+    const p = parseGrade(form.grade ?? "");
+    const co = p?.company?.toUpperCase() ?? "";
+    return GRADE_COMPANIES.includes(co as typeof GRADE_COMPANIES[number]) ? co : "PSA";
+  });
+  // Sync gradeCompany when form.grade is set externally (e.g. card search auto-fill)
+  useEffect(() => {
+    const p = parseGrade(form.grade ?? "");
+    const co = p?.company?.toUpperCase() ?? "";
+    if (GRADE_COMPANIES.includes(co as typeof GRADE_COMPANIES[number])) {
+      setGradeCompany(co);
+    }
+  }, [form.grade]);
+  const gradeScore = parseGrade(form.grade ?? "")?.grade ?? "";
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -303,39 +452,56 @@ function ItemFormFields({
           {form.category === "single" && <option value="grading">Grading</option>}
         </select>
 
-        {/* Condition for singles/sealed; PSA grade for slabs */}
+        {/* Condition for singles; Grade for slabs (two dropdowns); Product type for sealed */}
         {form.category === "slab" ? (
+          <div className="flex gap-1.5">
+            {/* Company */}
+            <select
+              className="border rounded-lg px-2 py-2 text-sm bg-background w-[68px] flex-none"
+              value={gradeCompany}
+              onChange={(e) => {
+                setGradeCompany(e.target.value);
+                setForm({ ...form, grade: "" });
+              }}
+            >
+              {GRADE_COMPANIES.map((co) => (
+                <option key={co} value={co}>{co}</option>
+              ))}
+            </select>
+            {/* Grade score */}
+            <select
+              className="border rounded-lg px-2 py-2 text-sm bg-background flex-1 min-w-0"
+              value={gradeScore}
+              onChange={(e) => {
+                const g = e.target.value;
+                setForm({ ...form, grade: g ? `${gradeCompany} ${g}` : "" });
+              }}
+            >
+              <option value="">— Grade —</option>
+              {GRADE_OPTIONS[gradeCompany]?.top.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+              <option disabled>──────</option>
+              {GRADE_OPTIONS[gradeCompany]?.rest.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+        ) : form.category === "sealed" ? (
           <select
             className="border rounded-lg px-3 py-2 text-sm bg-background"
-            value={form.grade}
-            onChange={(e) => setForm({ ...form, grade: e.target.value })}
+            value={form.productType}
+            onChange={(e) => setForm({ ...form, productType: e.target.value })}
           >
-            <option value="">— Grade —</option>
-            <optgroup label="PSA">
-              {[10,9,8,7,6,5,4,3,2,1].map((n) => (
-                <option key={`PSA ${n}`} value={`PSA ${n}`}>PSA {n}</option>
-              ))}
-            </optgroup>
-            <optgroup label="BGS">
-              {["10 Black Label", 10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1].map((g) => (
-                <option key={`BGS ${g}`} value={`BGS ${g}`}>BGS {g}</option>
-              ))}
-            </optgroup>
-            <optgroup label="CGC">
-              {[10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1].map((g) => (
-                <option key={`CGC ${g}`} value={`CGC ${g}`}>CGC {g}</option>
-              ))}
-            </optgroup>
-            <optgroup label="ACE">
-              {[10,9,8,7,6,5,4,3,2,1].map((n) => (
-                <option key={`ACE ${n}`} value={`ACE ${n}`}>ACE {n}</option>
-              ))}
-            </optgroup>
-            <optgroup label="TAG">
-              {[10, 9.5, 9, 8.5, 8, 7, 6, 5].map((g) => (
-                <option key={`TAG ${g}`} value={`TAG ${g}`}>TAG {g}</option>
-              ))}
-            </optgroup>
+            <option value="">— Type —</option>
+            <option value="booster_box">Booster Box</option>
+            <option value="etb">Elite Trainer Box</option>
+            <option value="tin">Tin</option>
+            <option value="collection_box">Collection Box</option>
+            <option value="bundle">Bundle</option>
+            <option value="booster_pack">Booster Pack</option>
+            <option value="promo_box">Promo Box</option>
+            <option value="other">Other</option>
           </select>
         ) : (
           <select
@@ -352,50 +518,70 @@ function ItemFormFields({
         )}
       </div>
 
+      {/* Sealed-specific: quantity + language */}
+      {form.category === "sealed" && (
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            className="border rounded-lg px-3 py-2 text-sm bg-background"
+            placeholder="Quantity"
+            value={form.quantity}
+            inputMode="numeric"
+            onChange={(e) => setForm({ ...form, quantity: e.target.value.replace(/\D/g, "") || "1" })}
+          />
+          <select
+            className="border rounded-lg px-3 py-2 text-sm bg-background"
+            value={form.language}
+            onChange={(e) => setForm({ ...form, language: e.target.value })}
+          >
+            <option value="english">English</option>
+            <option value="japanese">Japanese</option>
+            <option value="korean">Korean</option>
+            <option value="chinese">Chinese</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      )}
+
       {/* Card identification — name + set + number + Find */}
       <div className="space-y-2">
-        <div className="flex gap-2">
-          <CardAutocomplete
-            className="flex-1 border rounded-lg px-3 py-2 text-sm bg-background"
-            placeholder="Name *"
-            value={form.name}
-            onChange={(v) => setForm({ ...form, name: v })}
-            onSelect={(card: AutocompleteCard) => {
-              setForm({
-                ...form,
-                name: card.name,
-                setName: card.setName ?? "",
-                cardNumber: card.cardNumber ?? "",
-                imageUrl: card.imageUrl ?? "",
-                cardId: card.cardId ?? "",
-                ...(card.market != null ? { market: String(card.market) } : {}),
-              });
-            }}
-          />
-          {onFind && (
-            <button
-              type="button"
-              onClick={onFind}
-              className="px-3 py-2 rounded-lg border text-sm font-medium hover:bg-muted transition-colors whitespace-nowrap"
-            >
-              Find Card
-            </button>
-          )}
-        </div>
+        <CardAutocomplete
+          className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+          placeholder="Name *"
+          value={form.name}
+          onChange={(v) => setForm({ ...form, name: v })}
+          onSelect={(card: AutocompleteCard) => {
+            setForm({
+              ...form,
+              name: card.name,
+              setName: card.setName ?? "",
+              cardNumber: card.cardNumber ?? "",
+              imageUrl: card.imageUrl ?? "",
+              cardId: card.cardId ?? "",
+              ...(card.market != null ? { market: String(card.market) } : {}),
+            });
+          }}
+        />
         {onFind && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex gap-2">
             <input
-              className="border rounded-lg px-3 py-2 text-sm bg-background"
+              className="border rounded-lg px-3 py-2 text-sm bg-background flex-1 min-w-0"
               placeholder="Set name (optional)"
               value={form.setName}
               onChange={(e) => setForm({ ...form, setName: e.target.value })}
             />
             <input
-              className="border rounded-lg px-3 py-2 text-sm bg-background"
-              placeholder="Card # (optional)"
+              className="border rounded-lg px-3 py-2 text-sm bg-background w-24 min-w-0"
+              placeholder="Card #"
               value={form.cardNumber}
               onChange={(e) => setForm({ ...form, cardNumber: e.target.value })}
             />
+            <button
+              type="button"
+              onClick={onFind}
+              className="px-3 py-2 rounded-lg border text-sm font-medium hover:bg-muted transition-colors whitespace-nowrap shrink-0"
+            >
+              Find
+            </button>
           </div>
         )}
         {findConfirmed && (
@@ -478,10 +664,10 @@ function ItemFormFields({
               value={form.imageUrl ?? ""}
               onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
             />
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button
                 type="button"
-                className="text-xs text-muted-foreground underline disabled:opacity-40"
+                className="text-[12px] px-3 py-1 rounded-md border border-border text-[color:var(--text-secondary)] hover:bg-muted transition-colors disabled:opacity-40"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadingImage}
               >
@@ -489,7 +675,7 @@ function ItemFormFields({
               </button>
               <button
                 type="button"
-                className="text-xs text-red-500 underline"
+                className="text-[12px] px-3 py-1 rounded-md border border-red-300 text-red-500 hover:bg-red-50 transition-colors"
                 onClick={() => setForm({ ...form, imageUrl: "" })}
               >
                 Remove image
@@ -507,7 +693,7 @@ function ItemFormFields({
           />
           <button
             type="button"
-            className="text-xs text-muted-foreground underline disabled:opacity-40"
+            className="text-[12px] px-3 py-1 rounded-md border border-border text-[color:var(--text-secondary)] hover:bg-muted transition-colors disabled:opacity-40"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadingImage}
           >
@@ -532,12 +718,16 @@ export default function InventoryClient({
   workspaceId,
   slabPrices,
   rawCardPrices,
+  pricingStrategy = "auto",
+  gradingCost = 20,
 }: {
   items: Item[];
   consigners: ConsignerOption[];
   workspaceId: string;
   slabPrices: Record<string, SlabPrice>;
   rawCardPrices: Record<string, RawCardPrice>;
+  pricingStrategy?: PricingStrategyOverride;
+  gradingCost?: number;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -585,6 +775,10 @@ export default function InventoryClient({
   // Pricing detail modal — store item + slabKey; derive sp live from slabPrices prop so refresh updates it
   const [pricingDetailItem, setPricingDetailItem] = useState<{ item: Item; slabKey: string } | null>(null);
   const [soldExpanded, setSoldExpanded] = useState(false);
+  const [activeExpanded, setActiveExpanded] = useState(false);
+
+  // Sealed pricing refresh state
+  const [sealedRefreshing, setSealedRefreshing] = useState<Record<string, boolean>>({});
 
   // Raw card pricing state
   const [rawCardRefreshing, setRawCardRefreshing] = useState<Record<string, boolean>>({});
@@ -599,6 +793,7 @@ export default function InventoryClient({
 
   // Collapsible section state
   const [slabsCollapsed, setSlabsCollapsed] = useState(false);
+  const [sealedCollapsed, setSealedCollapsed] = useState(false);
   const [rawCollapsed, setRawCollapsed] = useState(false);
 
   // Quick filter pills
@@ -677,7 +872,7 @@ export default function InventoryClient({
       const parsed = parseGrade(it.grade!);
       const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
       const sp = key ? slabPrices[key] : null;
-      const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+      const fmv = slabFMVData[it.id]?.fmv ?? null;
       const compCount = sp ? (sp.sold_count > 0 ? sp.sold_count : sp.comp_count) : 0;
       return { item: it, sp, fmv, compCount, key };
     });
@@ -778,6 +973,25 @@ export default function InventoryClient({
     [slabPrices, slabPriceOverrides]
   );
 
+  // Tiered FMV: compute Q1/median/Q3 from active_items and apply strategy for every slab.
+  // Keyed by item.id so other useMemos can look up by item without re-deriving.
+  const slabFMVData = useMemo(() => {
+    const result: Record<string, { fmv: number | null; label: "competitive" | "market" | "scarce" }> = {};
+    for (const it of items) {
+      if (it.category !== "slab" || !it.grade) continue;
+      const parsed = parseGrade(it.grade);
+      if (!parsed) continue;
+      const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
+      const sp = mergedSlabPrices[key];
+      if (!sp) { result[it.id] = { fmv: it.market, label: "market" }; continue; }
+      const { q1, median, q3 } = computeSlabStats(sp);
+      const year = inferCardYear(it.set_name);
+      const sel = selectTierFMV(q1, median, q3, { year, strategy: pricingStrategy });
+      result[it.id] = { fmv: sel.fmv, label: sel.label };
+    }
+    return result;
+  }, [items, mergedSlabPrices, pricingStrategy]);
+
   function applyRefreshedPrice(rp: RefreshedSlabPrice) {
     setSlabPriceOverrides((prev) => ({ ...prev, [rp.lookup_key]: rp as SlabPrice }));
   }
@@ -791,6 +1005,7 @@ export default function InventoryClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sellOpen, setSellOpen] = useState(false);
   const [salePrice, setSalePrice] = useState("");
+  const [manualPrices, setManualPrices] = useState<Record<string, string>>({});
 
   // Mass edit
   const [massEditOpen, setMassEditOpen] = useState(false);
@@ -828,6 +1043,16 @@ export default function InventoryClient({
     [items]
   );
 
+  // Auto-fetch PSA 10 values for all grading items on mount (and when grading list changes)
+  useEffect(() => {
+    for (const it of gradingItems) {
+      if (!psa10Data[it.id]) {
+        fetchPsa10(it.id, it.name, it.set_name);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gradingItems]);
+
   const displayedItems = useMemo(() => {
     let result = items.filter((it) => it.status !== "grading");
     const q = search.trim().toLowerCase();
@@ -849,31 +1074,20 @@ export default function InventoryClient({
         case "date-desc":   return b.created_at.localeCompare(a.created_at);
         case "fmv-asc":
         case "fmv-desc": {
-          const getFmv = (it: Item) => {
-            if (it.category !== "slab" || !it.grade) return null;
-            const parsed = parseGrade(it.grade);
-            if (!parsed) return null;
-            const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
-            const sp = mergedSlabPrices[key];
-            return sp?.fair_market_value ?? sp?.sold_median ?? sp?.median_price ?? null;
-          };
+          const getFmv = (it: Item) => slabFMVData[it.id]?.fmv ?? null;
           return nullLast(getFmv(a), getFmv(b), sort === "fmv-asc");
         }
         case "margin-asc":
         case "margin-desc": {
           const getMargin = (it: Item) => {
-            if (it.cost == null || it.cost === 0) return null;
+            const ec = effectiveCost(it);
+            if (ec == null || ec === 0) return null;
             let price = it.market;
             if (it.category === "slab" && it.grade) {
-              const parsed = parseGrade(it.grade);
-              if (parsed) {
-                const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
-                const sp = mergedSlabPrices[key];
-                price = sp?.fair_market_value ?? sp?.sold_median ?? sp?.median_price ?? it.market;
-              }
+              price = slabFMVData[it.id]?.fmv ?? it.market;
             }
             if (price == null) return null;
-            return (price - it.cost) / it.cost;
+            return (price - ec) / ec;
           };
           return nullLast(getMargin(a), getMargin(b), sort === "margin-asc");
         }
@@ -882,12 +1096,7 @@ export default function InventoryClient({
           const getItemMovement = (it: Item) => {
             let current = it.market;
             if (it.category === "slab" && it.grade) {
-              const parsed = parseGrade(it.grade);
-              if (parsed) {
-                const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
-                const sp = mergedSlabPrices[key];
-                current = sp?.fair_market_value ?? sp?.sold_median ?? sp?.median_price ?? it.market;
-              }
+              current = slabFMVData[it.id]?.fmv ?? it.market;
             }
             return getMovement(current, it.acquired_market_price);
           };
@@ -897,24 +1106,28 @@ export default function InventoryClient({
       }
     });
     return result;
-  }, [items, search, filterCategory, filterStatus, filterOwner, filterConsigner, sort, slabPrices]);
+  }, [items, search, filterCategory, filterStatus, filterOwner, filterConsigner, sort, slabPrices, slabFMVData]);
 
   // Pill filter counts — computed from base filtered set before pills applied
   const pillCounts = useMemo(() => {
     let noPrice = 0, noCost = 0, highValue = 0, lowConf = 0, stale = 0, rising = 0, dropping = 0;
     for (const it of displayedItems) {
-      if (it.cost == null) noCost++;
+      if (effectiveCost(it) == null) noCost++;
       let currentPrice = it.market;
       if (it.category === "slab" && it.grade) {
         const parsed = parseGrade(it.grade);
         const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
         const sp = key ? mergedSlabPrices[key] : null;
-        const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+        const fmv = slabFMVData[it.id]?.fmv ?? null;
         currentPrice = fmv ?? it.market;
         if (!sp) noPrice++;
         if (fmv != null && fmv > 200) highValue++;
         if (sp && (sp.sold_count > 0 ? sp.sold_count : sp.comp_count) < 3) lowConf++;
         if (isSlabTierStale(sp, fmv)) stale++;
+      } else if (it.category === "sealed") {
+        currentPrice = it.market;
+        if (it.market == null) noPrice++;
+        if (it.market != null && it.market > 200) highValue++;
       } else {
         const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
         const rcp = mergedRawCardPrices[rawKey];
@@ -935,18 +1148,24 @@ export default function InventoryClient({
   const filteredDisplayedItems = useMemo(() => {
     if (!filterNoPrice && !filterNoCost && !filterHighValue && !filterLowConf && !filterStale && !filterRising && !filterDropping) return displayedItems;
     return displayedItems.filter((it) => {
-      if (filterNoCost && it.cost != null) return false;
+      if (filterNoCost && effectiveCost(it) != null) return false;
       let currentPrice = it.market;
       if (it.category === "slab" && it.grade) {
         const parsed = parseGrade(it.grade);
         const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
         const sp = key ? mergedSlabPrices[key] : null;
-        const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+        const fmv = slabFMVData[it.id]?.fmv ?? null;
         currentPrice = fmv ?? it.market;
         if (filterNoPrice && sp) return false;
         if (filterHighValue && !(fmv != null && fmv > 200)) return false;
         if (filterLowConf && !(sp && (sp.sold_count > 0 ? sp.sold_count : sp.comp_count) < 3)) return false;
         if (filterStale && !isSlabTierStale(sp, fmv)) return false;
+      } else if (it.category === "sealed") {
+        currentPrice = it.market;
+        if (filterNoPrice && it.market != null) return false;
+        if (filterHighValue && !(it.market != null && it.market > 200)) return false;
+        if (filterLowConf) return false;
+        if (filterStale) return false; // sealed staleness not tracked separately
       } else {
         const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
         const rcp = mergedRawCardPrices[rawKey];
@@ -966,33 +1185,47 @@ export default function InventoryClient({
 
   // Inventory value summary
   const inventorySummary = useMemo(() => {
-    let slabValue = 0, rawValue = 0, totalCost = 0;
+    let slabValue = 0, sealedValue = 0, rawValue = 0;
+    let totalCost = 0, costedCount = 0, costedMarketValue = 0;
+    const totalCount = displayedItems.length;
     for (const it of displayedItems) {
       let price: number | null = null;
+      let itemMarketContrib = 0;
       if (it.category === "slab" && it.grade) {
-        const parsed = parseGrade(it.grade);
-        const key = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
-        const sp = key ? mergedSlabPrices[key] : null;
-        price = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
-        slabValue += price ?? 0;
+        price = slabFMVData[it.id]?.fmv ?? it.market;
+        itemMarketContrib = price ?? 0;
+        slabValue += itemMarketContrib;
+      } else if (it.category === "sealed") {
+        price = it.market;
+        itemMarketContrib = (price ?? 0) * (it.quantity ?? 1);
+        sealedValue += itemMarketContrib;
       } else {
         const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
         const rcp = mergedRawCardPrices[rawKey];
         price = rcp
           ? (priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) ?? it.market)
           : it.market;
-        rawValue += price ?? 0;
+        itemMarketContrib = price ?? 0;
+        rawValue += itemMarketContrib;
       }
-      totalCost += it.cost ?? 0;
+      // Only count cost for cards that actually have cost data (never count $0 from missing cost)
+      const ec = effectiveCost(it);
+      if (ec != null) {
+        totalCost += ec;
+        costedCount++;
+        costedMarketValue += itemMarketContrib;
+      }
     }
-    const total = slabValue + rawValue;
-    const profit = total - totalCost;
+    const total = slabValue + sealedValue + rawValue;
+    // Profit is calculated only over cards with known cost — avoids inflating profit with uncosted cards
+    const profit = costedMarketValue - totalCost;
     const profitPct = totalCost > 0 ? (profit / totalCost) * 100 : null;
-    return { slabValue, rawValue, total, totalCost, profit, profitPct };
-  }, [displayedItems, mergedSlabPrices, mergedRawCardPrices]);
+    return { slabValue, sealedValue, rawValue, total, totalCost, costedCount, totalCount, profit, profitPct };
+  }, [displayedItems, slabFMVData, mergedRawCardPrices]);
 
   const displayedSlabs = useMemo(() => filteredDisplayedItems.filter((it) => it.category === "slab"), [filteredDisplayedItems]);
-  const displayedRawCards = useMemo(() => filteredDisplayedItems.filter((it) => it.category !== "slab"), [filteredDisplayedItems]);
+  const displayedSealed = useMemo(() => filteredDisplayedItems.filter((it) => it.category === "sealed"), [filteredDisplayedItems]);
+  const displayedRawCards = useMemo(() => filteredDisplayedItems.filter((it) => it.category === "single"), [filteredDisplayedItems]);
 
   const selectedItems = useMemo(
     () => items.filter((it) => selectedIds.has(it.id)),
@@ -1002,10 +1235,51 @@ export default function InventoryClient({
   const totalMarket = selectedItems.reduce((s, it) => s + (it.market ?? 0), 0);
   const salePriceNum = parseFloat(salePrice) || 0;
 
-  function getProportionalPrice(it: Item): number {
+  /** Compute the displayed/final price for a single item, respecting manual locks. */
+  function getCardPrice(it: Item): number {
+    if (manualPrices[it.id] !== undefined) return parseFloat(manualPrices[it.id]) || 0;
+    const manualSum = selectedItems.reduce((s, other) => {
+      const mp = manualPrices[other.id];
+      return s + (mp !== undefined ? parseFloat(mp) || 0 : 0);
+    }, 0);
+    const autoItems = selectedItems.filter((other) => manualPrices[other.id] === undefined);
+    const autoMarketSum = autoItems.reduce((s, other) => s + (other.market ?? 0), 0);
+    const remaining = salePriceNum - manualSum;
     const m = it.market ?? 0;
-    if (totalMarket > 0) return (m / totalMarket) * salePriceNum;
-    return selectedItems.length > 0 ? salePriceNum / selectedItems.length : 0;
+    if (autoMarketSum > 0) return Math.round((m / autoMarketSum) * remaining * 100) / 100;
+    return autoItems.length > 0 ? Math.round((remaining / autoItems.length) * 100) / 100 : 0;
+  }
+
+  /** Lock a card at a manually entered price, and sync the total. */
+  function updateCardPrice(id: string, value: string) {
+    const newManual = { ...manualPrices, [id]: value };
+    setManualPrices(newManual);
+    // Recompute total: sum of manual prices + auto-fill for the rest (using current total)
+    const currentTotal = parseFloat(salePrice) || 0;
+    const manualSum = selectedItems.reduce((s, it) => {
+      const mp = newManual[it.id];
+      return s + (mp !== undefined ? parseFloat(mp) || 0 : 0);
+    }, 0);
+    const autoItems = selectedItems.filter((it) => newManual[it.id] === undefined);
+    const autoMarketSum = autoItems.reduce((s, it) => s + (it.market ?? 0), 0);
+    const remaining = currentTotal - manualSum;
+    let autoSum = 0;
+    for (const autoIt of autoItems) {
+      const m = autoIt.market ?? 0;
+      const price = autoMarketSum > 0
+        ? Math.round((m / autoMarketSum) * remaining * 100) / 100
+        : autoItems.length > 0 ? Math.round((remaining / autoItems.length) * 100) / 100 : 0;
+      autoSum += price;
+    }
+    const newTotal = manualSum + autoSum;
+    setSalePrice(newTotal.toFixed(2));
+  }
+
+  /** Remove manual lock; auto-fill takes over (total unchanged). */
+  function resetCardPrice(id: string) {
+    const newManual = { ...manualPrices };
+    delete newManual[id];
+    setManualPrices(newManual);
   }
 
   function toggleSelect(id: string) {
@@ -1019,6 +1293,7 @@ export default function InventoryClient({
     setSelectedIds(new Set());
     setSellOpen(false);
     setSalePrice("");
+    setManualPrices({});
   }
 
   function openEdit(it: Item) { setEditingItem(it); setEditForm(itemToForm(it)); }
@@ -1075,6 +1350,12 @@ export default function InventoryClient({
     }
   }
 
+  function openAddPreset(category: Category) {
+    setAddForm({ ...blankForm(), category });
+    setAddOpen(true);
+    setInventoryOpen(true);
+  }
+
   function handleAddFormFind() {
     setAddOpen(true);
     setCardSearchOpen(true);
@@ -1108,6 +1389,9 @@ export default function InventoryClient({
           card_number: item.cardNumber || null,
           grade: item.grade || null,
           sticker_price: toNum(item.stickerPrice),
+          product_type: item.category === "sealed" ? (item.productType || null) : null,
+          quantity: item.category === "sealed" ? (parseInt(item.quantity) || 1) : 1,
+          language: item.category === "sealed" ? (item.language || "english") : "english",
         }))
       );
       setStagedItems([]);
@@ -1135,6 +1419,9 @@ export default function InventoryClient({
         card_number: editForm.cardNumber || null,
         grade: editForm.grade || null,
         sticker_price: toNum(editForm.stickerPrice),
+        product_type: editForm.category === "sealed" ? (editForm.productType || null) : null,
+        quantity: editForm.category === "sealed" ? (parseInt(editForm.quantity) || 1) : 1,
+        language: editForm.category === "sealed" ? (editForm.language || "english") : "english",
       });
       closeEdit();
     } finally { setBusy(false); }
@@ -1193,7 +1480,9 @@ export default function InventoryClient({
     if (selectedIds.size === 0 || salePriceNum <= 0) return;
     setBusy(true);
     try {
-      await markItemsAsSold(Array.from(selectedIds), salePriceNum);
+      const perCardPrices: Record<string, number> = {};
+      for (const it of selectedItems) perCardPrices[it.id] = getCardPrice(it);
+      await markItemsAsSold(Array.from(selectedIds), salePriceNum, perCardPrices);
       clearSelection();
     } finally { setBusy(false); }
   }
@@ -1225,6 +1514,18 @@ export default function InventoryClient({
       if (!fromBg) {
         setTimeout(() => { bgRef.current.paused = false; }, 1500);
       }
+    }
+  }
+
+  async function handleRefreshSealedPrice(it: Item) {
+    setSealedRefreshing((prev) => ({ ...prev, [it.id]: true }));
+    try {
+      await refreshSealedPrice(it.id, it.name, it.set_name ?? null);
+      router.refresh();
+    } catch (err) {
+      console.error("[sealed price refresh] error:", err instanceof Error ? err.message : err);
+    } finally {
+      setSealedRefreshing((prev) => ({ ...prev, [it.id]: false }));
     }
   }
 
@@ -1606,9 +1907,10 @@ export default function InventoryClient({
             <div className="md:hidden px-3 py-2 border-b bg-muted/10 flex items-center justify-between">
               <div>
                 <span className="text-base font-bold inv-price">{fmt(inventorySummary.total)}</span>
-                <div className="text-[11px] opacity-50 mt-0.5">
+                <div className="text-[11px] opacity-50 mt-0.5 flex items-center gap-1">
                   <span className="text-purple-400">{fmt(inventorySummary.slabValue)}</span>
-                  <span className="opacity-40 mx-1">·</span>
+                  {inventorySummary.sealedValue > 0 && <><span className="opacity-40">·</span><span className="text-teal-400">{fmt(inventorySummary.sealedValue)}</span></>}
+                  <span className="opacity-40">·</span>
                   <span className="text-blue-400">{fmt(inventorySummary.rawValue)}</span>
                 </div>
               </div>
@@ -1632,6 +1934,12 @@ export default function InventoryClient({
                 <span className="text-[10px] uppercase tracking-wider text-purple-500 opacity-70 font-semibold">Slabs</span>
                 <span className="text-sm font-bold text-purple-500 dark:text-purple-400 inv-price">{fmt(inventorySummary.slabValue)}</span>
               </div>
+              {inventorySummary.sealedValue > 0 && (
+                <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-teal-500/8">
+                  <span className="text-[10px] uppercase tracking-wider text-teal-500 opacity-70 font-semibold">Sealed</span>
+                  <span className="text-sm font-bold text-teal-500 dark:text-teal-400 inv-price">{fmt(inventorySummary.sealedValue)}</span>
+                </div>
+              )}
               <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-blue-500/8">
                 <span className="text-[10px] uppercase tracking-wider text-blue-500 opacity-70 font-semibold">Raw</span>
                 <span className="text-sm font-bold text-blue-500 dark:text-blue-400 inv-price">{fmt(inventorySummary.rawValue)}</span>
@@ -1642,6 +1950,7 @@ export default function InventoryClient({
                   <div className="flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg bg-muted/30">
                     <span className="text-[10px] uppercase tracking-wider opacity-40 font-semibold">Cost</span>
                     <span className="text-sm font-bold opacity-50 inv-price">{fmt(inventorySummary.totalCost)}</span>
+                    <span className="text-[10px] opacity-30 font-medium">{inventorySummary.costedCount} costed</span>
                   </div>
                   <div className={`flex flex-col flex-shrink-0 px-3 py-1.5 rounded-lg border ${inventorySummary.profit >= 0 ? "metric-profit-positive" : "metric-profit-negative"}`}>
                     <span className={`text-[10px] uppercase tracking-wider font-semibold ${inventorySummary.profit >= 0 ? "text-emerald-400 opacity-90" : "text-red-400 opacity-90"}`}>
@@ -1653,6 +1962,9 @@ export default function InventoryClient({
                         <span className="text-xs opacity-60 font-medium ml-1 inv-price">({inventorySummary.profitPct >= 0 ? "+" : ""}{inventorySummary.profitPct.toFixed(0)}%)</span>
                       )}
                     </span>
+                    {inventorySummary.costedCount < inventorySummary.totalCount && (
+                      <span className="text-[10px] opacity-30 font-medium">{inventorySummary.costedCount} of {inventorySummary.totalCount}</span>
+                    )}
                   </div>
                 </>
               )}
@@ -1720,18 +2032,30 @@ export default function InventoryClient({
             {/* Slabs section */}
             <>
               <button
-                className="section-header-slab w-full px-3 py-2 border-b border-purple-500/10 flex items-center gap-2 hover:bg-purple-500/10 transition-colors duration-150 text-left"
+                className="section-header-slab w-full px-3 py-2 border-b border-purple-500/10 flex items-center gap-2 hover:bg-purple-500/10 transition-colors duration-150 text-left cursor-pointer"
                 onClick={() => setSlabsCollapsed((v) => !v)}
               >
-                <span className="text-[9px] opacity-40 w-3">{slabsCollapsed ? "▶" : "▼"}</span>
-                <Trophy size={13} className="text-purple-400 flex-shrink-0" />
-                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-purple-400 inv-label">Slabs</span>
-                <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(167_139_250/0.2)]">{displayedSlabs.length}</span>
+                <ChevronDown size={13} className={`text-purple-400/60 flex-shrink-0 transition-transform duration-200 pointer-events-none ${slabsCollapsed ? "-rotate-90" : ""}`} />
+                <Trophy size={13} className="text-purple-400 flex-shrink-0 pointer-events-none" />
+                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-purple-400 inv-label pointer-events-none">Slabs</span>
+                <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(167_139_250/0.2)] pointer-events-none">{displayedSlabs.length}</span>
               </button>
               {!slabsCollapsed && (displayedSlabs.length === 0 ? (
-                <div className="px-3 py-6 text-center space-y-1">
-                  <div className="flex justify-center opacity-30"><Trophy size={24} /></div>
-                  <div className="text-xs opacity-40">{items.some((i) => i.category === "slab" && i.status !== "grading") ? "No slabs match your filters" : "No slabs yet — add your first graded card!"}</div>
+                <div className="px-3 py-8 text-center space-y-2">
+                  <div className="flex justify-center opacity-25"><Trophy size={28} /></div>
+                  {items.some((i) => i.category === "slab" && i.status !== "grading") ? (
+                    <div className="text-xs opacity-40">No slabs match your filters</div>
+                  ) : (
+                    <>
+                      <div className="text-xs opacity-40">No slabs yet</div>
+                      <button
+                        className="text-xs px-3 py-1.5 rounded-lg border font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20 transition-colors"
+                        onClick={() => openAddPreset("slab")}
+                      >
+                        + Add Slab
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : displayedSlabs.map((it) => {
                 const isSelected = selectedIds.has(it.id);
@@ -1739,17 +2063,18 @@ export default function InventoryClient({
                 const parsed = it.grade ? parseGrade(it.grade) : null;
                 const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
                 const sp = slabKey ? mergedSlabPrices[slabKey] : null;
-                const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
+                const fmv = slabFMVData[it.id]?.fmv ?? it.market;
                 const isRefreshing = slabRefreshing[it.id];
                 const isRateLimited = slabRateLimited[it.id];
                 const isStale = isSlabTierStale(sp, fmv);
                 // suggested = eBay cache; ask = user's saved price; margin against effective price
-                const suggested = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : null;
+                const suggested = slabFMVData[it.id]?.fmv ?? null;
                 const askPrice = it.market;
                 const isCustomAsk = askPrice != null && askPrice !== suggested;
                 const effectivePrice = askPrice ?? suggested;
-                const marginAmtEff = effectivePrice != null && it.cost != null && it.cost > 0 ? effectivePrice - it.cost : null;
-                const marginPctEff = effectivePrice != null && it.cost != null && it.cost > 0 ? ((effectivePrice - it.cost) / it.cost) * 100 : null;
+                const ec = effectiveCost(it);
+                const marginAmtEff = effectivePrice != null && ec != null && ec > 0 ? effectivePrice - ec : null;
+                const marginPctEff = effectivePrice != null && ec != null && ec > 0 ? ((effectivePrice - ec) / ec) * 100 : null;
                 const ebayQ = buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number);
                 const ebayEnc = encodeURIComponent(ebayQ);
                 return (
@@ -1849,8 +2174,8 @@ export default function InventoryClient({
                           onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
                           onClick={(e) => e.stopPropagation()}
                         />
-                      ) : it.cost != null ? (
-                        <span className="inv-price text-sm opacity-70">{fmt(it.cost)}</span>
+                      ) : ec != null ? (
+                        <span className="inv-price text-sm opacity-70" title={it.cost_basis != null ? `Trade chain cost basis` : undefined}>{fmt(ec)}{it.cost_basis != null && <span className="text-[9px] opacity-40 ml-0.5">cb</span>}</span>
                       ) : (
                         <button className="cost-ghost-btn" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
                       )}
@@ -1887,18 +2212,30 @@ export default function InventoryClient({
             {/* Raw Cards section */}
             <>
               <button
-                className="section-header-raw w-full px-3 py-2 border-b border-blue-500/10 flex items-center gap-2 hover:bg-blue-500/10 transition-colors duration-150 text-left"
+                className="section-header-raw w-full px-3 py-2 border-b border-blue-500/10 flex items-center gap-2 hover:bg-blue-500/10 transition-colors duration-150 text-left cursor-pointer"
                 onClick={() => setRawCollapsed((v) => !v)}
               >
-                <span className="text-[9px] opacity-40 w-3">{rawCollapsed ? "▶" : "▼"}</span>
-                <CreditCard size={13} className="text-blue-400 flex-shrink-0" />
-                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-blue-400 inv-label">Raw Cards</span>
-                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(96_165_250/0.2)]">{displayedRawCards.length}</span>
+                <ChevronDown size={13} className={`text-blue-400/60 flex-shrink-0 transition-transform duration-200 pointer-events-none ${rawCollapsed ? "-rotate-90" : ""}`} />
+                <CreditCard size={13} className="text-blue-400 flex-shrink-0 pointer-events-none" />
+                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-blue-400 inv-label pointer-events-none">Raw Cards</span>
+                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(96_165_250/0.2)] pointer-events-none">{displayedRawCards.length}</span>
               </button>
               {!rawCollapsed && (displayedRawCards.length === 0 ? (
-                <div className="px-3 py-6 text-center space-y-1">
-                  <div className="flex justify-center opacity-30"><CreditCard size={24} /></div>
-                  <div className="text-xs opacity-40">{items.some((i) => i.category !== "slab" && i.status !== "grading") ? "No raw cards match your filters" : "No raw cards yet — grab some from the Transactions page!"}</div>
+                <div className="px-3 py-8 text-center space-y-2">
+                  <div className="flex justify-center opacity-25"><CreditCard size={28} /></div>
+                  {items.some((i) => i.category === "single" && i.status !== "grading") ? (
+                    <div className="text-xs opacity-40">No singles match your filters</div>
+                  ) : (
+                    <>
+                      <div className="text-xs opacity-40">No singles yet</div>
+                      <button
+                        className="text-xs px-3 py-1.5 rounded-lg border font-medium border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
+                        onClick={() => openAddPreset("single")}
+                      >
+                        + Add Single
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : displayedRawCards.map((it) => {
                 const isSelected = selectedIds.has(it.id);
@@ -1913,8 +2250,9 @@ export default function InventoryClient({
                 const askPrice = it.market;
                 const isCustomAsk = askPrice != null && askPrice !== suggested;
                 const effectivePrice = askPrice ?? suggested;
-                const marginAmt = effectivePrice != null && it.cost != null && it.cost > 0 ? effectivePrice - it.cost : null;
-                const marginPct = effectivePrice != null && it.cost != null && it.cost > 0 ? ((effectivePrice - it.cost) / it.cost) * 100 : null;
+                const ecRaw = effectiveCost(it);
+                const marginAmt = effectivePrice != null && ecRaw != null && ecRaw > 0 ? effectivePrice - ecRaw : null;
+                const marginPct = effectivePrice != null && ecRaw != null && ecRaw > 0 ? ((effectivePrice - ecRaw) / ecRaw) * 100 : null;
                 const isRawRefreshing = rawCardRefreshing[it.id];
                 const rawEbayQ = buildRawEbayQuery(it.name, it.set_name, it.card_number);
                 const rawEbayEnc = encodeURIComponent(rawEbayQ);
@@ -2025,8 +2363,8 @@ export default function InventoryClient({
                           onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
                           onClick={(e) => e.stopPropagation()}
                         />
-                      ) : it.cost != null ? (
-                        <span className="inv-price text-sm opacity-70">{fmt(it.cost)}</span>
+                      ) : ecRaw != null ? (
+                        <span className="inv-price text-sm opacity-70" title={it.cost_basis != null ? `Trade chain cost basis` : undefined}>{fmt(ecRaw)}{it.cost_basis != null && <span className="text-[9px] opacity-40 ml-0.5">cb</span>}</span>
                       ) : (
                         <button className="cost-ghost-btn" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
                       )}
@@ -2060,6 +2398,163 @@ export default function InventoryClient({
                 );
               }))}
             </>
+
+            {/* Sealed section */}
+            <>
+              <button
+                className="w-full px-3 py-2 border-b border-teal-500/10 flex items-center gap-2 hover:bg-teal-500/10 transition-colors duration-150 text-left cursor-pointer"
+                onClick={() => setSealedCollapsed((v) => !v)}
+              >
+                <ChevronDown size={13} className={`text-teal-400/60 flex-shrink-0 transition-transform duration-200 pointer-events-none ${sealedCollapsed ? "-rotate-90" : ""}`} />
+                <Folder size={13} className="text-teal-400 flex-shrink-0 pointer-events-none" />
+                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-teal-400 inv-label pointer-events-none">Sealed</span>
+                <span className="text-[10px] bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(45_212_191/0.2)] pointer-events-none">{displayedSealed.length}</span>
+              </button>
+              {!sealedCollapsed && (displayedSealed.length === 0 ? (
+                <div className="px-3 py-8 text-center space-y-2">
+                  <div className="flex justify-center opacity-25"><Folder size={28} /></div>
+                  {items.some((i) => i.category === "sealed" && i.status !== "grading") ? (
+                    <div className="text-xs opacity-40">No sealed products match your filters</div>
+                  ) : (
+                    <>
+                      <div className="text-xs opacity-40">No sealed products yet</div>
+                      <button
+                        className="text-xs px-3 py-1.5 rounded-lg border font-medium border-teal-300 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/20 transition-colors"
+                        onClick={() => openAddPreset("sealed")}
+                      >
+                        + Add Sealed Product
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : displayedSealed.map((it) => {
+                const isSelected = selectedIds.has(it.id);
+                const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
+                const price = it.market;
+                const askPrice = it.market;
+                const isSealedRefreshing = sealedRefreshing[it.id];
+                const ebayQ = encodeURIComponent([it.name, it.set_name].filter(Boolean).join(" "));
+                const ecSealed = effectiveCost(it);
+                const marginAmt = askPrice != null && ecSealed != null && ecSealed > 0 ? askPrice - ecSealed : null;
+                const marginPct = askPrice != null && ecSealed != null && ecSealed > 0 ? ((askPrice - ecSealed) / ecSealed) * 100 : null;
+                return (
+                  <div
+                    key={it.id}
+                    className={`relative inv-row flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""} ${consigner ? "border-l-2 border-l-amber-500/60" : ""}`}
+                    onClick={() => toggleSelect(it.id)}
+                  >
+                    <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
+                    <div className="flex-shrink-0 w-[60px]">
+                      {it.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={it.image_url} alt={it.name} className="card-thumb object-cover" />
+                      ) : (
+                        <div className="card-thumb-placeholder flex items-center justify-center"><span className="text-[10px] opacity-30">PKG</span></div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="inv-card-name">{it.name}</div>
+                      {it.set_name && <div className="inv-card-meta">{it.set_name}</div>}
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-500/15 text-teal-400 font-medium">{sealedTypeLabel(it.product_type)}</span>
+                          {it.quantity > 1 && <span className="text-[10px] opacity-50">×{it.quantity}</span>}
+                          {it.language !== "english" && <span className="text-[10px] opacity-40 border rounded px-1 py-0.5 capitalize">{it.language}</span>}
+                          {consigner ? (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">{consigner.name}</span>
+                          ) : it.owner !== "shared" ? (
+                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
+                          ) : null}
+                        </div>
+                        {/* Mobile-only price */}
+                        <div className={`md:hidden flex items-center gap-1 flex-shrink-0${isSealedRefreshing ? " price-refreshing" : ""}`}>
+                          <span className="text-sm font-semibold inv-price">{price != null ? fmt(price) : "—"}</span>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Suggested price — desktop only */}
+                    <div className="hidden md:block flex-shrink-0 w-36 text-right">
+                      {isSealedRefreshing ? (
+                        <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block">↻</span></div>
+                      ) : price == null ? (
+                        <button
+                          className="text-xs px-2 py-1 rounded-lg border font-medium border-teal-400/40 text-teal-400 hover:bg-teal-500/10 whitespace-nowrap transition-colors"
+                          onClick={(e) => { e.stopPropagation(); handleRefreshSealedPrice(it); }}
+                        >Get Price</button>
+                      ) : (
+                        <div>
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="inv-price-display">{fmt(price)}</span>
+                            <button className={`transition-opacity text-[14px] ${isSealedRefreshing ? "opacity-50 spin" : "opacity-30 hover:opacity-70"}`} title="Refresh price" onClick={(e) => { e.stopPropagation(); handleRefreshSealedPrice(it); }}>↺</button>
+                          </div>
+                          <div className="inv-price-source">eBay / PPT</div>
+                          <div className="flex justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${ebayQ}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">Sold ↗</a>
+                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${ebayQ}&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">List ↗</a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {/* My Ask */}
+                    <div className="hidden md:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      {inlineAskId === it.id ? (
+                        <input
+                          autoFocus
+                          className="ask-auto"
+                          value={inlineAskVal}
+                          inputMode="decimal"
+                          onChange={(e) => setInlineAskVal(e.target.value)}
+                          onBlur={() => handleSaveInlineAsk(it.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineAsk(it.id); if (e.key === "Escape") { setInlineAskId(null); setInlineAskVal(""); } }}
+                        />
+                      ) : (
+                        <button
+                          className="ask-auto"
+                          onClick={() => { setInlineAskId(it.id); setInlineAskVal(askPrice?.toFixed(2) ?? ""); }}
+                        >
+                          {askPrice != null ? fmt(askPrice) : "—"}
+                        </button>
+                      )}
+                    </div>
+                    {/* Cost */}
+                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right">
+                      {inlineCostId === it.id ? (
+                        <input
+                          autoFocus
+                          className="w-20 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
+                          value={inlineCostVal}
+                          inputMode="decimal"
+                          onChange={(e) => setInlineCostVal(e.target.value)}
+                          onBlur={() => handleSaveInlineCost(it.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : ecSealed != null ? (
+                        <span className="inv-price text-sm opacity-70" title={it.cost_basis != null ? `Trade chain cost basis` : undefined}>{fmt(ecSealed)}{it.cost_basis != null && <span className="text-[9px] opacity-40 ml-0.5">cb</span>}</span>
+                      ) : (
+                        <button className="cost-ghost-btn" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
+                      )}
+                    </div>
+                    {/* Margin */}
+                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
+                      {marginAmt != null && marginPct != null ? (
+                        <span className={marginPct >= 0 ? "margin-positive" : "margin-negative"}>
+                          {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
+                        </span>
+                      ) : <span className="opacity-30">—</span>}
+                    </div>
+                    {/* Movement */}
+                    <div className="hidden md:flex flex-shrink-0 w-[72px] justify-end items-center">
+                      <MovementBadge pct={getMovement(price, it.acquired_market_price)} />
+                    </div>
+                    <div className="hidden md:flex flex-shrink-0 w-[60px] justify-end">
+                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
+                    </div>
+                  </div>
+                );
+              }))}
+            </>
           </div>
         )}
 
@@ -2083,30 +2578,45 @@ export default function InventoryClient({
                     const parsed = it.grade ? parseGrade(it.grade) : null;
                     const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
                     const sp = slabKey ? mergedSlabPrices[slabKey] : null;
-                    const fmvGrid = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
-                    const marketColor = fmvGrid != null && it.cost != null
-                      ? fmvGrid >= it.cost ? "text-green-600" : "text-red-500"
+                    const fmvGrid = slabFMVData[it.id]?.fmv ?? it.market;
+                    const ecSlabGrid = effectiveCost(it);
+                    const marketColor = fmvGrid != null && ecSlabGrid != null
+                      ? fmvGrid >= ecSlabGrid ? "text-green-600" : "text-red-500"
                       : "opacity-60";
                     const movePct = getMovement(fmvGrid, it.acquired_market_price);
+                    const slabLabel = slabGradeLabel(it.grade);
+                    const companyKey = slabLabel?.companyKey ?? "other";
                     return (
                       <div
                         key={it.id}
-                        className={`relative grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
+                        className={`relative grid-tile slab-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
+                        data-company={companyKey}
                         onClick={() => toggleSelect(it.id)}
                       >
                         <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
-                        <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
-                        <div className="px-2 py-1.5 flex flex-col gap-1">
+                        {/* Slab case frame with grade label */}
+                        <div className="slab-case m-1.5">
+                          <div className={`slab-label slab-label-${companyKey}`}>
+                            <span className="slab-label-text">{slabLabel?.labelText ?? "GRADED"}</span>
+                            <span className="slab-label-num">{slabLabel?.gradeNum ?? "—"}</span>
+                          </div>
+                          <div className="slab-card-area">
+                            <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
+                          </div>
+                          <div className="slab-bottom">
+                            {it.card_number && <span className="slab-cert">{it.card_number}</span>}
+                          </div>
+                        </div>
+                        <div className="px-2 pb-1.5 flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
                             <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
                             <div className="flex items-center gap-1">
                               <MovementDot pct={movePct} />
-                              {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
                             </div>
                           </div>
                           <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
                           <div className="hidden md:block text-xs">
-                            <span className="opacity-50">{it.cost != null ? fmt(it.cost) : "—"} → </span>
+                            <span className="opacity-50">{ecSlabGrid != null ? fmt(ecSlabGrid) : "—"} → </span>
                             <span className={`font-medium ${marketColor}`}>{fmt(fmvGrid)}</span>
                           </div>
                           <div className="md:hidden text-xs font-semibold">
@@ -2119,15 +2629,59 @@ export default function InventoryClient({
                 </div>
               )}
             </div>
+            {/* Sealed grid */}
+            {displayedSealed.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400">Sealed</span>
+                  <span className="text-xs bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 px-1.5 py-0.5 rounded-full font-medium">{displayedSealed.length}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+                  {displayedSealed.map((it) => {
+                    const isSelected = selectedIds.has(it.id);
+                    const price = it.market;
+                    const ecSealedGrid = effectiveCost(it);
+                    const marketColor = price != null && ecSealedGrid != null
+                      ? price >= ecSealedGrid ? "text-green-600" : "text-red-500"
+                      : "opacity-60";
+                    return (
+                      <div
+                        key={it.id}
+                        className={`relative grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
+                        onClick={() => toggleSelect(it.id)}
+                      >
+                        <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
+                        <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={null} onUpload={(file) => handleUploadImage(it, file)} />
+                        <div className="px-2 py-1.5 flex flex-col gap-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-teal-500/15 text-teal-400 font-medium truncate">{sealedTypeLabel(it.product_type)}</span>
+                          </div>
+                          <div className="text-xs font-semibold leading-tight line-clamp-2">{it.name}</div>
+                          <div className="hidden md:block text-xs">
+                            <span className="opacity-50">{ecSealedGrid != null ? fmt(ecSealedGrid) : "—"} → </span>
+                            <span className={`font-medium ${marketColor}`}>{fmt(price)}</span>
+                          </div>
+                          <div className="md:hidden text-xs font-semibold">
+                            <span className={marketColor}>{fmt(price)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Raw Cards grid */}
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Raw Cards</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Singles</span>
                 <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-medium">{displayedRawCards.length}</span>
               </div>
               {displayedRawCards.length === 0 ? (
                 <div className="py-6 text-center text-xs opacity-40">
-                  {items.some((i) => i.category !== "slab" && i.status !== "grading") ? "No raw cards match your filters" : "No raw cards yet"}
+                  {items.some((i) => i.category === "single" && i.status !== "grading") ? "No singles match your filters" : "No singles yet"}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
@@ -2139,8 +2693,9 @@ export default function InventoryClient({
                       ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition)
                       : null;
                     const displayPrice = condPrice ?? it.market;
-                    const marketColor = displayPrice != null && it.cost != null
-                      ? displayPrice >= it.cost ? "text-green-600" : "text-red-500"
+                    const ecRawGrid = effectiveCost(it);
+                    const marketColor = displayPrice != null && ecRawGrid != null
+                      ? displayPrice >= ecRawGrid ? "text-green-600" : "text-red-500"
                       : "opacity-60";
                     const movePct = getMovement(displayPrice, it.acquired_market_price);
                     return (
@@ -2158,7 +2713,7 @@ export default function InventoryClient({
                           </div>
                           <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
                           <div className="hidden md:block text-xs">
-                            <span className="opacity-50">{it.cost != null ? fmt(it.cost) : "—"} → </span>
+                            <span className="opacity-50">{ecRawGrid != null ? fmt(ecRawGrid) : "—"} → </span>
                             <span className={`font-medium ${marketColor}`}>{fmt(displayPrice)}</span>
                           </div>
                           <div className="md:hidden text-xs font-semibold">
@@ -2180,113 +2735,93 @@ export default function InventoryClient({
         <div className="border rounded-xl overflow-hidden">
           <div className="px-3 py-2.5 border-b flex items-center gap-2">
             <span className="font-medium text-sm">Grading</span>
-            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+            <span className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400 px-2 py-0.5 rounded-full font-medium">
               {gradingItems.length}
             </span>
+            <span className="text-[11px] opacity-30 ml-auto">Grading fee: {fmt(gradingCost)}/card</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-3">
-            {gradingItems.map((it) => (
-              <div key={it.id} className="border rounded-xl p-3 flex flex-col gap-2">
-                <CardImage
-                  src={it.image_url}
-                  name={it.name}
-                  setName={it.set_name}
-                  cardNumber={it.card_number}
-                  onUpload={(file) => handleUploadImage(it, file)}
-                />
-                <div className="font-semibold text-sm leading-tight line-clamp-2">{it.name}</div>
-                {(it.set_name || it.card_number) && (
-                  <div className="text-xs opacity-60 truncate">
-                    {[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}
+          <div className="divide-y divide-border/50">
+            {gradingItems.map((it) => {
+              const psa = psa10Data[it.id];
+              const costBasis = effectiveCost(it) ?? it.market ?? 0;
+              const psa10Val = psa?.medianPrice ?? null;
+              const profit = psa10Val != null ? psa10Val - costBasis - gradingCost : null;
+              const roi = profit != null && (costBasis + gradingCost) > 0
+                ? (profit / (costBasis + gradingCost)) * 100
+                : null;
+              return (
+                <div key={it.id} className="flex items-center gap-3 px-3 py-2.5">
+                  {/* Thumbnail */}
+                  <div className="flex-shrink-0 w-[56px]">
+                    {it.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={it.image_url} alt={it.name} className="card-thumb object-cover" />
+                    ) : (
+                      <div className="card-thumb-placeholder flex items-center justify-center">
+                        <span className="text-[10px] opacity-30">?</span>
+                      </div>
+                    )}
                   </div>
-                )}
 
-                {/* Cost / Market */}
-                <div className="grid grid-cols-2 gap-1 text-xs">
-                  <div className="bg-muted/30 rounded-lg px-2 py-1.5">
-                    <div className="opacity-50 mb-0.5">Cost</div>
-                    <div className="font-medium">{fmt(it.cost)}</div>
-                  </div>
-                  <div className="bg-muted/30 rounded-lg px-2 py-1.5">
-                    <div className="opacity-50 mb-0.5">Market</div>
-                    <div className="font-medium">{fmt(it.market)}</div>
-                  </div>
-                </div>
+                  {/* Info */}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-sm truncate leading-snug">{it.name}</div>
+                    {(it.set_name || it.card_number) && (
+                      <div className="text-xs opacity-50 truncate">
+                        {[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
 
-                {/* PSA 10 eBay lookup */}
-                {(() => {
-                  const psa = psa10Data[it.id];
-                  if (!psa || (!psa.loading && !psa.fetched)) {
-                    return (
-                      <button
-                        type="button"
-                        className="w-full text-xs py-2 rounded-lg border font-medium border-yellow-300 text-yellow-700 hover:bg-yellow-50 dark:hover:bg-yellow-950/20"
-                        onClick={() => fetchPsa10(it.id, it.name, it.set_name)}
-                      >
-                        Get PSA 10 Value
-                      </button>
-                    );
-                  }
-                  if (psa.loading) {
-                    return (
-                      <div className="w-full text-xs py-2 rounded-lg border text-center opacity-50">
-                        Fetching PSA 10…
-                      </div>
-                    );
-                  }
-                  // Fetched
-                  if (psa.medianPrice == null) {
-                    return (
-                      <div className="text-xs text-center opacity-50 py-1">
-                        {psa.rateLimited ? "eBay rate limited — wait a moment" : "No PSA 10 sales found"}
-                        <button
-                          className="block w-full mt-1 underline"
-                          onClick={() => fetchPsa10(it.id, it.name, it.set_name)}
-                        >
-                          Retry
-                        </button>
-                      </div>
-                    );
-                  }
-                  const pct =
-                    it.market != null && it.market > 0
-                      ? ((psa.medianPrice - it.market) / it.market) * 100
-                      : null;
-                  return (
-                    <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg px-2 py-1.5 text-xs">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="opacity-60">PSA 10 ({psa.count} sales)</span>
-                        <button
-                          className="opacity-40 hover:opacity-70 text-[10px]"
-                          onClick={() => fetchPsa10(it.id, it.name, it.set_name)}
-                          title="Refresh"
-                        >
-                          ↺
-                        </button>
-                      </div>
-                      <div className="font-semibold text-yellow-800 dark:text-yellow-300 mt-0.5">
-                        {fmt(psa.medianPrice)}
-                        {pct != null && (
-                          <span className={`ml-2 text-[11px] font-medium ${pct >= 0 ? "text-green-600" : "text-red-500"}`}>
-                            {pct >= 0 ? "+" : ""}{pct.toFixed(0)}%
-                          </span>
+                    {/* Price details */}
+                    <div className="mt-1 text-xs">
+                      {/* Line 1: Raw · PSA 10 · Grading */}
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 opacity-60">
+                        {costBasis > 0 && <span>Cost: {fmt(costBasis)}{it.cost_basis != null ? <span className="opacity-60"> (cb)</span> : null}</span>}
+                        {it.market != null && it.market !== costBasis && <span>· Raw: {fmt(it.market)}</span>}
+                        {psa?.loading && <span className="animate-pulse">· Fetching PSA 10…</span>}
+                        {psa?.fetched && psa10Val != null && (
+                          <span className="text-yellow-700 dark:text-yellow-400 font-medium">· PSA 10: {fmt(psa10Val)} ({psa.count} sales)</span>
+                        )}
+                        {psa?.fetched && psa10Val == null && (
+                          <span>{psa.rateLimited ? "· eBay rate limited" : "· No PSA 10 data"}</span>
                         )}
                       </div>
+                      {/* Line 2: Profit / ROI */}
+                      {profit != null && (
+                        <div className={`font-semibold mt-0.5 ${profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                          Potential profit: {profit >= 0 ? "+" : ""}{fmt(profit)}
+                          {roi != null && <span className="font-normal opacity-70"> ({roi >= 0 ? "+" : ""}{roi.toFixed(0)}% ROI)</span>}
+                        </div>
+                      )}
                     </div>
-                  );
-                })()}
+                  </div>
 
-                <div className="mt-auto pt-1">
-                  <button
-                    className="w-full text-xs py-2.5 rounded-lg border font-medium"
-                    onClick={() => onQuickStatus(it.id, "inventory")}
-                    disabled={busy}
-                  >
-                    Return to Inventory
-                  </button>
+                  {/* Actions */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {psa?.fetched && (
+                      <button
+                        className="text-[11px] opacity-30 hover:opacity-70 transition-opacity"
+                        onClick={() => fetchPsa10(it.id, it.name, it.set_name)}
+                        title="Refresh PSA 10 price"
+                      >↺</button>
+                    )}
+                    <button
+                      className="text-xs px-2.5 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors"
+                      onClick={() => onQuickStatus(it.id, "inventory")}
+                      disabled={busy}
+                    >
+                      Return
+                    </button>
+                    <button
+                      className="text-xs px-2.5 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors"
+                      onClick={() => openEdit(it)}
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -2342,16 +2877,16 @@ export default function InventoryClient({
 
       {/* Edit modal */}
       {editingItem && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
-          <div className="bg-background border rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-4 space-y-4">
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
+          <div className="modal-panel w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="font-semibold">Edit item</div>
-              <button className="text-sm opacity-60 px-2 py-1" onClick={closeEdit}>✕</button>
+              <div className="modal-title">Edit item</div>
+              <button className="modal-close-btn" onClick={closeEdit}>✕</button>
             </div>
             <ItemFormFields form={editForm} setForm={setEditForm} consigners={consigners} />
             <button
               type="button"
-              className="w-full px-4 py-2 rounded-lg border text-sm font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+              className="w-full modal-btn-outline"
               onClick={() => setEditImagePickerOpen(true)}
               disabled={busy}
             >
@@ -2360,7 +2895,7 @@ export default function InventoryClient({
             {editForm.category === "single" && editingItem?.status !== "grading" && (
               <button
                 type="button"
-                className="w-full px-4 py-2 rounded-lg border text-sm font-medium border-orange-300 text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                className="w-full modal-btn-warning"
                 onClick={handleGradeItem}
                 disabled={busy}
               >
@@ -2368,17 +2903,19 @@ export default function InventoryClient({
               </button>
             )}
             {deleteConfirm ? (
-              <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                <span className="text-sm flex-1 text-red-700">Delete this item?</span>
+              <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{background:"rgba(244,63,94,0.08)", border:"1px solid rgba(244,63,94,0.25)"}}>
+                <span className="text-sm flex-1" style={{color:"var(--accent-red)"}}>Delete this item?</span>
                 <button
-                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium"
+                  className="modal-btn-destructive"
+                  style={{padding:"6px 14px", fontSize:"13px"}}
                   onClick={handleDeleteItem}
                   disabled={busy}
                 >
                   Delete
                 </button>
                 <button
-                  className="px-3 py-1.5 rounded-lg border text-sm"
+                  className="modal-btn-ghost"
+                  style={{padding:"6px 14px", fontSize:"13px"}}
                   onClick={() => setDeleteConfirm(false)}
                 >
                   Cancel
@@ -2387,7 +2924,7 @@ export default function InventoryClient({
             ) : (
               <button
                 type="button"
-                className="w-full px-4 py-2 rounded-lg border text-sm font-medium border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                className="w-full modal-btn-danger"
                 onClick={() => setDeleteConfirm(true)}
                 disabled={busy}
               >
@@ -2395,8 +2932,8 @@ export default function InventoryClient({
               </button>
             )}
             <div className="flex gap-2">
-              <button className="flex-1 px-4 py-2 rounded-lg border font-medium" onClick={onSaveEdit} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
-              <button className="px-4 py-2 rounded-lg border opacity-60" onClick={closeEdit} disabled={busy}>Cancel</button>
+              <button className="flex-1 modal-btn-primary" onClick={onSaveEdit} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+              <button className="modal-btn-ghost" onClick={closeEdit} disabled={busy}>Cancel</button>
             </div>
           </div>
         </div>
@@ -2404,13 +2941,13 @@ export default function InventoryClient({
 
       {/* Mass edit modal */}
       {massEditOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setMassEditOpen(false); }}>
-          <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-4">
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) setMassEditOpen(false); }}>
+          <div className="modal-panel w-full max-w-sm p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="font-semibold">Edit {selectedIds.size} items</div>
-              <button className="text-sm opacity-60 px-2 py-1" onClick={() => setMassEditOpen(false)}>✕</button>
+              <div className="modal-title">Edit {selectedIds.size} items</div>
+              <button className="modal-close-btn" onClick={() => setMassEditOpen(false)}>✕</button>
             </div>
-            <div className="text-xs opacity-50">Leave a field as &quot;— no change —&quot; to keep existing values.</div>
+            <div className="text-xs" style={{color:"var(--text-muted)"}}>Leave a field as &quot;— no change —&quot; to keep existing values.</div>
             <div className="space-y-3">
               <div>
                 <div className="text-xs opacity-60 mb-1">Owner</div>
@@ -2448,13 +2985,13 @@ export default function InventoryClient({
             </div>
             <div className="flex gap-2">
               <button
-                className="flex-1 px-4 py-2 rounded-lg border font-medium disabled:opacity-40"
+                className="flex-1 modal-btn-primary"
                 onClick={onMassEdit}
                 disabled={busy || (!massOwner && !massStatus && !massCategory)}
               >
                 {busy ? "Saving…" : `Apply to ${selectedIds.size} items`}
               </button>
-              <button className="px-4 py-2 rounded-lg border opacity-60" onClick={() => setMassEditOpen(false)} disabled={busy}>Cancel</button>
+              <button className="modal-btn-ghost" onClick={() => setMassEditOpen(false)} disabled={busy}>Cancel</button>
             </div>
           </div>
         </div>
@@ -2462,15 +2999,15 @@ export default function InventoryClient({
 
       {/* Bulk delete confirmation */}
       {deleteOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setDeleteOpen(false); }}>
-          <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-4">
-            <div className="font-semibold">Delete {selectedIds.size} item{selectedIds.size !== 1 ? "s" : ""}?</div>
-            <div className="text-sm opacity-60">This cannot be undone.</div>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) setDeleteOpen(false); }}>
+          <div className="modal-panel w-full max-w-sm p-5 space-y-4">
+            <div className="modal-title">Delete {selectedIds.size} item{selectedIds.size !== 1 ? "s" : ""}?</div>
+            <div className="text-sm" style={{color:"var(--text-muted)"}}>This cannot be undone.</div>
             <div className="flex gap-2">
-              <button className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white font-medium disabled:opacity-40" onClick={onBulkDelete} disabled={busy}>
+              <button className="flex-1 modal-btn-destructive" onClick={onBulkDelete} disabled={busy}>
                 {busy ? "Deleting…" : `Delete ${selectedIds.size} item${selectedIds.size !== 1 ? "s" : ""}`}
               </button>
-              <button className="px-4 py-2 rounded-lg border opacity-60" onClick={() => setDeleteOpen(false)} disabled={busy}>Cancel</button>
+              <button className="modal-btn-ghost" onClick={() => setDeleteOpen(false)} disabled={busy}>Cancel</button>
             </div>
           </div>
         </div>
@@ -2478,31 +3015,58 @@ export default function InventoryClient({
 
       {/* Sell modal */}
       {sellOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setSellOpen(false); }}>
-          <div className="bg-background border rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-4 space-y-4">
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) setSellOpen(false); }}>
+          <div className="modal-panel w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="font-semibold">Sell {selectedItems.length} item{selectedItems.length !== 1 ? "s" : ""}</div>
-              <button className="text-sm opacity-60 px-2 py-1" onClick={() => setSellOpen(false)}>✕</button>
+              <div className="modal-title">Sell {selectedItems.length} item{selectedItems.length !== 1 ? "s" : ""}</div>
+              <button className="modal-close-btn" onClick={() => setSellOpen(false)}>✕</button>
             </div>
 
-            <div className="rounded-xl border overflow-hidden">
+            {/* Per-card price rows */}
+            <div className="rounded-xl overflow-hidden" style={{border:"1px solid var(--border-subtle)"}}>
               {selectedItems.map((it, i) => {
                 const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
-                const proportional = salePriceNum > 0 ? getProportionalPrice(it) : null;
+                const isManual = manualPrices[it.id] !== undefined;
+                const cardPrice = getCardPrice(it);
+                const inputVal = isManual ? manualPrices[it.id] : (salePriceNum > 0 ? cardPrice.toFixed(2) : "");
+                const payout = consigner ? cardPrice * consigner.rate : null;
                 return (
-                  <div key={it.id} className={`px-3 py-2 ${i > 0 ? "border-t" : ""}`}>
-                    <div className="flex items-center justify-between">
+                  <div key={it.id} className={`px-3 py-2.5 ${i > 0 ? "border-t" : ""}`} style={{borderColor:"var(--border-subtle)"}}>
+                    <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="truncate font-medium text-xs">{it.name}</div>
-                        <div className="text-xs opacity-50">{it.category} • Market: {fmt(it.market)}</div>
+                        <div className="text-xs opacity-50">{it.category} · Market: {fmt(it.market)}</div>
                       </div>
-                      <div className="text-xs font-semibold ml-3 shrink-0 text-green-600">
-                        {proportional != null ? fmt(proportional) : "—"}
+                      {/* Price input */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isManual ? (
+                          <button
+                            type="button"
+                            className="text-xs opacity-40 hover:opacity-80 transition-opacity leading-none"
+                            onClick={() => resetCardPrice(it.id)}
+                            title="Reset to auto"
+                          >↺</button>
+                        ) : (
+                          <div className="w-4" />
+                        )}
+                        <div className={`flex items-center rounded-md border ${isManual ? "border-primary" : ""}`} style={isManual ? {} : {borderColor:"var(--border-subtle)"}}>
+                          <span className="pl-2 text-xs opacity-50 select-none">$</span>
+                          <input
+                            className={`w-16 pr-2 py-1 text-xs text-right bg-transparent outline-none ${isManual ? "" : "opacity-50"}`}
+                            value={inputVal}
+                            placeholder="0.00"
+                            inputMode="decimal"
+                            onChange={(e) => updateCardPrice(it.id, e.target.value)}
+                          />
+                        </div>
+                        {!isManual && (
+                          <span className="text-xs opacity-30 w-8 text-left">auto</span>
+                        )}
                       </div>
                     </div>
-                    {consigner && proportional != null && (
+                    {consigner && cardPrice > 0 && (
                       <div className="text-xs opacity-50 mt-0.5">
-                        {consigner.name} gets {fmt(proportional * consigner.rate)} · you keep {fmt(proportional * (1 - consigner.rate))}
+                        {consigner.name} gets {fmt(payout ?? 0)} · you keep {fmt(cardPrice - (payout ?? 0))}
                       </div>
                     )}
                   </div>
@@ -2510,6 +3074,20 @@ export default function InventoryClient({
               })}
             </div>
 
+            {/* Market warning */}
+            {salePriceNum > 0 && totalMarket > 0 && (
+              salePriceNum < totalMarket * 0.7 ? (
+                <div className="text-xs text-amber-600 dark:text-amber-400 opacity-80">
+                  Total is {Math.round((1 - salePriceNum / totalMarket) * 100)}% below market value
+                </div>
+              ) : salePriceNum > totalMarket * 1.5 ? (
+                <div className="text-xs text-amber-600 dark:text-amber-400 opacity-80">
+                  Total is {Math.round((salePriceNum / totalMarket - 1) * 100)}% above market value
+                </div>
+              ) : null
+            )}
+
+            {/* Total input */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-sm font-medium">Total sale price ($)</label>
@@ -2517,7 +3095,7 @@ export default function InventoryClient({
                   <button
                     type="button"
                     className="text-xs text-primary font-medium hover:underline"
-                    onClick={() => setSalePrice(totalMarket.toFixed(2))}
+                    onClick={() => { setSalePrice(totalMarket.toFixed(2)); setManualPrices({}); }}
                   >
                     Use market {fmt(totalMarket)}
                   </button>
@@ -2531,14 +3109,18 @@ export default function InventoryClient({
                 onChange={(e) => setSalePrice(e.target.value)}
                 autoFocus
               />
-              <div className="text-xs opacity-50 mt-1">Split proportionally by market value</div>
+              {Object.keys(manualPrices).length > 0 ? (
+                <div className="text-xs opacity-50 mt-1">Manual prices locked · auto cards fill the rest</div>
+              ) : (
+                <div className="text-xs opacity-50 mt-1">Split proportionally by market value</div>
+              )}
             </div>
 
             <div className="flex gap-2">
-              <button className="flex-1 px-4 py-2 rounded-lg bg-green-600 text-white font-medium disabled:opacity-40" onClick={onConfirmSale} disabled={busy || salePriceNum <= 0}>
+              <button className="flex-1 modal-btn-confirm" onClick={onConfirmSale} disabled={busy || salePriceNum <= 0}>
                 {busy ? "Saving…" : "Confirm Sale"}
               </button>
-              <button className="px-4 py-2 rounded-lg border opacity-60" onClick={() => setSellOpen(false)} disabled={busy}>Cancel</button>
+              <button className="modal-btn-ghost" onClick={() => setSellOpen(false)} disabled={busy}>Cancel</button>
             </div>
           </div>
         </div>
@@ -2546,11 +3128,11 @@ export default function InventoryClient({
 
       {/* Bulk cost modal */}
       {bulkCostOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setBulkCostOpen(false); }}>
-          <div className="bg-background border rounded-2xl w-full max-w-sm p-4 space-y-4">
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) setBulkCostOpen(false); }}>
+          <div className="modal-panel w-full max-w-sm p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="font-semibold">Set Cost — {selectedIds.size} card{selectedIds.size !== 1 ? "s" : ""}</div>
-              <button className="text-sm opacity-60 px-2 py-1" onClick={() => setBulkCostOpen(false)}>✕</button>
+              <div className="modal-title">Set Cost — {selectedIds.size} card{selectedIds.size !== 1 ? "s" : ""}</div>
+              <button className="modal-close-btn" onClick={() => setBulkCostOpen(false)}>✕</button>
             </div>
             <div className="space-y-3">
               <div>
@@ -2583,13 +3165,13 @@ export default function InventoryClient({
             </div>
             <div className="flex gap-2">
               <button
-                className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
+                className="flex-1 modal-btn-primary"
                 onClick={onBulkSetCost}
                 disabled={busy || !bulkCostVal || toNum(bulkCostVal) === null}
               >
                 {busy ? "Saving…" : `Apply to ${selectedIds.size} cards`}
               </button>
-              <button className="px-4 py-2 rounded-lg border opacity-60" onClick={() => setBulkCostOpen(false)} disabled={busy}>Cancel</button>
+              <button className="modal-btn-ghost" onClick={() => setBulkCostOpen(false)} disabled={busy}>Cancel</button>
             </div>
           </div>
         </div>
@@ -2601,7 +3183,8 @@ export default function InventoryClient({
         // Derive sp live from merged prices so background updates are reflected immediately
         const pdSp = mergedSlabPrices[slabKey];
         const isModalRefreshing = slabRefreshing[pdi.id];
-        const fmvVal = pdSp ? (pdSp.fair_market_value ?? pdSp.sold_median ?? pdSp.median_price) : null;
+        const fmvVal = slabFMVData[pdi.id]?.fmv ?? null;
+        const fmvTierLabel = slabFMVData[pdi.id]?.label ?? "market";
 
         // Helpers
         function fmtModalDate(d: string) {
@@ -2611,17 +3194,24 @@ export default function InventoryClient({
           return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
         }
 
-        function calcMedianPrice(items: SlabSale[]): number | null {
-          const prices = items.map((s) => s.price).sort((a, b) => a - b);
-          if (!prices.length) return null;
-          const mid = Math.floor(prices.length / 2);
-          return prices.length % 2 === 0 ? (prices[mid - 1] + prices[mid]) / 2 : prices[mid];
+        function applyOutlierFilter(items: SlabSale[]): SlabSale[] {
+          if (items.length < 4) return items;
+          const sorted = items.map((s) => s.price).sort((a, b) => a - b);
+          const q1 = pct(sorted, 0.25);
+          const q3 = pct(sorted, 0.75);
+          const iqr = q3 - q1;
+          const lower = q1 - 1.5 * iqr;
+          const upper = q3 + 1.5 * iqr;
+          const filtered = items.filter((s) => s.price >= lower && s.price <= upper);
+          return filtered.length > 0 ? filtered : items;
         }
 
-        function applyOutlierFilter(items: SlabSale[]): SlabSale[] {
-          const median = calcMedianPrice(items);
-          if (median == null || median === 0) return items;
-          return items.filter((s) => s.price >= median * 0.2 && s.price <= median * 2.5);
+        function pct(sorted: number[], p: number): number {
+          if (sorted.length === 1) return sorted[0];
+          const idx = (sorted.length - 1) * p;
+          const lo = Math.floor(idx);
+          const frac = idx - lo;
+          return frac === 0 ? sorted[lo] : sorted[lo] * (1 - frac) + sorted[lo + 1] * frac;
         }
 
         function timeLeft(endDateStr: string): string {
@@ -2637,30 +3227,26 @@ export default function InventoryClient({
           return `${days}d ${hrs}h left`;
         }
 
-        // Build filtered, sorted lists
-        const validSold = (pdSp?.sold_items ?? []).filter((s) => !s.isBestOffer && s.price > 1);
+        // Build filtered, sorted lists.
+        // Sold: exclude only pure Best-Offer-only sales (unknown negotiated price).
+        // Fixed+BestOffer listings (buyingOptions has both) are valid sold prices.
+        const validSold = (pdSp?.sold_items ?? []).filter(
+          (s) => !(s.buyingOptions.length === 1 && s.buyingOptions[0] === "BEST_OFFER") && s.price > 1
+        );
         const soldLists = applyOutlierFilter(validSold)
-          .sort((a, b) => new Date(b.soldDate).getTime() - new Date(a.soldDate).getTime())
-          .slice(0, 20);
+          .sort((a, b) => new Date(b.soldDate).getTime() - new Date(a.soldDate).getTime());
 
-        const validActive = (pdSp?.active_items ?? []).filter((s) => !s.isBestOffer && s.price > 1);
+        // Active: include all listings >$1 — asking price is valid signal regardless of offer options.
+        const validActive = (pdSp?.active_items ?? []).filter((s) => s.price > 1);
         const activeLists = applyOutlierFilter(validActive).sort((a, b) => a.price - b.price);
 
         return (
-          <>
-            {/* Desktop backdrop — click outside to close */}
+          <div
+            className="fixed inset-0 z-[70] modal-backdrop sm:flex sm:items-center sm:justify-center"
+            onClick={() => setPricingDetailItem(null)}
+          >
             <div
-              className="hidden sm:block fixed inset-0 z-[70] bg-black/50"
-              onClick={() => setPricingDetailItem(null)}
-            />
-            <div
-              className={[
-                /* Mobile: full-screen, covers nav bar */
-                "fixed inset-0 z-[75] flex flex-col bg-background",
-                /* Desktop: centered sheet above backdrop */
-                "sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
-                "sm:w-full sm:max-w-lg sm:max-h-[85vh] sm:rounded-2xl sm:shadow-xl",
-              ].join(" ")}
+              className="absolute inset-0 flex flex-col bg-background slab-pricing-panel sm:relative sm:inset-auto sm:w-full sm:max-w-lg sm:max-h-[85vh] sm:rounded-2xl sm:overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -2675,8 +3261,8 @@ export default function InventoryClient({
                     {fmvVal != null && (
                       <div className="flex items-baseline gap-1.5">
                         <span className="text-base font-bold">{fmt(fmvVal)}</span>
-                        <span className="text-[10px] opacity-40 font-normal">
-                          {pdSp?.sold_median != null ? "Fair Market Value" : "Listed FMV (ask price)"}
+                        <span className="text-[10px] opacity-40 font-normal capitalize">
+                          {fmvTierLabel} · {pdSp?.sold_median != null ? "FMV" : "ask price"}
                         </span>
                         <MovementBadge pct={getMovement(fmvVal, pdi.acquired_market_price)} />
                       </div>
@@ -2689,7 +3275,7 @@ export default function InventoryClient({
                     </div>
                   )}
                 </div>
-                <button className="text-lg opacity-40 hover:opacity-70 flex-shrink-0 -mt-0.5" onClick={() => setPricingDetailItem(null)}>✕</button>
+                <button className="modal-close-btn flex-shrink-0" onClick={() => setPricingDetailItem(null)}>✕</button>
               </div>
 
               {/* Scrollable body */}
@@ -2750,7 +3336,7 @@ export default function InventoryClient({
                     <div className="text-sm opacity-40 text-center py-3">{isModalRefreshing ? "Fetching…" : "No active listings — hit ↺ Refresh to load"}</div>
                   ) : (
                     <div className="space-y-1">
-                      {activeLists.map((s, i) => {
+                      {activeLists.slice(0, activeExpanded ? activeLists.length : 5).map((s, i) => {
                         const isAuction = (s.buyingOptions ?? []).includes("AUCTION");
                         return (
                           <a
@@ -2780,6 +3366,14 @@ export default function InventoryClient({
                           </a>
                         );
                       })}
+                      {activeLists.length > 5 && (
+                        <button
+                          className="w-full text-xs text-center py-1.5 opacity-40 hover:opacity-70 transition-opacity"
+                          onClick={() => setActiveExpanded((v) => !v)}
+                        >
+                          {activeExpanded ? "Show less" : `View more (${activeLists.length - 5} more)`}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2792,7 +3386,8 @@ export default function InventoryClient({
                   {isSlabTierStale(pdSp, fmvVal) && <span className="text-orange-400 ml-1">· stale</span>}
                 </div>
                 <button
-                  className="text-xs px-3 py-1.5 rounded-lg border font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20 disabled:opacity-40"
+                  className="modal-btn-outline"
+                  style={{padding:"6px 14px", fontSize:"12px"}}
                   disabled={isModalRefreshing}
                   onClick={() => handleRefreshSlabPrice(pdi)}
                 >
@@ -2800,7 +3395,7 @@ export default function InventoryClient({
                 </button>
               </div>
             </div>
-          </>
+          </div>
         );
       })()}
 
@@ -2834,11 +3429,11 @@ export default function InventoryClient({
 
         return (
           <div
-            className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
+            className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
             onClick={() => setRawCardDetailItem(null)}
           >
             <div
-              className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-sm shadow-xl"
+              className="modal-panel w-full max-w-sm"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -2869,7 +3464,7 @@ export default function InventoryClient({
                     </div>
                   )}
                 </div>
-                <button className="text-lg opacity-40 hover:opacity-70 flex-shrink-0 -mt-0.5" onClick={() => setRawCardDetailItem(null)}>✕</button>
+                <button className="modal-close-btn flex-shrink-0" onClick={() => setRawCardDetailItem(null)}>✕</button>
               </div>
 
               {/* Condition price table */}
@@ -3013,7 +3608,8 @@ export default function InventoryClient({
                   )}
                 </div>
                 <button
-                  className="text-xs px-3 py-1.5 rounded-lg border font-medium border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 disabled:opacity-40"
+                  className="modal-btn-outline"
+                  style={{padding:"6px 14px", fontSize:"12px"}}
                   disabled={isRefreshing}
                   onClick={() => handleRefreshRawCardPrice(it)}
                 >
@@ -3063,32 +3659,32 @@ export default function InventoryClient({
         const parsed = it.grade ? parseGrade(it.grade) : null;
         const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
         const sp = slabKey ? mergedSlabPrices[slabKey] : null;
-        const fmv = sp ? (sp.fair_market_value ?? sp.sold_median ?? sp.median_price) : it.market;
+        const fmv = it.category === "slab" ? (slabFMVData[it.id]?.fmv ?? it.market) : it.market;
         const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
-        const rcp = it.category !== "slab" ? mergedRawCardPrices[rawKey] : null;
+        const rcp = it.category === "single" ? mergedRawCardPrices[rawKey] : null;
         const condPrice = rcp ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) : null;
-        const displayPrice = it.category === "slab" ? fmv : (condPrice ?? it.market);
-        const priceSource = it.category === "slab" ? "eBay" : (rcp ? "TCGPlayer" : null);
-        const margin = displayPrice != null && it.cost != null && it.cost > 0 ? displayPrice - it.cost : null;
-        const marginPct = margin != null && it.cost != null && it.cost > 0 ? (margin / it.cost) * 100 : null;
+        const displayPrice = it.category === "slab" ? fmv : it.category === "sealed" ? it.market : (condPrice ?? it.market);
+        const priceSource = it.category === "slab" ? "eBay" : it.category === "sealed" ? (it.market != null ? "eBay/PPT" : null) : (rcp ? "TCGPlayer" : null);
+        const ecDetail = effectiveCost(it);
+        const margin = displayPrice != null && ecDetail != null && ecDetail > 0 ? displayPrice - ecDetail : null;
+        const marginPct = margin != null && ecDetail != null && ecDetail > 0 ? (margin / ecDetail) * 100 : null;
         const ebayQ = it.category === "slab"
           ? buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number)
-          : buildRawEbayQuery(it.name, it.set_name, it.card_number);
+          : it.category === "sealed"
+            ? [it.name, it.set_name].filter(Boolean).join(" ")
+            : buildRawEbayQuery(it.name, it.set_name, it.card_number);
         const ebayEnc = encodeURIComponent(ebayQ);
         const cleanName = it.name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
         const tcgQ = encodeURIComponent([cleanName, it.set_name].filter(Boolean).join(" "));
         const isRefreshingSlab = slabRefreshing[it.id];
         const isRefreshingRaw = rawCardRefreshing[it.id];
         return (
-          <div className="md:hidden fixed inset-0 z-[60] flex items-center justify-center px-5">
-            {/* Backdrop */}
-            <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
-              onClick={() => setMobileDetailItem(null)}
-            />
-
+          <div
+            className="md:hidden fixed inset-0 z-[60] flex items-center justify-center modal-backdrop px-5"
+            onClick={(e) => { if (e.target === e.currentTarget) setMobileDetailItem(null); }}
+          >
             {/* Modal card */}
-            <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div className="modal-panel w-full max-w-sm max-h-[80vh] overflow-y-auto">
 
               {/* Close button */}
               <button
@@ -3114,7 +3710,10 @@ export default function InventoryClient({
                 )}
                 <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
                   {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
-                  {it.category !== "slab" && it.condition && (
+                  {it.category === "sealed" && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-500/15 text-teal-400 font-medium">{sealedTypeLabel(it.product_type)}</span>
+                  )}
+                  {it.category === "single" && it.condition && (
                     <span className={`condition-badge ${{ "Near Mint": "cond-nm", "Lightly Played": "cond-lp", "Moderately Played": "cond-mp", "Heavily Played": "cond-hp", "Damaged": "cond-dmg" }[it.condition] ?? "cond-nm"}`}>
                       {{ "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "Dmg" }[it.condition] ?? it.condition}
                     </span>
@@ -3137,9 +3736,9 @@ export default function InventoryClient({
                     <button
                       className="text-sm opacity-30 hover:opacity-70 transition-opacity"
                       title="Refresh price"
-                      onClick={() => it.category === "slab" ? handleRefreshSlabPrice(it) : handleRefreshRawCardPrice(it)}
+                      onClick={() => it.category === "slab" ? handleRefreshSlabPrice(it) : it.category === "sealed" ? handleRefreshSealedPrice(it) : handleRefreshRawCardPrice(it)}
                     >
-                      {(isRefreshingSlab || isRefreshingRaw) ? <span className="inline-block spin">↻</span> : "↺"}
+                      {(isRefreshingSlab || isRefreshingRaw || sealedRefreshing[it.id]) ? <span className="inline-block spin">↻</span> : "↺"}
                     </button>
                   </div>
                 </div>
@@ -3157,11 +3756,16 @@ export default function InventoryClient({
                       onBlur={() => handleSaveInlineCost(it.id)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
                     />
-                  ) : it.cost != null ? (
-                    <button
-                      className="text-sm font-semibold inv-price opacity-70"
-                      onClick={() => { setInlineCostId(it.id); setInlineCostVal(String(it.cost ?? "")); }}
-                    >{fmt(it.cost)}</button>
+                  ) : ecDetail != null ? (
+                    <div className="flex flex-col items-end">
+                      <button
+                        className="text-sm font-semibold inv-price opacity-70"
+                        onClick={() => { setInlineCostId(it.id); setInlineCostVal(String(it.cost ?? "")); }}
+                      >{fmt(ecDetail)}</button>
+                      {it.cost_basis != null && (
+                        <span className="text-[10px] opacity-40">trade chain</span>
+                      )}
+                    </div>
                   ) : (
                     <button
                       className="text-sm text-violet-400 hover:text-violet-300"
@@ -3241,14 +3845,12 @@ export default function InventoryClient({
 
       {/* ── Mobile Filter Bottom Sheet ── */}
       {mobileFilterOpen && (
-        <div className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setMobileFilterOpen(false)}
-          />
+        <div
+          className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end modal-backdrop"
+          onClick={(e) => { if (e.target === e.currentTarget) setMobileFilterOpen(false); }}
+        >
           {/* Sheet */}
-          <div className="relative bg-card border-t border-border rounded-t-2xl shadow-2xl px-4 pt-3 pb-10 space-y-3 max-h-[80vh] overflow-y-auto">
+          <div className="modal-panel rounded-t-2xl px-4 pt-3 pb-10 space-y-3 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Drag handle */}
             <div className="w-10 h-1 rounded-full bg-border mx-auto mb-2" />
             {/* Title row */}
