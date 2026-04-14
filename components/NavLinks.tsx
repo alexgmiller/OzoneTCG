@@ -3,39 +3,62 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, Package, ArrowLeftRight, ScanLine,
-  Users, Receipt, Wallet, MoreHorizontal,
-  Settings, LogOut, Eye,
+  LayoutDashboard, Package, ArrowLeftRight,
+  ScanLine, Users, Receipt, Wallet,
+  MoreHorizontal, Settings, LogOut, Eye, Zap,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { useState, useEffect, useRef } from "react";
 import { enterGuestMode, saveGuestPin } from "@/app/protected/guest/actions";
 
+// Shows is active for both /protected/shows (history/launcher) and /protected/show (active UI)
+function isShowsActive(pathname: string) {
+  return (
+    pathname === "/protected/shows" ||
+    pathname.startsWith("/protected/shows/") ||
+    pathname === "/protected/show" ||
+    pathname.startsWith("/protected/show/")
+  );
+}
+
 const primaryLinks = [
   { href: "/protected/dashboard",    label: "Dashboard",    icon: LayoutDashboard },
   { href: "/protected/inventory",    label: "Inventory",    icon: Package },
   { href: "/protected/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { href: "/protected/shows",        label: "Shows",        icon: Zap },
 ];
-
-const scanLink = { href: "/protected/scan", label: "Scan", icon: ScanLine };
 
 const moreNavLinks = [
-  { href: "/protected/consigners", label: "Consigners", icon: Users },
-  { href: "/protected/expenses",   label: "Expenses",   icon: Receipt },
-  { href: "/protected/payout",     label: "Payout",     icon: Wallet },
-  { href: "/protected/settings",   label: "Settings",   icon: Settings },
+  { href: "/protected/scan",        label: "Scan",       icon: ScanLine },
+  { href: "/protected/consigners",  label: "Consigners", icon: Users },
+  { href: "/protected/expenses",    label: "Expenses",   icon: Receipt },
+  { href: "/protected/payout",      label: "Payout",     icon: Wallet },
+  { href: "/protected/settings",    label: "Settings",   icon: Settings },
 ];
 
+type DesktopNavProps = {
+  hasActiveShow?: boolean;
+};
+
 /** Desktop-only nav — rendered inside the top header */
-export function DesktopNavLinks() {
+export function DesktopNavLinks({ hasActiveShow = false }: DesktopNavProps) {
   const pathname = usePathname();
   return (
     <nav className="hidden md:flex items-center gap-1">
       {primaryLinks.map((l) => {
-        const active = pathname === l.href || pathname.startsWith(l.href + "/");
+        const active =
+          l.href === "/protected/shows"
+            ? isShowsActive(pathname)
+            : pathname === l.href || pathname.startsWith(l.href + "/");
+        const isShows = l.href === "/protected/shows";
         return (
           <Button key={l.href} asChild size="sm" variant={active ? "secondary" : "ghost"}>
-            <Link href={l.href}>{l.label}</Link>
+            <Link href={l.href} className="relative">
+              {l.label}
+              {isShows && hasActiveShow && (
+                <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              )}
+            </Link>
           </Button>
         );
       })}
@@ -45,10 +68,14 @@ export function DesktopNavLinks() {
 
 type MobileMoreProps = {
   hasPinConfigured?: boolean;
+  hasActiveShow?: boolean;
 };
 
 /** Mobile-only bottom tab bar — must be rendered OUTSIDE any backdrop-filter ancestor */
-export default function MobileBottomNav({ hasPinConfigured = false }: MobileMoreProps) {
+export default function MobileBottomNav({
+  hasPinConfigured = false,
+  hasActiveShow = false,
+}: MobileMoreProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -62,7 +89,7 @@ export default function MobileBottomNav({ hasPinConfigured = false }: MobileMore
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
-  const allLinks = [...primaryLinks, scanLink, ...moreNavLinks];
+  const allLinks = [...primaryLinks, ...moreNavLinks];
 
   // Prefetch all routes on mount
   useEffect(() => {
@@ -86,6 +113,10 @@ export default function MobileBottomNav({ hasPinConfigured = false }: MobileMore
   const moreActive = moreNavLinks.some(
     (l) => pathname === l.href || pathname.startsWith(l.href + "/")
   );
+
+  // During an active show, ShowClient renders its own bottom nav portaled to body.
+  // Suppress this nav entirely to eliminate z-index stacking conflicts on iOS Safari scroll repaints.
+  if (pathname === "/protected/show") return null;
 
   function openGuestModal(m: "set-pin" | "enter-pin") {
     setMoreOpen(false);
@@ -212,38 +243,30 @@ export default function MobileBottomNav({ hasPinConfigured = false }: MobileMore
           </div>
         )}
 
-        {/* Tab bar — icon only, 5 items: Dashboard / Inventory / Transactions / Scan / More */}
+        {/* Tab bar — 4 primary items + More */}
         <nav className="bg-background border-t border-t-border flex h-14 w-full">
           {primaryLinks.map((l) => {
-            const active = pathname === l.href || pathname.startsWith(l.href + "/");
+            const active =
+              l.href === "/protected/shows"
+                ? isShowsActive(pathname)
+                : pathname === l.href || pathname.startsWith(l.href + "/");
             const Icon = l.icon;
+            const isShows = l.href === "/protected/shows";
             return (
               <Link
                 key={l.href}
                 href={l.href}
-                className={`flex-1 flex items-center justify-center transition-colors ${
+                className={`relative flex-1 flex items-center justify-center transition-colors ${
                   active ? "text-primary" : "text-muted-foreground"
                 }`}
               >
                 <Icon size={24} strokeWidth={active ? 2.5 : 1.5} />
+                {isShows && hasActiveShow && (
+                  <span className="absolute top-2 right-[calc(50%-14px)] w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                )}
               </Link>
             );
           })}
-
-          {/* Scan */}
-          {(() => {
-            const active = pathname === scanLink.href || pathname.startsWith(scanLink.href + "/");
-            return (
-              <Link
-                href={scanLink.href}
-                className={`flex-1 flex items-center justify-center transition-colors ${
-                  active ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                <ScanLine size={24} strokeWidth={active ? 2.5 : 1.5} />
-              </Link>
-            );
-          })()}
 
           <button
             onClick={() => setMoreOpen((o) => !o)}
@@ -258,35 +281,35 @@ export default function MobileBottomNav({ hasPinConfigured = false }: MobileMore
 
       {/* Set PIN modal */}
       {guestModal === "set-pin" && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setGuestModal("none")} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setGuestModal("none"); }}
+        >
+          <div className="modal-panel w-full max-w-xs p-6 space-y-4">
             <div>
-              <h2 className="text-base font-semibold">Set Guest PIN</h2>
+              <h2 className="modal-title">Set Guest PIN</h2>
               <p className="text-xs opacity-50 mt-1">Customers will see a clean catalog. You&apos;ll need your PIN to exit.</p>
             </div>
             <input
-              type="number"
+              type="password"
               inputMode="numeric"
               placeholder="Choose a PIN (4+ digits)"
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
               value={pin}
-              onChange={(e) => setPin(e.target.value.slice(0, 8))}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
               autoFocus
             />
             <input
-              type="number"
+              type="password"
               inputMode="numeric"
               placeholder="Confirm PIN"
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
               value={confirmPin}
-              onChange={(e) => setConfirmPin(e.target.value.slice(0, 8))}
+              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
               onKeyDown={(e) => e.key === "Enter" && handleSetPin()}
             />
             {pinError && <p className="text-xs text-red-500">{pinError}</p>}
             <div className="flex gap-2">
-              <button className="flex-1 py-2 rounded-lg border text-sm hover:bg-muted transition-colors" onClick={() => setGuestModal("none")}>Cancel</button>
-              <button className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-50" onClick={handleSetPin} disabled={pinLoading}>
+              <button className="modal-btn-ghost flex-1" onClick={() => setGuestModal("none")}>Cancel</button>
+              <button className="modal-btn-primary flex-1" onClick={handleSetPin} disabled={pinLoading}>
                 {pinLoading ? "Saving…" : "Set PIN"}
               </button>
             </div>
@@ -296,27 +319,28 @@ export default function MobileBottomNav({ hasPinConfigured = false }: MobileMore
 
       {/* Enter PIN modal */}
       {guestModal === "enter-pin" && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setGuestModal("none")} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setGuestModal("none"); }}
+        >
+          <div className="modal-panel w-full max-w-xs p-6 space-y-4">
             <div>
-              <h2 className="text-base font-semibold">Enter PIN</h2>
+              <h2 className="modal-title">Enter PIN</h2>
               <p className="text-xs opacity-50 mt-1">Switch to Guest Mode for customer browsing.</p>
             </div>
             <input
-              type="number"
+              type="password"
               inputMode="numeric"
               placeholder="Your PIN"
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
               value={pin}
-              onChange={(e) => setPin(e.target.value.slice(0, 8))}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
               onKeyDown={(e) => e.key === "Enter" && handleEnterPin()}
               autoFocus
             />
             {pinError && <p className="text-xs text-red-500">{pinError}</p>}
             <div className="flex gap-2">
-              <button className="flex-1 py-2 rounded-lg border text-sm hover:bg-muted transition-colors" onClick={() => setGuestModal("none")}>Cancel</button>
-              <button className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-50" onClick={handleEnterPin} disabled={pinLoading}>
+              <button className="modal-btn-ghost flex-1" onClick={() => setGuestModal("none")}>Cancel</button>
+              <button className="modal-btn-primary flex-1" onClick={handleEnterPin} disabled={pinLoading}>
                 {pinLoading ? "Checking…" : "Enter Guest Mode"}
               </button>
             </div>

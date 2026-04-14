@@ -136,7 +136,9 @@ export default function GuestView({ items }: { items: GuestItem[] }) {
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
               }`}
             >
-              {cat === "all" ? `All (${items.length})` : `${cat.charAt(0).toUpperCase() + cat.slice(1)}s (${items.filter(i => i.category === cat).length})`}
+              {cat === "all"
+                ? `All (${items.length})`
+                : `${cat === "sealed" ? "Sealed" : cat.charAt(0).toUpperCase() + cat.slice(1) + "s"} (${items.filter(i => i.category === cat).length})`}
             </button>
           ))}
         </div>
@@ -201,9 +203,11 @@ export default function GuestView({ items }: { items: GuestItem[] }) {
 
       {/* Detail overlay */}
       {detail && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDetail(null)} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setDetail(null); }}
+        >
+          <div className="modal-panel w-full max-w-sm overflow-hidden">
             {/* Image */}
             {detail.image_url && (
               <div className="bg-muted flex items-center justify-center py-6">
@@ -217,7 +221,7 @@ export default function GuestView({ items }: { items: GuestItem[] }) {
             )}
             <div className="p-4 space-y-3">
               <div>
-                <h2 className="text-base font-semibold">{detail.name}</h2>
+                <h2 className="modal-title">{detail.name}</h2>
                 {detail.set_name && (
                   <div className="text-xs opacity-50 mt-0.5">
                     {detail.set_name}{detail.card_number ? ` · #${detail.card_number}` : ""}
@@ -247,12 +251,7 @@ export default function GuestView({ items }: { items: GuestItem[] }) {
                 </div>
               )}
 
-              <button
-                onClick={() => setDetail(null)}
-                className="w-full py-2.5 rounded-xl bg-muted text-sm font-medium hover:bg-muted/80 transition-colors"
-              >
-                Close
-              </button>
+              <button onClick={() => setDetail(null)} className="modal-btn-ghost w-full">Close</button>
             </div>
           </div>
         </div>
@@ -260,18 +259,19 @@ export default function GuestView({ items }: { items: GuestItem[] }) {
 
       {/* Exit guest mode modal */}
       {exitModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setExitModal(false)} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 space-y-4">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setExitModal(false); }}
+        >
+          <div className="modal-panel w-full max-w-xs p-6 space-y-4">
             <div>
-              <h2 className="text-base font-semibold">Exit Guest Mode</h2>
+              <h2 className="modal-title">Exit Guest Mode</h2>
               <p className="text-xs opacity-50 mt-1">Enter your PIN to return to the dashboard.</p>
             </div>
             <input
               type="number"
               inputMode="numeric"
               placeholder="Your PIN"
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
               value={pin}
               onChange={(e) => setPin(e.target.value.slice(0, 8))}
               onKeyDown={(e) => e.key === "Enter" && handleExit()}
@@ -279,17 +279,8 @@ export default function GuestView({ items }: { items: GuestItem[] }) {
             />
             {pinError && <p className="text-xs text-red-500">{pinError}</p>}
             <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded-lg border text-sm hover:bg-muted transition-colors"
-                onClick={() => setExitModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-50"
-                onClick={handleExit}
-                disabled={pinLoading}
-              >
+              <button className="modal-btn-ghost flex-1" onClick={() => setExitModal(false)}>Cancel</button>
+              <button className="modal-btn-primary flex-1" onClick={handleExit} disabled={pinLoading}>
                 {pinLoading ? "Checking…" : "Exit"}
               </button>
             </div>

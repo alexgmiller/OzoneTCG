@@ -133,13 +133,11 @@ export default function CardScanner({ open, onClose, onResult }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-background border rounded-xl shadow-xl w-full max-w-sm flex flex-col gap-4 p-5">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4">
+      <div className="modal-panel w-full max-w-sm flex flex-col gap-4 p-5">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-base">Scan Card</h2>
-          <button onClick={handleClose} className="text-sm text-muted-foreground hover:text-foreground">
-            ✕
-          </button>
+          <h2 className="modal-title">Scan Card</h2>
+          <button onClick={handleClose} className="modal-close-btn">✕</button>
         </div>
 
         {!preview && (
@@ -206,18 +204,10 @@ export default function CardScanner({ open, onClose, onResult }: Props) {
             </select>
 
             <div className="flex gap-2">
-              <button
-                onClick={() => { reset(); fileRef.current?.click(); }}
-                className="flex-1 border rounded-lg px-3 py-2 text-sm hover:bg-muted transition-colors"
-              >
+              <button onClick={() => { reset(); fileRef.current?.click(); }} className="modal-btn-ghost flex-1">
                 Rescan
               </button>
-              <button
-                onClick={handleUse}
-                className="flex-1 bg-foreground text-background rounded-lg px-3 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
-              >
-                Use Card
-              </button>
+              <button onClick={handleUse} className="modal-btn-primary flex-1">Use Card</button>
             </div>
           </div>
         )}

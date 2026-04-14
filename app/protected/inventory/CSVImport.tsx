@@ -284,13 +284,13 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
 
       {open && (
         <div
-          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
           onClick={(e) => { if (e.target === e.currentTarget) close(); }}
         >
-          <div className="bg-background border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 space-y-4">
+          <div className="modal-panel w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="font-semibold">Import CSV</div>
-              <button className="text-sm opacity-60 px-2 py-1" onClick={close}>✕</button>
+              <div className="modal-title">Import CSV</div>
+              <button className="modal-close-btn" onClick={close}>✕</button>
             </div>
 
             <input
@@ -408,17 +408,13 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
 
                 <div className="flex gap-2">
                   <button
-                    className="flex-1 px-4 py-2 rounded-lg bg-foreground text-background font-medium disabled:opacity-40"
+                    className="modal-btn-primary flex-1"
                     onClick={onImport}
                     disabled={busy || colMap.name < 0 || rows.length === 0}
                   >
                     {buttonLabel}
                   </button>
-                  <button
-                    className="px-4 py-2 rounded-lg border opacity-60"
-                    onClick={close}
-                    disabled={busy}
-                  >
+                  <button className="modal-btn-ghost" onClick={close} disabled={busy}>
                     Cancel
                   </button>
                 </div>

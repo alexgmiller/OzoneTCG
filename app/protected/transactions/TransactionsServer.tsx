@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { getActiveShow } from "@/app/protected/show/actions";
 import TransactionsClient from "./TransactionsClient";
 
 export type SoldItem = {
@@ -44,6 +45,7 @@ export type BuyExpense = {
   created_at: string;
   paid_by: string | null;
   payment_type: string | null;
+  show_session_id: string | null;
   items: BuyItem[];
 };
 
@@ -83,6 +85,8 @@ export default async function TransactionsServer() {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
+  const activeShow = await getActiveShow().catch(() => null);
+
   const [soldResult, expensesResult, txResult, inventoryResult, dealsResult, buyItemsResult] = await Promise.all([
     supabase
       .from("items")
@@ -93,9 +97,9 @@ export default async function TransactionsServer() {
 
     supabase
       .from("expenses")
-      .select("id,description,cost,created_at,paid_by,payment_type")
+      .select("id,description,cost,created_at,paid_by,payment_type,show_session_id")
       .eq("workspace_id", workspaceId)
-      .ilike("description", "Buy:%")
+      .or("description.ilike.Buy:%,description.ilike.Cert buy:%")
       .order("created_at", { ascending: false }),
 
     supabase
@@ -216,6 +220,7 @@ export default async function TransactionsServer() {
         inventoryItems={inventoryItems}
         dealLogs={dealLogs}
         workspaceId={workspaceId}
+        activeShow={activeShow}
       />
     </div>
   );

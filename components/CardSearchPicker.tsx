@@ -109,14 +109,12 @@ export default function CardSearchPicker({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4">
-      <div className="bg-background border rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-xl">
+    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center modal-backdrop p-4">
+      <div className="modal-panel w-full max-w-lg max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-          <h2 className="font-semibold text-sm">Find Card</h2>
-          <button onClick={handleClose} className="text-sm text-muted-foreground hover:text-foreground px-1">
-            ✕
-          </button>
+          <h2 className="modal-title">Find Card</h2>
+          <button onClick={handleClose} className="modal-close-btn">✕</button>
         </div>
 
         {/* Search form */}
@@ -154,7 +152,7 @@ export default function CardSearchPicker({
             />
           </div>
           <button
-            className="w-full px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium disabled:opacity-40"
+            className="modal-btn-primary w-full"
             onClick={search}
             disabled={loading || !searchName.trim()}
           >

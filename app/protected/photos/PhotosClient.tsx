@@ -292,18 +292,12 @@ function AddDealModal({
 
   return (
     // pb-16 sm:pb-0 pushes the sheet above the fixed mobile nav bar
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 pb-16 sm:pb-0 px-4 pt-4">
-      <div className="bg-background border rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-xl">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop pb-16 sm:pb-0 px-4 pt-4">
+      <div className="modal-panel w-full max-w-lg max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-          <h2 className="font-semibold text-sm">Log a Deal</h2>
-          {/* 44px touch target for close */}
-          <button
-            onClick={onClose}
-            className="flex items-center justify-center w-11 h-11 -mr-2 text-muted-foreground hover:text-foreground rounded-xl"
-          >
-            ✕
-          </button>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+          <h2 className="modal-title">Log a Deal</h2>
+          <button onClick={onClose} className="modal-close-btn">✕</button>
         </div>
 
         <div className="overflow-y-auto flex-1 p-4 space-y-4">
@@ -411,18 +405,9 @@ function AddDealModal({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t shrink-0 flex gap-2">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 rounded-xl border text-sm font-medium text-muted-foreground min-h-[44px]"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 min-h-[44px]"
-          >
+        <div className="px-4 py-3 border-t border-border shrink-0 flex gap-2">
+          <button onClick={onClose} className="modal-btn-ghost flex-1 min-h-[44px]">Cancel</button>
+          <button onClick={handleSave} disabled={saving} className="modal-btn-primary flex-1 min-h-[44px]">
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
@@ -448,22 +433,17 @@ function ViewDealModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 pb-16 sm:pb-0 px-4 pt-4">
-        <div className="bg-background border rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-xl">
+      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop pb-16 sm:pb-0 px-4 pt-4">
+        <div className="modal-panel w-full max-w-lg max-h-[85vh] flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center gap-2">
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${TYPE_COLORS[log.type]}`}>
                 {TYPE_LABELS[log.type]}
               </span>
               <span className="text-xs text-muted-foreground">{formatDate(log.created_at)}</span>
             </div>
-            <button
-              onClick={onClose}
-              className="flex items-center justify-center w-11 h-11 -mr-2 text-muted-foreground hover:text-foreground rounded-xl"
-            >
-              ✕
-            </button>
+            <button onClick={onClose} className="modal-close-btn">✕</button>
           </div>
 
           <div className="overflow-y-auto flex-1 p-4 space-y-4">
@@ -491,13 +471,8 @@ function ViewDealModal({
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-3 border-t shrink-0 flex gap-2">
-            <button
-              onClick={onDelete}
-              className="px-3 py-3 rounded-xl border border-red-200 text-red-600 text-sm font-medium min-h-[44px]"
-            >
-              Delete
-            </button>
+          <div className="px-4 py-3 border-t border-border shrink-0 flex gap-2">
+            <button onClick={onDelete} className="modal-btn-danger min-h-[44px]">Delete</button>
             <button
               onClick={() => { onToggleResolved(); onClose(); }}
               className={`flex-1 py-3 rounded-xl border text-sm font-medium min-h-[44px] ${
@@ -508,12 +483,7 @@ function ViewDealModal({
             >
               {log.resolved ? "Reopen" : "Mark Resolved"}
             </button>
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium min-h-[44px]"
-            >
-              Close
-            </button>
+            <button onClick={onClose} className="modal-btn-primary flex-1 min-h-[44px]">Close</button>
           </div>
         </div>
       </div>

@@ -22,6 +22,10 @@ export type UserSettings = {
   default_sort: string;
   price_alert_threshold: number;
   guest_display_name: string | null;
+  /** FMV tier strategy. Requires: ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS pricing_strategy TEXT DEFAULT 'auto'; */
+  pricing_strategy: "auto" | "q1" | "median" | "q3";
+  /** PSA grading cost per card in USD. Requires: ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS grading_cost NUMERIC DEFAULT 20; */
+  grading_cost: number;
 };
 
 const SETTINGS_DEFAULTS: UserSettings = {
@@ -39,6 +43,8 @@ const SETTINGS_DEFAULTS: UserSettings = {
   default_sort: "date-desc",
   price_alert_threshold: 15,
   guest_display_name: null,
+  pricing_strategy: "auto",
+  grading_cost: 20,
 };
 
 export async function loadSettings(): Promise<UserSettings> {

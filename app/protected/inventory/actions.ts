@@ -34,6 +34,10 @@ type ItemInput = {
   sticker_price?: number | null;
   acquired_market_price?: number | null;
   acquired_date?: string | null;
+  // Sealed product metadata
+  product_type?: string | null;
+  quantity?: number | null;
+  language?: string | null;
 };
 
 export type CardTransaction = {
@@ -268,7 +272,8 @@ export async function deleteItems(itemIds: string[]) {
 
 export async function markItemsAsSold(
   itemIds: string[],
-  totalPrice: number
+  totalPrice: number,
+  perCardPrices?: Record<string, number>
 ): Promise<void> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
@@ -309,9 +314,14 @@ export async function markItemsAsSold(
   const soldAt = new Date().toISOString();
 
   for (const item of items) {
-    const m = typeof item.market === "number" ? item.market : 0;
-    const proportion = totalMarket > 0 ? m / totalMarket : 1 / items.length;
-    const soldPrice = parseFloat((totalPrice * proportion).toFixed(2));
+    // Use explicit per-card price if provided; otherwise fall back to proportional split
+    const soldPrice = perCardPrices?.[item.id] != null
+      ? perCardPrices[item.id]
+      : (() => {
+          const m = typeof item.market === "number" ? item.market : 0;
+          const proportion = totalMarket > 0 ? m / totalMarket : 1 / items.length;
+          return parseFloat((totalPrice * proportion).toFixed(2));
+        })();
 
     const rate = item.consigner_id ? consignerRateMap.get(item.consigner_id) : undefined;
     const consignerPayout = rate != null ? parseFloat((soldPrice * rate).toFixed(2)) : null;
@@ -587,6 +597,8 @@ export async function refreshSlabPrice(
     active_items: activeSales,
     sold_items: soldSalesRaw,
   });
+
+  console.log(`[eBay] Storing ${activeSales.length} active items and ${soldSalesRaw.length} sold items for modal display`);
 
   if (upsertError) {
     console.error("[refreshSlabPrice] slab_prices upsert failed:", upsertError);
@@ -929,6 +941,55 @@ export async function refreshItemPrices(
   }
 
   revalidatePath("/protected/inventory");
+}
+
+/**
+ * Refresh market price for a sealed product.
+ * Tries pokemonpricetracker.com first; falls back to eBay active listings.
+ * Stores result to items.market and items.image_url.
+ */
+export async function refreshSealedPrice(
+  itemId: string,
+  name: string,
+  setName?: string | null
+): Promise<{ updated: boolean; market: number | null; imageUrl: string | null }> {
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+
+  // Primary: pokemonpricetracker.com
+  const { lookupCard } = await import("@/lib/pokemonPriceTracker");
+  const result = await lookupCard(name, "sealed", { setName });
+  if (result && (result.market != null || result.imageUrl)) {
+    const patch: Record<string, unknown> = {};
+    if (result.imageUrl) patch.image_url = result.imageUrl;
+    if (result.market != null) patch.market = result.market;
+    if (Object.keys(patch).length > 0) {
+      await supabase.from("items").update(patch).eq("id", itemId).eq("workspace_id", workspaceId);
+      revalidatePath("/protected/inventory");
+    }
+    return { updated: true, market: result.market, imageUrl: result.imageUrl };
+  }
+
+  // Fallback: eBay active listings
+  const { fetchSealedListings, calculateSealedPricing } = await import("@/lib/ebay");
+  let listings;
+  try {
+    listings = await fetchSealedListings(name, setName);
+  } catch {
+    return { updated: false, market: null, imageUrl: null };
+  }
+
+  const pricing = calculateSealedPricing(listings);
+  if (pricing.median == null) return { updated: false, market: null, imageUrl: null };
+
+  await supabase
+    .from("items")
+    .update({ market: pricing.median })
+    .eq("id", itemId)
+    .eq("workspace_id", workspaceId);
+
+  revalidatePath("/protected/inventory");
+  return { updated: true, market: pricing.median, imageUrl: null };
 }
 
 // ── Trade chain actions ────────────────────────────────────────────────────────

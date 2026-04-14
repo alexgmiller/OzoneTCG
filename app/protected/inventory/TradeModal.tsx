@@ -211,15 +211,15 @@ export default function TradeModal({
   });
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-6 px-4">
-      <div className="bg-background border rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center modal-backdrop overflow-y-auto py-6 px-4">
+      <div className="modal-panel w-full max-w-3xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="text-base font-bold inv-label">Record Trade</h2>
+            <h2 className="modal-title">Record Trade</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Cost basis carries forward through the chain</p>
           </div>
-          <button className="text-muted-foreground hover:text-foreground transition-colors text-xl leading-none" onClick={handleClose}>×</button>
+          <button className="modal-close-btn" onClick={handleClose}>×</button>
         </div>
 
         <div className="p-5 space-y-6">
@@ -522,15 +522,11 @@ export default function TradeModal({
 
           {/* Actions */}
           <div className="flex gap-2 justify-end pt-1">
-            <button
-              className="px-4 py-2 text-sm rounded-lg border hover:bg-muted transition-colors"
-              onClick={handleClose}
-              disabled={busy}
-            >
+            <button className="modal-btn-ghost" onClick={handleClose} disabled={busy}>
               Cancel
             </button>
             <button
-              className="px-5 py-2 text-sm rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors disabled:opacity-50"
+              className="modal-btn-primary"
               onClick={handleConfirm}
               disabled={busy || goingOut.length === 0 || comingIn.every((c) => !c.name.trim())}
             >

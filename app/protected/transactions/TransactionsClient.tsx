@@ -108,11 +108,11 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4">
+      <div className="modal-panel w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-base font-semibold inv-label">Record Buy</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors text-lg">✕</button>
+          <button onClick={onClose} className="modal-close-btn">✕</button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -264,10 +264,8 @@ function RecordBuyModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex gap-3 px-5 py-4 border-t border-border">
-          <button onClick={onClose}
-            className="flex-1 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted/40 transition-colors">Cancel</button>
-          <button onClick={handleSubmit} disabled={busy}
-            className="flex-1 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+          <button onClick={onClose} className="modal-btn-ghost flex-1">Cancel</button>
+          <button onClick={handleSubmit} disabled={busy} className="modal-btn-primary flex-1">
             {busy ? "Saving…" : "Record Buy"}
           </button>
         </div>
@@ -320,11 +318,11 @@ function RecordSellModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4">
+      <div className="modal-panel w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-base font-semibold inv-label">Record Sell</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">✕</button>
+          <button onClick={onClose} className="modal-close-btn">✕</button>
         </div>
         <div className="p-5 space-y-4">
           {/* Card search */}
@@ -424,8 +422,8 @@ function RecordSellModal({
           {err && <p className="text-sm text-red-500">{err}</p>}
         </div>
         <div className="flex gap-3 px-5 py-4 border-t border-border">
-          <button onClick={onClose} className="flex-1 py-2 rounded-xl border border-border text-sm font-medium hover:bg-muted/40 transition-colors">Cancel</button>
-          <button onClick={handleSubmit} disabled={busy} className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+          <button onClick={onClose} className="modal-btn-ghost flex-1">Cancel</button>
+          <button onClick={handleSubmit} disabled={busy} className="modal-btn-confirm flex-1">
             {busy ? "Saving…" : "Record Sell"}
           </button>
         </div>
@@ -449,8 +447,11 @@ function BuyRow({ expense, onDelete }: { expense: BuyExpense; onDelete: (id: str
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors duration-150 text-left"
         onClick={() => setExpanded((v) => !v)}
       >
-        <div className="w-14 shrink-0">
+        <div className="w-14 shrink-0 flex flex-col gap-0.5">
           <span className="text-[9px] px-1.5 py-0.5 rounded font-bold font-mono bg-blue-500/15 text-blue-500">BUY</span>
+          {expense.show_session_id && (
+            <span className="text-[8px] px-1 py-0.5 rounded font-bold bg-amber-400/15 text-amber-500">SHOW</span>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold inv-label truncate">{label}</div>
@@ -722,8 +723,8 @@ function ViewDealModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm pb-16 sm:pb-0 px-4 pt-4">
-        <div className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl">
+      <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center modal-backdrop pb-16 sm:pb-0 px-4 pt-4">
+        <div className="modal-panel w-full max-w-lg max-h-[85vh] flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center gap-2">
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${DEAL_COLORS[log.type]}`}>
@@ -731,7 +732,7 @@ function ViewDealModal({
               </span>
               <span className="text-xs opacity-50">{fmtDate(log.created_at)}</span>
             </div>
-            <button onClick={onClose} className="w-10 h-10 flex items-center justify-center text-muted-foreground hover:text-foreground rounded-xl transition-colors">✕</button>
+            <button onClick={onClose} className="modal-close-btn">✕</button>
           </div>
 
           <div className="overflow-y-auto flex-1 p-4 space-y-4">
@@ -752,10 +753,7 @@ function ViewDealModal({
           </div>
 
           <div className="px-4 py-3 border-t border-border shrink-0 flex gap-2">
-            <button
-              onClick={onDelete}
-              className="px-3 py-2.5 rounded-xl border border-red-500/30 text-red-500 text-sm font-medium min-h-[44px] hover:bg-red-500/10 transition-colors"
-            >Delete</button>
+            <button onClick={onDelete} className="modal-btn-danger min-h-[44px]">Delete</button>
             <button
               onClick={() => { onToggleResolved(); onClose(); }}
               className={`flex-1 py-2.5 rounded-xl border text-sm font-medium min-h-[44px] transition-colors ${
@@ -764,10 +762,7 @@ function ViewDealModal({
                   : "border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
               }`}
             >{log.resolved ? "Reopen" : "Mark Resolved"}</button>
-            <button
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold min-h-[44px] transition-colors"
-            >Close</button>
+            <button onClick={onClose} className="modal-btn-primary flex-1 min-h-[44px]">Close</button>
           </div>
         </div>
       </div>
@@ -828,11 +823,11 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: (log
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm pb-16 sm:pb-0 px-4 pt-4">
-      <div className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center modal-backdrop pb-16 sm:pb-0 px-4 pt-4">
+      <div className="modal-panel w-full max-w-lg max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <h2 className="text-base font-semibold inv-label">Log a Deal</h2>
-          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center text-muted-foreground hover:text-foreground rounded-xl transition-colors">✕</button>
+          <h2 className="modal-title">Log a Deal</h2>
+          <button onClick={onClose} className="modal-close-btn">✕</button>
         </div>
 
         <div className="overflow-y-auto flex-1 p-4 space-y-4">
@@ -893,8 +888,8 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: (log
         </div>
 
         <div className="px-4 py-3 border-t border-border shrink-0 flex gap-2">
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-sm font-medium text-muted-foreground min-h-[44px] hover:bg-muted/40 transition-colors">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="flex-1 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50 min-h-[44px] transition-colors">
+          <button onClick={onClose} className="modal-btn-ghost flex-1 min-h-[44px]">Cancel</button>
+          <button onClick={handleSave} disabled={saving} className="modal-btn-primary flex-1 min-h-[44px]">
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
@@ -1127,6 +1122,7 @@ export default function TransactionsClient({
   inventoryItems,
   dealLogs,
   workspaceId: _workspaceId,
+  activeShow,
 }: {
   saleGroups: SaleGroup[];
   buyExpenses: BuyExpense[];
@@ -1134,6 +1130,7 @@ export default function TransactionsClient({
   inventoryItems: InventoryItem[];
   dealLogs: DealLog[];
   workspaceId: string;
+  activeShow?: { id: string; name: string; expected_cash: number } | null;
 }) {
   const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
@@ -1271,6 +1268,24 @@ export default function TransactionsClient({
 
   return (
     <div className="space-y-4">
+      {/* Active show banner */}
+      {activeShow && (
+        <a
+          href="/protected/show"
+          className="flex items-center justify-between px-3 py-2 rounded-xl border border-amber-400/25 bg-amber-400/8 hover:bg-amber-400/12 transition-colors"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span className="text-xs font-semibold text-amber-700 dark:text-amber-300 truncate">
+              Show active: {activeShow.name}
+            </span>
+          </div>
+          <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0 ml-2">
+            Transactions auto-linked →
+          </span>
+        </a>
+      )}
+
       {/* Summary bar — contextual per tab */}
       <div className="flex flex-wrap gap-2">
         {(tab === "all" || tab === "deals") && (() => {

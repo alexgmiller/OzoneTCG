@@ -4,6 +4,7 @@ import DashboardClient from "./DashboardClient";
 import DashboardCharts, { type ChartItem } from "./DashboardCharts";
 import { computeDashboardTotals } from "./totals";
 import type { ItemRow, ExpenseRow, GradingRow } from "./totals";
+import type { ShowSession } from "@/app/protected/show/actions";
 
 function money(n: number) {
   return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
@@ -34,6 +35,8 @@ export default async function DashboardServer() {
     { data: expenses, error: expErr },
     { data: grading, error: gradErr },
     { data: chartItems, error: chartErr },
+    { data: recentShows },
+    { data: activeShow },
   ] = await Promise.all([
     supabase
       .from("items")
@@ -48,6 +51,20 @@ export default async function DashboardServer() {
       .select("created_at,updated_at,status,cost,market,sold_price,previous_sales")
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("show_sessions")
+      .select("id,name,date,net_pl,cards_bought,cards_sold,trades_count,status")
+      .eq("workspace_id", workspaceId)
+      .eq("status", "completed")
+      .order("started_at", { ascending: false })
+      .limit(4),
+    supabase
+      .from("show_sessions")
+      .select("id,name,date,total_spent,total_revenue,net_pl,cards_bought,cards_sold,status")
+      .eq("workspace_id", workspaceId)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (itemsErr) throw new Error(itemsErr.message);
@@ -69,14 +86,34 @@ export default async function DashboardServer() {
 
   const totalInventoryMarket = totals.market.active_total || 1; // avoid /0
 
+  const completedShows = (recentShows ?? []) as ShowSession[];
+
   return (
     <div className="p-4 space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Dashboard</h1>
-          <div className="text-sm opacity-50">Workspace: {workspaceId}</div>
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold">Dashboard</h1>
+        <div className="text-sm opacity-50">Workspace: {workspaceId}</div>
       </div>
+
+      {/* Active show banner */}
+      {activeShow && (
+        <a
+          href="/protected/show"
+          className="flex items-center justify-between p-3 rounded-xl border-2 gap-3"
+          style={{ borderColor: "rgba(234,179,8,0.4)", background: "rgba(234,179,8,0.06)" }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <div>
+              <div className="text-sm font-semibold">{activeShow.name}</div>
+              <div className="text-xs opacity-50">
+                {activeShow.cards_bought ?? 0} in · {activeShow.cards_sold ?? 0} out · P&L {money(activeShow.net_pl ?? 0)}
+              </div>
+            </div>
+          </div>
+          <div className="text-xs font-semibold shrink-0" style={{ color: "#eab308" }}>Resume →</div>
+        </a>
+      )}
 
       {/* realtime hook */}
       <DashboardClient workspaceId={workspaceId} />
@@ -294,6 +331,41 @@ export default async function DashboardServer() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Past Shows ── */}
+      {completedShows.length > 0 && (
+        <div className="border rounded-xl p-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">Past Shows</div>
+            <a href="/protected/shows" className="text-xs opacity-50 hover:opacity-100 transition-opacity">
+              View all →
+            </a>
+          </div>
+          <div className="space-y-0">
+            {completedShows.map((show) => (
+              <div key={show.id} className="flex items-center justify-between py-2.5 border-t first:border-t-0 gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm truncate">{show.name}</div>
+                  <div className="text-xs opacity-40 mt-0.5">
+                    {fmtDate(show.date)}
+                    {(show.cards_bought ?? 0) > 0 || (show.cards_sold ?? 0) > 0
+                      ? ` · ${show.cards_bought ?? 0} in, ${show.cards_sold ?? 0} out`
+                      : ""}
+                  </div>
+                </div>
+                <div
+                  className={`text-sm font-semibold tabular-nums shrink-0 ${
+                    (show.net_pl ?? 0) >= 0 ? "text-emerald-500" : "text-rose-500"
+                  }`}
+                >
+                  {(show.net_pl ?? 0) >= 0 ? "+" : ""}
+                  {money(show.net_pl ?? 0)}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -47,9 +47,10 @@ function buildQuery(
   name: string,
   cardNumber?: string | null
 ): string {
-  // Strip parenthetical language/variant tags: (JP), (EN), (CHN)
+  // Strip language codes (JP), (EN), (CHN) and TCG descriptor tags (Secret), (Full Art), etc.
   const cleanName = name
     .replace(/\s*\([A-Z]{2,3}\)\s*/gi, " ")
+    .replace(/\s*\((Secret Rare|Special Art Rare|Illustration Rare|Alternate Full Art|Alternate Art|Full Art|Hyper Rare|Ultra Rare|Art Rare|Secret)\)\s*/gi, " ")
     .replace(/&/g, " ") // & in card names can confuse URL parsing
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -120,6 +121,8 @@ async function fetchAndParse(
     _sacat: POKEMON_CAT_ID,
   });
   const url = `${EBAY_SCH_URL}?${params}`;
+  // Fallback URL used when a listing's /itm/ link can't be extracted
+  const soldSearchUrl = url;
 
   console.log(`[eBay-scraper] GET ${url}`);
 
@@ -143,7 +146,7 @@ async function fetchAndParse(
     return [];
   }
 
-  return parseCompletedHtml(html, q, name, company, grade);
+  return parseCompletedHtml(html, q, name, company, grade, soldSearchUrl);
 }
 
 function parseCompletedHtml(
@@ -151,7 +154,8 @@ function parseCompletedHtml(
   q: string,
   name: string,
   company: string,
-  grade: string
+  grade: string,
+  fallbackUrl: string
 ): ScrapedSale[] {
   const $ = cheerio.load(html);
   const relevanceKeywords = extractRelevanceKeywords(name);
@@ -184,13 +188,13 @@ function parseCompletedHtml(
     const linkEl = $(el).find("a.s-card__link").first();
     const rawHref = linkEl.attr("href") ?? "";
     const itemIdMatch = rawHref.match(/https?:\/\/(?:www\.)?ebay\.com\/itm\/(\d+)/);
+    // Fall back to the sold-search URL so the click still lands somewhere useful.
     const itemUrl = itemIdMatch
       ? `https://www.ebay.com/itm/${itemIdMatch[1]}`
-      : "";
+      : fallbackUrl;
 
     if (!itemIdMatch) {
-      // Unexpected — log so we can diagnose
-      console.warn(`[eBay-scraper] item[${idx}] s-card__link href did not match /itm/ pattern: "${rawHref.slice(0, 120)}"`);
+      console.warn(`[eBay-scraper] item[${idx}] no /itm/ link — using search fallback. href="${rawHref.slice(0, 120)}"`);
     }
 
     // Title: first span inside .s-card__title
