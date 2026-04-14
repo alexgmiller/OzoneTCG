@@ -1,8 +1,6 @@
 import { getCardImageStats } from "@/lib/cardImages";
 import AdminImagesClient from "./AdminImagesClient";
 
-export const dynamic = "force-dynamic";
-
 export default async function AdminImagesPage() {
   const stats = await getCardImageStats().catch(() => null);
 
