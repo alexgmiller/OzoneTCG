@@ -4,6 +4,12 @@
  * Compact cert-number lookup widget — embeds inside any modal.
  * Shows a "Scan cert" button. On tap: expands to cert input + optional camera.
  * Calls onResult() with card details once a cert is found.
+ *
+ * Props:
+ *   controlledCompany — when provided the internal company selector is hidden
+ *                        and this value is used for the lookup instead.
+ *   inlineRow         — render as a bare row (no bordered panel, no header section)
+ *                        intended for embedding directly inside a form row.
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -24,26 +30,40 @@ export type CertWidgetResult = {
 interface Props {
   onResult: (r: CertWidgetResult) => void;
   defaultCompany?: GradingCompany;
+  /** When provided: hides internal company selector and uses this value. */
+  controlledCompany?: GradingCompany;
   label?: string;
   /** Always-open mode for embedding in tab UIs (no trigger button). */
   embedded?: boolean;
   /** Start camera scanning immediately when embedded. */
   defaultCameraOn?: boolean;
+  /**
+   * Inline-row mode: renders as a bare input row with no bordered panel.
+   * The close button calls onClose instead of toggling open state.
+   */
+  inlineRow?: boolean;
+  onClose?: () => void;
 }
 
 export default function CertLookupWidget({
   onResult,
   defaultCompany = "PSA",
+  controlledCompany,
   label,
   embedded = false,
   defaultCameraOn = false,
+  inlineRow = false,
+  onClose,
 }: Props) {
-  const [open, setOpen] = useState(embedded ? true : false);
-  const [company, setCompany] = useState<GradingCompany>(defaultCompany);
+  const [open, setOpen] = useState(embedded || inlineRow ? true : false);
+  const [internalCompany, setInternalCompany] = useState<GradingCompany>(defaultCompany);
   const [certInput, setCertInput] = useState("");
   const [cameraOn, setCameraOn] = useState(embedded && defaultCameraOn ? true : false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The active company: either controlled from outside or internal state
+  const company: GradingCompany = controlledCompany ?? internalCompany;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -159,8 +179,9 @@ export default function CertLookupWidget({
         // Reset inputs
         setCertInput("");
         setError(null);
-        if (embedded) {
-          // In embedded mode: stay open, restart camera for next scan
+        if (inlineRow) {
+          // Caller handles closing via onResult side-effect
+        } else if (embedded) {
           if (defaultCameraOn) setTimeout(() => setCameraOn(true), 400);
         } else {
           setOpen(false);
@@ -172,19 +193,32 @@ export default function CertLookupWidget({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onResult, embedded, defaultCameraOn]
+    [onResult, embedded, inlineRow, defaultCameraOn]
   );
 
   function handleSubmit() {
     runLookup(certInput, company);
   }
 
+  function handleClose() {
+    setCameraOn(false);
+    setError(null);
+    setCertInput("");
+    if (onClose) {
+      onClose();
+    } else {
+      setOpen(false);
+    }
+  }
+
+  // ── Trigger button (collapsed state) ────────────────────────────────────────
+
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-violet-500/30 text-violet-500 hover:bg-violet-500/10 transition-colors font-medium"
+        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-violet-500/30 text-violet-500 hover:bg-violet-500/10 transition-colors font-medium shrink-0"
       >
         <ScanLine size={13} />
         {label ?? "Scan cert"}
@@ -192,30 +226,117 @@ export default function CertLookupWidget({
     );
   }
 
+  // ── Shared inner content (used in both modes) ────────────────────────────────
+
+  const cameraStrip = cameraOn && (
+    <div className="relative rounded-lg overflow-hidden bg-black" style={{ height: 140 }}>
+      <video ref={videoRef} className="w-full h-full object-cover" muted playsInline autoPlay />
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="relative w-40 h-12">
+          <div className="absolute top-0 left-0 w-5 h-5 border-t-2 border-l-2 border-white/80" />
+          <div className="absolute top-0 right-0 w-5 h-5 border-t-2 border-r-2 border-white/80" />
+          <div className="absolute bottom-0 left-0 w-5 h-5 border-b-2 border-l-2 border-white/80" />
+          <div className="absolute bottom-0 right-0 w-5 h-5 border-b-2 border-r-2 border-white/80" />
+        </div>
+      </div>
+      <div className="absolute inset-x-0 bottom-0 text-center text-[10px] text-white/60 pb-1">
+        Point at barcode on slab label
+      </div>
+    </div>
+  );
+
+  const inputRow = (
+    <div className="flex gap-1.5">
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="numeric"
+        value={certInput}
+        onChange={(e) => setCertInput(e.target.value.replace(/\D/g, ""))}
+        onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
+        placeholder="Cert number…"
+        className="flex-1 bg-background border rounded-lg px-3 py-2.5 text-sm font-mono tracking-wider"
+        disabled={loading}
+      />
+      <button
+        type="button"
+        onClick={() => setCameraOn((o) => !o)}
+        className={`px-2.5 py-2 rounded-lg border transition-colors ${
+          cameraOn
+            ? "bg-violet-600 border-violet-500 text-white"
+            : "border-border opacity-50 hover:opacity-100"
+        }`}
+        title="Toggle camera"
+      >
+        <Camera size={14} />
+      </button>
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={loading || certInput.length < 5}
+        className="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-30 text-white text-xs font-semibold transition-colors flex items-center gap-1 shrink-0"
+      >
+        {loading ? <Loader2 size={13} className="animate-spin" /> : "Look up"}
+      </button>
+      <button
+        type="button"
+        onClick={handleClose}
+        className="p-2 rounded-lg opacity-40 hover:opacity-80 transition-opacity shrink-0"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+
+  const errorRow = error && (
+    <div className="flex items-start gap-1.5 text-xs text-amber-500 mt-1.5">
+      <AlertCircle size={12} className="shrink-0 mt-0.5" />
+      <span>{error}</span>
+    </div>
+  );
+
+  // ── Inline-row mode (no panel border, no company selector) ──────────────────
+
+  if (inlineRow) {
+    return (
+      <div className="space-y-1.5">
+        {inputRow}
+        {cameraStrip}
+        {errorRow}
+      </div>
+    );
+  }
+
+  // ── Standard panel mode ──────────────────────────────────────────────────────
+
   return (
     <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-3 space-y-2.5">
-      {/* Header row */}
+      {/* Header row — company selector only shown when not controlled */}
       <div className="flex items-center justify-between">
-        <div className="flex gap-1 p-0.5 rounded-lg bg-black/10 dark:bg-white/10">
-          {(["PSA", "BGS", "CGC"] as GradingCompany[]).map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setCompany(c)}
-              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md transition-all ${
-                company === c
-                  ? "bg-white dark:bg-white/20 shadow-sm"
-                  : "opacity-40 hover:opacity-70"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+        {!controlledCompany ? (
+          <div className="flex gap-1 p-0.5 rounded-lg bg-black/10 dark:bg-white/10">
+            {(["PSA", "BGS", "CGC"] as GradingCompany[]).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setInternalCompany(c)}
+                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md transition-all ${
+                  internalCompany === c
+                    ? "bg-white dark:bg-white/20 shadow-sm"
+                    : "opacity-40 hover:opacity-70"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-[11px] font-bold opacity-50 uppercase tracking-wide">{controlledCompany} cert lookup</div>
+        )}
         {!embedded && (
           <button
             type="button"
-            onClick={() => { setOpen(false); setCameraOn(false); setError(null); }}
+            onClick={handleClose}
             className="p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity"
           >
             <X size={13} />
@@ -223,67 +344,9 @@ export default function CertLookupWidget({
         )}
       </div>
 
-      {/* Camera strip */}
-      {cameraOn && (
-        <div className="relative rounded-lg overflow-hidden bg-black" style={{ height: 140 }}>
-          <video ref={videoRef} className="w-full h-full object-cover" muted playsInline autoPlay />
-          {/* targeting box */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative w-40 h-12">
-              <div className="absolute top-0 left-0 w-5 h-5 border-t-2 border-l-2 border-white/80" />
-              <div className="absolute top-0 right-0 w-5 h-5 border-t-2 border-r-2 border-white/80" />
-              <div className="absolute bottom-0 left-0 w-5 h-5 border-b-2 border-l-2 border-white/80" />
-              <div className="absolute bottom-0 right-0 w-5 h-5 border-b-2 border-r-2 border-white/80" />
-            </div>
-          </div>
-          <div className="absolute inset-x-0 bottom-0 text-center text-[10px] text-white/60 pb-1">
-            Point at barcode on slab label
-          </div>
-        </div>
-      )}
-
-      {/* Input row */}
-      <div className="flex gap-1.5">
-        <input
-          ref={inputRef}
-          type="text"
-          inputMode="numeric"
-          value={certInput}
-          onChange={(e) => setCertInput(e.target.value.replace(/\D/g, ""))}
-          onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
-          placeholder="Cert number…"
-          className="flex-1 bg-background border rounded-lg px-3 py-1.5 text-sm font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-violet-500"
-          disabled={loading}
-        />
-        <button
-          type="button"
-          onClick={() => setCameraOn((o) => !o)}
-          className={`px-2.5 py-1.5 rounded-lg border transition-colors ${
-            cameraOn
-              ? "bg-violet-600 border-violet-500 text-white"
-              : "border-border opacity-50 hover:opacity-100"
-          }`}
-          title="Toggle camera"
-        >
-          <Camera size={14} />
-        </button>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={loading || certInput.length < 5}
-          className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-30 text-white text-xs font-semibold transition-colors flex items-center gap-1"
-        >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : "Look up"}
-        </button>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="flex items-start gap-1.5 text-xs text-amber-500">
-          <AlertCircle size={12} className="shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
+      {cameraStrip}
+      {inputRow}
+      {errorRow}
     </div>
   );
 }

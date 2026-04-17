@@ -1,11 +1,13 @@
 import { Suspense } from "react";
 import ShowClient from "./ShowClient";
-import { getShowHistory } from "./actions";
+import { getShowHistory, getActiveShowSession } from "./actions";
 
 async function ShowPageInner() {
-  // Load recent completed shows for the summary screen and "resume" flow
-  const history = await getShowHistory(10).catch(() => []);
-  return <ShowClient recentShows={history} />;
+  const [history, activeSession] = await Promise.all([
+    getShowHistory(10).catch(() => []),
+    getActiveShowSession().catch(() => null),
+  ]);
+  return <ShowClient recentShows={history} initialActiveSession={activeSession} />;
 }
 
 export default function ShowPage() {

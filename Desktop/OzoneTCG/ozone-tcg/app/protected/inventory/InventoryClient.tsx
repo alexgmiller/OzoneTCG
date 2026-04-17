@@ -7,9 +7,9 @@ import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
 import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, fetchCardData, uploadCardImage, uploadItemImage, refreshSlabPrice, getEbayDailyCallCount, refreshRawCardPrice, refreshSealedPrice, type RefreshedSlabPrice, type RefreshedRawCardPrice } from "./actions";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
-import { makeSlabPriceKey, parseGrade, type SlabSale } from "@/lib/ebay";
+import { makeSlabPriceKey, parseGrade, type SlabSale } from "@/lib/ebay-client";
 import { makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
-import { selectTierFMV, type PricingStrategyOverride } from "@/lib/fmv";
+import { computeBlendedFMV, type FMVResult, type PricingStrategyOverride } from "@/lib/fmv";
 import CSVImport from "./CSVImport";
 import CardScanner, { type ScanResult } from "@/components/CardScanner";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
@@ -158,46 +158,69 @@ function buildRawEbayQuery(name: string, setName: string | null, cardNumber: str
   return [cleanName, setName, num].filter(Boolean).join(" ");
 }
 
-// ── Tiered FMV helpers ──────────────────────────────────────────────────────
+// ── Year helpers (kept for reference / future use) ─────────────────────────
 
-/** Linear-interpolation percentile on a sorted array (mirrors lib/ebay.ts). */
-function iqrPctile(sorted: number[], p: number): number {
-  if (sorted.length === 1) return sorted[0];
-  const idx = (sorted.length - 1) * p;
-  const lo = Math.floor(idx);
-  const frac = idx - lo;
-  return frac === 0 ? sorted[lo] : sorted[lo] * (1 - frac) + sorted[lo + 1] * frac;
-}
+const SET_YEAR_MAP: Record<string, number> = {
+  "Base Set": 1999, "Jungle": 1999, "Fossil": 1999, "Base Set 2": 2000,
+  "Team Rocket": 2000, "Gym Heroes": 2000, "Gym Challenge": 2000,
+  "Neo Genesis": 2000, "Neo Discovery": 2001, "Neo Revelation": 2001, "Neo Destiny": 2002,
+  "Expedition Base Set": 2002, "Aquapolis": 2003, "Skyridge": 2003,
+  "EX Ruby & Sapphire": 2003, "EX Sandstorm": 2003, "EX Dragon": 2003,
+  "EX Team Magma vs Team Aqua": 2004, "EX Hidden Legends": 2004,
+  "EX FireRed & LeafGreen": 2004, "EX Team Rocket Returns": 2004,
+  "EX Deoxys": 2005, "EX Emerald": 2005, "EX Unseen Forces": 2005,
+  "EX Delta Species": 2005, "EX Legend Maker": 2006, "EX Holon Phantoms": 2006,
+  "EX Crystal Guardians": 2006, "EX Dragon Frontiers": 2006, "EX Power Keepers": 2007,
+  "Diamond & Pearl": 2007, "Mysterious Treasures": 2007, "Secret Wonders": 2007,
+  "Great Encounters": 2008, "Majestic Dawn": 2008, "Legends Awakened": 2008,
+  "Stormfront": 2008, "Platinum": 2009, "Rising Rivals": 2009,
+  "Supreme Victors": 2009, "Arceus": 2009,
+  "HeartGold & SoulSilver": 2010, "Unleashed": 2010, "Undaunted": 2010, "Triumphant": 2010,
+  "Call of Legends": 2011,
+  "Black & White": 2011, "Emerging Powers": 2011, "Noble Victories": 2011,
+  "Next Destinies": 2012, "Dark Explorers": 2012, "Dragons Exalted": 2012,
+  "Dragon Vault": 2012, "Boundaries Crossed": 2012,
+  "Plasma Storm": 2013, "Plasma Freeze": 2013, "Plasma Blast": 2013,
+  "Legendary Treasures": 2013,
+  "XY": 2014, "Flashfire": 2014, "Furious Fists": 2014, "Phantom Forces": 2014,
+  "Primal Clash": 2015, "Roaring Skies": 2015, "Ancient Origins": 2015,
+  "BREAKthrough": 2015, "BREAKpoint": 2016, "Generations": 2016, "Fates Collide": 2016,
+  "Steam Siege": 2016, "Evolutions": 2016,
+  "Sun & Moon": 2017, "Guardians Rising": 2017, "Burning Shadows": 2017,
+  "Crimson Invasion": 2017, "Shining Legends": 2017,
+  "Ultra Prism": 2018, "Forbidden Light": 2018, "Celestial Storm": 2018,
+  "Dragon Majesty": 2018, "Lost Thunder": 2018,
+  "Team Up": 2019, "Detective Pikachu": 2019, "Unbroken Bonds": 2019,
+  "Unified Minds": 2019, "Hidden Fates": 2019, "Cosmic Eclipse": 2019,
+  "Sword & Shield": 2020, "Rebel Clash": 2020, "Darkness Ablaze": 2020,
+  "Champion's Path": 2020, "Vivid Voltage": 2020,
+  "Battle Styles": 2021, "Chilling Reign": 2021, "Evolving Skies": 2021,
+  "Celebrations": 2021, "Fusion Strike": 2021,
+  "Brilliant Stars": 2022, "Astral Radiance": 2022, "Pokémon GO": 2022,
+  "Lost Origin": 2022, "Silver Tempest": 2022,
+  "Crown Zenith": 2023, "Scarlet & Violet": 2023, "Paldea Evolved": 2023,
+  "Obsidian Flames": 2023, "151": 2023, "Paradox Rift": 2023,
+  "Paldean Fates": 2024, "Temporal Forces": 2024, "Twilight Masquerade": 2024,
+  "Shrouded Fable": 2024, "Stellar Crown": 2024, "Surging Sparks": 2024,
+  "Prismatic Evolutions": 2025, "Journey Together": 2025,
+};
 
-/** Compute Q1/median/Q3 from a SlabPrice's active_items with IQR outlier removal. */
-function computeSlabStats(sp: SlabPrice | null | undefined): { q1: number | null; median: number | null; q3: number | null } {
-  const fallbackMedian = sp?.sold_median ?? sp?.median_price ?? null;
-  const rawItems = sp?.active_items;
-  if (!rawItems || rawItems.length < 2) return { q1: null, median: fallbackMedian, q3: null };
-  const prices = rawItems.map((i) => i.price).filter((p) => p > 1).sort((a, b) => a - b);
-  if (prices.length === 0) return { q1: null, median: fallbackMedian, q3: null };
-  let clean = prices;
-  if (prices.length >= 4) {
-    const q1b = iqrPctile(prices, 0.25);
-    const q3b = iqrPctile(prices, 0.75);
-    const iqr = q3b - q1b;
-    const lower = q1b - 1.5 * iqr;
-    const upper = q3b + 1.5 * iqr;
-    const filtered = prices.filter((p) => p >= lower && p <= upper);
-    if (filtered.length > 0) clean = filtered;
-  }
-  return {
-    q1: Math.round(iqrPctile(clean, 0.25)),
-    median: Math.round(iqrPctile(clean, 0.5)),
-    q3: Math.round(iqrPctile(clean, 0.75)),
-  };
-}
-
-/** Extract a 4-digit year from a set name (e.g. "2019 Sun & Moon" → 2019). */
+/** Extract a 4-digit year from a set name. */
 function inferCardYear(setName: string | null | undefined): number | null {
   if (!setName) return null;
+  const mapped = SET_YEAR_MAP[setName.trim()];
+  if (mapped) return mapped;
   const m = setName.match(/\b(19[0-9]{2}|20[0-9]{2})\b/);
   return m ? parseInt(m[1]) : null;
+}
+
+/** Extract year from eBay listing titles (e.g. "2003 Pokemon EX Dragon ..."). */
+function yearFromEbayTitles(titles: string[]): number | null {
+  for (const t of titles) {
+    const m = t.match(/\b(19[0-9]{2}|20[0-9]{2})\b/);
+    if (m) return parseInt(m[1]);
+  }
+  return null;
 }
 
 const categoryColors: Record<string, string> = {
@@ -973,24 +996,27 @@ export default function InventoryClient({
     [slabPrices, slabPriceOverrides]
   );
 
-  // Tiered FMV: compute Q1/median/Q3 from active_items and apply strategy for every slab.
-  // Keyed by item.id so other useMemos can look up by item without re-deriving.
+  // Blended FMV: weighted average of sold median and active listing Q1 for every slab.
   const slabFMVData = useMemo(() => {
-    const result: Record<string, { fmv: number | null; label: "competitive" | "market" | "scarce" }> = {};
+    const result: Record<string, FMVResult> = {};
     for (const it of items) {
       if (it.category !== "slab" || !it.grade) continue;
       const parsed = parseGrade(it.grade);
       if (!parsed) continue;
       const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
       const sp = mergedSlabPrices[key];
-      if (!sp) { result[it.id] = { fmv: it.market, label: "market" }; continue; }
-      const { q1, median, q3 } = computeSlabStats(sp);
-      const year = inferCardYear(it.set_name);
-      const sel = selectTierFMV(q1, median, q3, { year, strategy: pricingStrategy });
-      result[it.id] = { fmv: sel.fmv, label: sel.label };
+      if (!sp) {
+        result[it.id] = { fmv: it.market, mode: "none", soldAnchor: null, listedAnchor: null, soldCount: 0, activeCount: 0 };
+        continue;
+      }
+      const validSold = (sp.sold_items ?? []).filter(
+        (s) => !(s.buyingOptions.length === 1 && s.buyingOptions[0] === "BEST_OFFER") && s.price > 1
+      );
+      const validActive = (sp.active_items ?? []).filter((s) => s.price > 1);
+      result[it.id] = computeBlendedFMV(validSold, validActive);
     }
     return result;
-  }, [items, mergedSlabPrices, pricingStrategy]);
+  }, [items, mergedSlabPrices]);
 
   function applyRefreshedPrice(rp: RefreshedSlabPrice) {
     setSlabPriceOverrides((prev) => ({ ...prev, [rp.lookup_key]: rp as SlabPrice }));
@@ -3183,8 +3209,8 @@ export default function InventoryClient({
         // Derive sp live from merged prices so background updates are reflected immediately
         const pdSp = mergedSlabPrices[slabKey];
         const isModalRefreshing = slabRefreshing[pdi.id];
-        const fmvVal = slabFMVData[pdi.id]?.fmv ?? null;
-        const fmvTierLabel = slabFMVData[pdi.id]?.label ?? "market";
+        const fmvData = slabFMVData[pdi.id] ?? null;
+        const fmvVal = fmvData?.fmv ?? null;
 
         // Helpers
         function fmtModalDate(d: string) {
@@ -3240,6 +3266,17 @@ export default function InventoryClient({
         const validActive = (pdSp?.active_items ?? []).filter((s) => s.price > 1);
         const activeLists = applyOutlierFilter(validActive).sort((a, b) => a.price - b.price);
 
+        const soldHasAuction = soldLists.some((s) => (s.buyingOptions ?? []).includes("AUCTION"));
+        const soldHasBestOffer = soldLists.some((s) => (s.buyingOptions ?? []).includes("BEST_OFFER") && !(s.buyingOptions ?? []).includes("AUCTION"));
+        const soldTypesVary = soldHasAuction || soldHasBestOffer;
+        const soldPrices = soldLists.map((s) => s.price);
+        const activePrices = activeLists.map((s) => s.price);
+        const soldMin = soldPrices.length ? Math.min(...soldPrices) : null;
+        const soldMax = soldPrices.length ? Math.max(...soldPrices) : null;
+        const activeMin = activePrices.length ? Math.min(...activePrices) : null;
+        const activeMax = activePrices.length ? Math.max(...activePrices) : null;
+        const soldCompCount = pdSp?.sold_count ?? soldLists.length;
+
         return (
           <div
             className="fixed inset-0 z-[70] modal-backdrop sm:flex sm:items-center sm:justify-center"
@@ -3251,29 +3288,43 @@ export default function InventoryClient({
             >
               {/* Header */}
               <div className="px-4 pt-4 pb-3 border-b flex items-start justify-between gap-3 flex-shrink-0">
-                <div className="min-w-0">
-                  <div className="font-semibold text-sm leading-tight truncate">{pdi.name}</div>
-                  {(pdi.set_name || pdi.card_number) && (
-                    <div className="text-xs opacity-50 mt-0.5">{[pdi.set_name, pdi.card_number ? `#${pdi.card_number}` : ""].filter(Boolean).join(" · ")}</div>
-                  )}
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {pdi.grade && <span className={`text-xs px-1.5 py-0.5 rounded-full ${gradeStyle(pdi.grade)}`}>{pdi.grade}</span>}
-                    {fmvVal != null && (
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-base font-bold">{fmt(fmvVal)}</span>
-                        <span className="text-[10px] opacity-40 font-normal capitalize">
-                          {fmvTierLabel} · {pdSp?.sold_median != null ? "FMV" : "ask price"}
-                        </span>
-                        <MovementBadge pct={getMovement(fmvVal, pdi.acquired_market_price)} />
-                      </div>
-                    )}
-                    {fmvVal == null && <span className="text-sm opacity-40">No price data</span>}
-                  </div>
-                  {pdi.acquired_market_price != null && (
-                    <div className="text-[11px] opacity-40 mt-1">
-                      Acquired at {fmt(pdi.acquired_market_price)}{pdi.acquired_date ? ` · ${fmtModalDate(pdi.acquired_date)}` : ""}
+                <div className="flex gap-3 min-w-0 flex-1">
+                  {/* Card thumbnail */}
+                  {pdi.image_url && (
+                    <div className="w-[60px] flex-shrink-0 rounded overflow-hidden bg-muted/40 self-start">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={pdi.image_url} alt={pdi.name} className="w-full h-auto object-cover" />
                     </div>
                   )}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-sm leading-tight truncate">{pdi.name}</div>
+                    {(pdi.set_name || pdi.card_number) && (
+                      <div className="text-xs opacity-50 mt-0.5">{[pdi.set_name, pdi.card_number ? `#${pdi.card_number}` : ""].filter(Boolean).join(" · ")}</div>
+                    )}
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      {pdi.grade && <span className={`text-xs px-1.5 py-0.5 rounded-full ${gradeStyle(pdi.grade)}`}>{pdi.grade}</span>}
+                      {fmvVal != null && (
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-base font-bold">{fmt(fmvVal)}</span>
+                          <span className="text-[10px] opacity-40 font-normal">{fmvData?.mode ?? "—"}</span>
+                          <MovementBadge pct={getMovement(fmvVal, pdi.acquired_market_price)} />
+                        </div>
+                      )}
+                      {fmvVal == null && <span className="text-sm opacity-40">No price data</span>}
+                    </div>
+                    {(fmvData?.soldAnchor != null || fmvData?.listedAnchor != null) && (
+                      <div className="text-[11px] opacity-50 mt-0.5">
+                        {fmvData.soldAnchor != null && `Sold: ${fmt(fmvData.soldAnchor)} (${fmvData.soldCount})`}
+                        {fmvData.soldAnchor != null && fmvData.listedAnchor != null && " · "}
+                        {fmvData.listedAnchor != null && `Listed: ${fmt(fmvData.listedAnchor)} (${fmvData.activeCount} active)`}
+                      </div>
+                    )}
+                    {pdi.acquired_market_price != null && (
+                      <div className="text-[11px] opacity-40 mt-0.5">
+                        Acquired at {fmt(pdi.acquired_market_price)}{pdi.acquired_date ? ` · ${fmtModalDate(pdi.acquired_date)}` : ""}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <button className="modal-close-btn flex-shrink-0" onClick={() => setPricingDetailItem(null)}>✕</button>
               </div>
@@ -3282,7 +3333,14 @@ export default function InventoryClient({
               <div className="overflow-y-auto flex-1 divide-y">
                 {/* Recent Sales */}
                 <div className="px-4 py-3">
-                  <div className="text-xs font-semibold opacity-50 uppercase tracking-wider mb-2">Recent Sales · eBay</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">
+                      RECENT SALES · {soldCompCount} comps
+                    </div>
+                    {soldMin != null && soldMax != null && soldMin !== soldMax && (
+                      <div className="text-xs opacity-40 tabular-nums">{fmt(soldMin)} – {fmt(soldMax)}</div>
+                    )}
+                  </div>
                   {soldLists.length === 0 ? (
                     <div className="text-sm opacity-40 text-center py-3">
                       {isModalRefreshing
@@ -3293,36 +3351,37 @@ export default function InventoryClient({
                       }
                     </div>
                   ) : (
-                    <div className="space-y-1">
+                    <div>
                       {soldLists.slice(0, soldExpanded ? soldLists.length : 5).map((s, i) => (
                         <a
                           key={i}
                           href={s.itemUrl || undefined}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`flex items-center justify-between gap-2 rounded px-1.5 py-1 -mx-1.5 transition-colors group ${s.itemUrl ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}`}
+                          className={`flex items-center justify-between gap-2 px-1.5 py-1.5 border-t border-border/30 ${i % 2 === 1 ? "bg-muted/20" : ""} transition-colors group ${s.itemUrl ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}`}
                           onClick={s.itemUrl ? undefined : (e) => e.preventDefault()}
                         >
                           <div className="flex items-center gap-1.5 min-w-0">
-                            {(s.buyingOptions ?? []).includes("AUCTION")
-                              ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium flex-shrink-0">Auction</span>
-                              : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium flex-shrink-0">Fixed</span>
-                            }
+                            {soldTypesVary && (s.buyingOptions ?? []).includes("AUCTION") && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium flex-shrink-0">Auction</span>
+                            )}
+                            {soldTypesVary && (s.buyingOptions ?? []).includes("BEST_OFFER") && !(s.buyingOptions ?? []).includes("AUCTION") && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex-shrink-0">Offer</span>
+                            )}
                             <span className="text-xs opacity-50 truncate">{s.title}</span>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-xs opacity-40">{fmtModalDate(s.soldDate)}</span>
+                          <div className="flex flex-col items-end flex-shrink-0">
                             <span className="text-sm font-semibold tabular-nums">{fmt(s.price)}</span>
-                            {s.itemUrl && <span className="text-[10px] opacity-20 group-hover:opacity-50 transition-opacity">↗</span>}
+                            <span className="text-[10px] opacity-40">{fmtModalDate(s.soldDate)}</span>
                           </div>
                         </a>
                       ))}
                       {soldLists.length > 5 && (
                         <button
-                          className="w-full text-xs text-center py-1.5 opacity-40 hover:opacity-70 transition-opacity"
+                          className="w-full text-xs text-center py-1.5 opacity-40 hover:opacity-70 transition-opacity border-t border-border/30"
                           onClick={() => setSoldExpanded((v) => !v)}
                         >
-                          {soldExpanded ? "Show less" : `View more (${soldLists.length - 5} more)`}
+                          {soldExpanded ? "Show less" : `${soldLists.length - 5} more`}
                         </button>
                       )}
                     </div>
@@ -3331,47 +3390,50 @@ export default function InventoryClient({
 
                 {/* Active Listings */}
                 <div className="px-4 py-3">
-                  <div className="text-xs font-semibold opacity-50 uppercase tracking-wider mb-2">Active Listings · eBay</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">
+                      ACTIVE LISTINGS · {activeLists.length} listed
+                    </div>
+                    {activeMin != null && activeMax != null && activeMin !== activeMax && (
+                      <div className="text-xs opacity-40 tabular-nums">{fmt(activeMin)} – {fmt(activeMax)}</div>
+                    )}
+                  </div>
                   {activeLists.length === 0 ? (
                     <div className="text-sm opacity-40 text-center py-3">{isModalRefreshing ? "Fetching…" : "No active listings — hit ↺ Refresh to load"}</div>
                   ) : (
-                    <div className="space-y-1">
+                    <div>
                       {activeLists.slice(0, activeExpanded ? activeLists.length : 5).map((s, i) => {
                         const isAuction = (s.buyingOptions ?? []).includes("AUCTION");
+                        const isLowest = i === 0 && activeLists.length > 1;
                         return (
                           <a
                             key={i}
                             href={s.itemUrl || undefined}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`flex items-center justify-between gap-2 rounded px-1.5 py-1 -mx-1.5 transition-colors group ${s.itemUrl ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}`}
+                            className={`flex items-center justify-between gap-2 px-1.5 py-1.5 border-t border-border/30 ${i % 2 === 1 ? "bg-muted/20" : ""} ${isLowest ? "border-l-2 border-l-emerald-500 pl-2" : ""} transition-colors group ${s.itemUrl ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}`}
                             onClick={s.itemUrl ? undefined : (e) => e.preventDefault()}
                           >
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                              {isAuction ? (
-                                <div className="flex items-center gap-1.5 flex-wrap">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {isAuction && (
+                                <div className="flex items-center gap-1 flex-shrink-0">
                                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">Auction</span>
                                   {s.soldDate && <span className="text-[10px] opacity-50">{timeLeft(s.soldDate)}</span>}
-                                  {s.bidCount != null && <span className="text-[10px] opacity-50">{s.bidCount} bid{s.bidCount !== 1 ? "s" : ""}</span>}
+                                  {s.bidCount != null && <span className="text-[10px] opacity-50">{s.bidCount}b</span>}
                                 </div>
-                              ) : (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium w-fit">Fixed price</span>
                               )}
                               <span className="text-xs opacity-50 truncate">{s.title}</span>
                             </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <span className="text-sm font-semibold tabular-nums">{fmt(s.price)}</span>
-                              {s.itemUrl && <span className="text-[10px] opacity-20 group-hover:opacity-50 transition-opacity">↗</span>}
-                            </div>
+                            <span className={`text-sm font-semibold tabular-nums flex-shrink-0 ${isLowest ? "text-emerald-600" : ""}`}>{fmt(s.price)}</span>
                           </a>
                         );
                       })}
                       {activeLists.length > 5 && (
                         <button
-                          className="w-full text-xs text-center py-1.5 opacity-40 hover:opacity-70 transition-opacity"
+                          className="w-full text-xs text-center py-1.5 opacity-40 hover:opacity-70 transition-opacity border-t border-border/30"
                           onClick={() => setActiveExpanded((v) => !v)}
                         >
-                          {activeExpanded ? "Show less" : `View more (${activeLists.length - 5} more)`}
+                          {activeExpanded ? "Show less" : `${activeLists.length - 5} more`}
                         </button>
                       )}
                     </div>
@@ -3380,7 +3442,7 @@ export default function InventoryClient({
               </div>
 
               {/* Footer */}
-              <div className="px-4 py-3 border-t flex items-center justify-between gap-2">
+              <div className="px-4 py-3 border-t flex items-center justify-between gap-2 flex-shrink-0 bg-background">
                 <div className="text-xs opacity-40">
                   {pdSp?.last_updated ? `Updated ${fmtModalDate(pdSp.last_updated)}` : ""}
                   {isSlabTierStale(pdSp, fmvVal) && <span className="text-orange-400 ml-1">· stale</span>}

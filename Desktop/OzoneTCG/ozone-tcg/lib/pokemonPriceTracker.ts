@@ -1,5 +1,5 @@
 import { searchBaseNames, nameVariants, isJapaneseName, extractEmbeddedNumber } from "./cardNameUtils";
-import { makeLookupKey, getCardCache, setCardCache, getManualImage } from "./cardCache";
+import { makeLookupKey, getCardCache, setCardCache, getManualImage, findManualCacheEntry } from "./cardCache";
 import { getCardImage } from "./cardImages";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
@@ -166,10 +166,22 @@ async function lookupFromTcgIo(
 
   // Build Lucene query candidates, most specific first
   const queries: string[] = [];
-  if (num && setName) queries.push(`name:"${name}" set.name:"${setName}" number:${num}`);
-  if (num)            queries.push(`name:"${name}" number:${num}`);
-  if (setName)        queries.push(`name:"${name}" set.name:"${setName}"`);
-  queries.push(`name:"${name}"`);
+
+  function addQ(q: string) { if (!queries.includes(q)) queries.push(q); }
+
+  if (num && setName) addQ(`name:"${name}" set.name:"${setName}" number:${num}`);
+  if (num)            addQ(`name:"${name}" number:${num}`);
+  if (setName)        addQ(`name:"${name}" set.name:"${setName}"`);
+  addQ(`name:"${name}"`);
+
+  const isLvX = /\bLv\.X\b/i.test(name);
+  if (isLvX) {
+    const lvxBase = name.replace(/\s+Lv\.X\s*$/i, "").replace(/\s*\([^)]*\)/g, "").trim();
+    if (num && setName) addQ(`name:"${lvxBase}" set.name:"${setName}" number:${num} subtypes:LEVEL-UP`);
+    if (num)            addQ(`name:"${lvxBase}" number:${num} subtypes:LEVEL-UP`);
+    if (setName)        addQ(`name:"${lvxBase}" set.name:"${setName}" subtypes:LEVEL-UP`);
+    addQ(`name:"${lvxBase}" subtypes:LEVEL-UP`);
+  }
 
   const apiKey = process.env.POKEMON_TCG_IO_API_KEY;
   const headers: Record<string, string> = {};
@@ -278,9 +290,18 @@ export async function lookupCard(
   // Step 1: Check local cache (Supabase card_image_cache)
   const cached = await getCardCache(cacheKey);
   if (cached.hit) {
-    console.log(`[PriceTracker] Cache hit for "${name}" → ${cached.imageUrl ?? "no image"}`);
-    // Market price isn't cached — still worth fetching for syncs, but return cached image immediately
+    if (cached.source === "manual" || cached.source === "manual_admin") {
+      return { imageUrl: cached.imageUrl, market: null };
+    }
+    if (cached.imageUrl === null) return null;
     return { imageUrl: cached.imageUrl, market: null };
+  }
+
+  // Step 1.5: Check for a prior manual cache entry (cross-key manual image lookup)
+  const priorManualUrl = await findManualCacheEntry(name, cardNumber, setName);
+  if (priorManualUrl) {
+    await setCardCache(cacheKey, name, setName, cardNumber, priorManualUrl, "manual_admin");
+    return { imageUrl: priorManualUrl, market: null };
   }
 
   // Step 2: Try TCGdex (primary — best image quality)

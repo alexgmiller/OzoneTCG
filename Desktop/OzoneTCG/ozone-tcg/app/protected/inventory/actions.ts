@@ -66,11 +66,18 @@ export async function createItem(input: ItemInput) {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
 
+  let resolvedImageUrl = input.image_url ?? null;
+  if (!resolvedImageUrl && input.category !== "sealed") {
+    const { findManualCacheEntry } = await import("@/lib/cardCache");
+    resolvedImageUrl = await findManualCacheEntry(input.name, input.card_number, input.set_name);
+  }
+
   const now = new Date().toISOString();
   const { error } = await supabase.from("items").insert({
     workspace_id: workspaceId,
     ...input,
     name: input.name.trim(),
+    image_url: resolvedImageUrl,
     condition: input.condition?.trim() || null,
     notes: input.notes?.trim() || null,
     updated_by: auth.user.id,
@@ -90,19 +97,30 @@ export async function createItems(inputs: ItemInput[]) {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
 
+  const { findManualCacheEntry } = await import("@/lib/cardCache");
+
   const now = new Date().toISOString();
-  const { error } = await supabase.from("items").insert(
-    inputs.map((input) => ({
-      workspace_id: workspaceId,
-      ...input,
-      name: input.name.trim(),
-      condition: input.condition?.trim() || null,
-      notes: input.notes?.trim() || null,
-      updated_by: auth.user!.id,
-      acquired_market_price: input.acquired_market_price !== undefined ? input.acquired_market_price : (input.market ?? null),
-      acquired_date: input.acquired_date !== undefined ? input.acquired_date : (input.market != null ? now : null),
-    }))
+  const rows = await Promise.all(
+    inputs.map(async (input) => {
+      let resolvedImageUrl = input.image_url ?? null;
+      if (!resolvedImageUrl && input.category !== "sealed") {
+        resolvedImageUrl = await findManualCacheEntry(input.name, input.card_number, input.set_name);
+      }
+      return {
+        workspace_id: workspaceId,
+        ...input,
+        name: input.name.trim(),
+        image_url: resolvedImageUrl,
+        condition: input.condition?.trim() || null,
+        notes: input.notes?.trim() || null,
+        updated_by: auth.user!.id,
+        acquired_market_price: input.acquired_market_price !== undefined ? input.acquired_market_price : (input.market ?? null),
+        acquired_date: input.acquired_date !== undefined ? input.acquired_date : (input.market != null ? now : null),
+      };
+    })
   );
+
+  const { error } = await supabase.from("items").insert(rows);
 
   if (error) throw new Error(error.message);
   revalidatePath("/protected/inventory");

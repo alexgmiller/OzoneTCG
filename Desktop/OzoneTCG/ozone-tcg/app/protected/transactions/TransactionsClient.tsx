@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { ArrowDown, DollarSign, ArrowLeftRight, Folder } from "lucide-react";
 import type { SaleGroup, BuyExpense, TradeGroup, DealLog } from "./TransactionsServer";
 import { revertSale, recordQuickBuy, recordQuickSell, deleteBuyExpense, revertTrade, type QuickBuyCard } from "./actions";
 import { uploadDealPhoto, createDealLog, toggleDealResolved, deleteDealLog } from "../photos/actions";
 import TradeModal from "../inventory/TradeModal";
 import CertLookupWidget, { type CertWidgetResult } from "@/components/CertLookupWidget";
+import ConfirmationModal from "@/components/ConfirmationModal";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,68 @@ const DEAL_COLORS: Record<DealType, string> = {
 const DEAL_LABELS: Record<DealType, string> = { buy: "Buy", sell: "Sell", trade: "Trade" };
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
+
+/** Split a search query into normalised terms (strips punctuation). */
+function splitTerms(q: string): string[] {
+  return q
+    .toLowerCase()
+    .replace(/[',\-.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((t) => t.length > 0);
+}
+
+/** Score an InventoryItem against a set of search terms. */
+function scoreItem(item: InventoryItem, terms: string[]): number {
+  if (!terms.length) return 1;
+  const name  = item.name.toLowerCase();
+  const set   = (item.set_name   ?? "").toLowerCase();
+  const num   = (item.card_number ?? "").toLowerCase().replace(/^0+/, "");
+  const grade = (item.grade ?? "").toLowerCase();
+  let score = 0;
+  for (const term of terms) {
+    const numTerm = term.replace(/^0+/, "");
+    if (name.includes(term))                                          score += 3;
+    if (set.includes(term))                                           score += 2;
+    if (numTerm && num === numTerm)                                   score += 4;
+    else if (numTerm && /^\d/.test(numTerm) && num.startsWith(numTerm)) score += 3;
+    if (grade.includes(term))                                         score += 1;
+  }
+  return score;
+}
+
+/** Highlight matched terms in a string with a violet accent span. */
+function HighlightTerms({ text, terms }: { text: string; terms: string[] }) {
+  if (!terms.length) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const ranges: [number, number][] = [];
+  for (const term of terms) {
+    let idx = lower.indexOf(term);
+    while (idx !== -1) {
+      ranges.push([idx, idx + term.length]);
+      idx = lower.indexOf(term, idx + 1);
+    }
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const [s, e] of ranges) {
+    if (merged.length && s <= merged[merged.length - 1][1]) {
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], e);
+    } else {
+      merged.push([s, e]);
+    }
+  }
+  const parts: React.ReactNode[] = [];
+  let pos = 0;
+  for (const [s, e] of merged) {
+    if (pos < s) parts.push(<span key={`t${pos}`}>{text.slice(pos, s)}</span>);
+    parts.push(<span key={`h${s}`} className="text-violet-400 font-semibold">{text.slice(s, e)}</span>);
+    pos = e;
+  }
+  if (pos < text.length) parts.push(<span key={`t${pos}`}>{text.slice(pos)}</span>);
+  return <>{parts}</>;
+}
 
 function fmt(v: number | null | undefined) {
   if (v == null) return "—";
@@ -290,11 +353,14 @@ function RecordSellModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const filtered = search.trim()
-    ? inventoryItems.filter((it) =>
-        it.name.toLowerCase().includes(search.toLowerCase()) ||
-        (it.set_name ?? "").toLowerCase().includes(search.toLowerCase())
-      )
+  const terms = splitTerms(search);
+  const filtered = terms.length
+    ? inventoryItems
+        .map((it) => ({ it, score: scoreItem(it, terms) }))
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(({ it }) => it)
+        .slice(0, 20)
     : inventoryItems.slice(0, 20);
 
   const selected = inventoryItems.find((it) => it.id === selectedId) ?? null;
@@ -345,7 +411,7 @@ function RecordSellModal({
                 <input
                   autoFocus
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500"
-                  placeholder="Search inventory…"
+                  placeholder="Search by name, set, or card number…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -362,8 +428,12 @@ function RecordSellModal({
                         }}
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm truncate">{it.name}</div>
-                          <div className="text-[11px] opacity-40">{it.set_name ?? it.category} {it.grade ? `· ${it.grade}` : ""}</div>
+                          <div className="text-sm truncate">
+                            <HighlightTerms text={it.name} terms={terms} />
+                          </div>
+                          <div className="text-[11px] opacity-40">
+                            <HighlightTerms text={[it.set_name ?? it.category, it.card_number ? `#${it.card_number}` : null, it.grade].filter(Boolean).join(" · ")} terms={terms} />
+                          </div>
                         </div>
                         {it.market != null && <span className="text-xs inv-price opacity-50 shrink-0">{fmt(it.market)}</span>}
                       </button>
@@ -436,6 +506,7 @@ function RecordSellModal({
 
 function BuyRow({ expense, onDelete }: { expense: BuyExpense; onDelete: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const itemCount = expense.items.length;
   const label = itemCount > 0
     ? (itemCount === 1 ? expense.items[0].name : `${itemCount} card${itemCount !== 1 ? "s" : ""}`)
@@ -496,12 +567,7 @@ function BuyRow({ expense, onDelete }: { expense: BuyExpense; onDelete: (id: str
             <div className="flex items-center gap-3">
               <span className="text-sm font-semibold inv-price text-red-400">{fmt(expense.cost)}</span>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm("Delete this buy? Inventory items added by this buy will also be removed.")) {
-                    onDelete(expense.id);
-                  }
-                }}
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
                 className="text-[11px] px-2 py-1 rounded border border-border opacity-50 hover:opacity-80 hover:text-red-500 transition-all"
               >Delete</button>
             </div>
@@ -513,15 +579,21 @@ function BuyRow({ expense, onDelete }: { expense: BuyExpense; onDelete: (id: str
         <div className="border-t border-border/50 px-4 py-3 flex items-center justify-between">
           <span className="text-xs opacity-40 italic">No inventory items linked</span>
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirm("Delete this buy? Inventory items added by this buy will also be removed.")) {
-                onDelete(expense.id);
-              }
-            }}
+            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
             className="text-[11px] px-2 py-1 rounded border border-border opacity-50 hover:opacity-80 hover:text-red-500 transition-all"
           >Delete</button>
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmationModal
+          title="Delete this buy?"
+          description="Inventory items added by this buy will also be removed."
+          confirmLabel="Delete buy"
+          destructive
+          onConfirm={() => { setConfirmDelete(false); onDelete(expense.id); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </div>
   );
@@ -604,6 +676,7 @@ function SellRow({
 
 function TradeRow({ trade, onRevert }: { trade: TradeGroup; onRevert: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [confirmRevert, setConfirmRevert] = useState(false);
   const outTotal = trade.goingOut.reduce((s, t) => s + (t.market_price_at_time ?? 0), 0);
   const inTotal = trade.comingIn.reduce((s, t) => s + (t.market_price_at_time ?? 0), 0);
 
@@ -678,15 +751,22 @@ function TradeRow({ trade, onRevert }: { trade: TradeGroup; onRevert: (id: strin
           )}
           <div className="border-t border-border/50 pt-2 flex justify-end">
             <button
-              onClick={() => {
-                if (confirm("Undo this trade? Cards that went out will be restored to inventory. Cards that came in will be removed.")) {
-                  onRevert(trade.tradeGroupId);
-                }
-              }}
+              onClick={() => setConfirmRevert(true)}
               className="text-[11px] px-2 py-1 rounded border border-border opacity-50 hover:opacity-80 hover:text-red-500 transition-all"
             >Undo trade</button>
           </div>
         </div>
+      )}
+
+      {confirmRevert && (
+        <ConfirmationModal
+          title="Undo this trade?"
+          description="Cards that went out will be restored to inventory. Cards that came in will be removed."
+          confirmLabel="Undo trade"
+          destructive
+          onConfirm={() => { setConfirmRevert(false); onRevert(trade.tradeGroupId); }}
+          onCancel={() => setConfirmRevert(false)}
+        />
       )}
     </div>
   );
@@ -1019,6 +1099,7 @@ function DealsTabContent({
   onAddClose: () => void;
 }) {
   const [viewLog, setViewLog] = useState<DealLog | null>(null);
+  const [confirmDeleteLog, setConfirmDeleteLog] = useState<DealLog | null>(null);
 
   const activeLogs = logs.filter((l) => !l.resolved);
   const resolvedLogs = logs.filter((l) => l.resolved);
@@ -1043,7 +1124,6 @@ function DealsTabContent({
   }
 
   async function handleDelete(log: DealLog) {
-    if (!confirm("Delete this deal log?")) return;
     const photoPaths = log.photos.map((url) => url.split("/deal-photos/")[1] ?? "").filter(Boolean);
     try {
       await deleteDealLog(log.id, photoPaths);
@@ -1101,7 +1181,18 @@ function DealsTabContent({
           log={viewLog}
           onClose={() => setViewLog(null)}
           onToggleResolved={() => handleToggleResolved(viewLog)}
-          onDelete={() => handleDelete(viewLog)}
+          onDelete={() => setConfirmDeleteLog(viewLog)}
+        />
+      )}
+
+      {confirmDeleteLog && (
+        <ConfirmationModal
+          title="Delete this deal log?"
+          description="This deal log and its photos will be permanently removed."
+          confirmLabel="Delete"
+          destructive
+          onConfirm={() => { const log = confirmDeleteLog; setConfirmDeleteLog(null); handleDelete(log); }}
+          onCancel={() => setConfirmDeleteLog(null)}
         />
       )}
     </div>

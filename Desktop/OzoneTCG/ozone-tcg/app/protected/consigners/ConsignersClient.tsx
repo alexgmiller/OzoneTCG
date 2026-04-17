@@ -6,6 +6,7 @@ import {
   recordPayout, receiveCards,
 } from "./actions";
 import type { ReceiveCardInput } from "./actions";
+import ConfirmationModal from "@/components/ConfirmationModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -475,6 +476,7 @@ function RecordPayoutModal({
 
 export default function ConsignersClient({ consigners }: { consigners: Consigner[] }) {
   const [busy, setBusy] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState<EditForm>(blankEditForm());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -515,7 +517,6 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Delete this consigner? Their items will lose the consigner tag.")) return;
     setBusy(true);
     try { await deleteConsigner(id); }
     finally { setBusy(false); }
@@ -634,7 +635,7 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
                   >Edit</button>
                   <button
                     className="text-xs px-2 py-1 rounded-lg border border-red-300 text-red-600"
-                    onClick={() => onDelete(c.id)}
+                    onClick={() => setConfirmDeleteId(c.id)}
                     disabled={busy}
                   >Del</button>
                 </div>
@@ -812,6 +813,17 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
           );
         })}
       </div>
+
+      {confirmDeleteId && (
+        <ConfirmationModal
+          title="Delete this consigner?"
+          description="Their items will lose the consigner tag, but won't be deleted."
+          confirmLabel="Delete consigner"
+          destructive
+          onConfirm={() => { const id = confirmDeleteId; setConfirmDeleteId(null); onDelete(id); }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
     </div>
   );
 }

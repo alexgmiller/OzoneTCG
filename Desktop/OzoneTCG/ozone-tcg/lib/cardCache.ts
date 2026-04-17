@@ -17,7 +17,7 @@ export function makeLookupKey(
   return `${name.trim().toLowerCase()}|${(setName ?? "").trim().toLowerCase()}|${num}`;
 }
 
-type CacheHit = { hit: true; imageUrl: string | null };
+type CacheHit = { hit: true; imageUrl: string | null; source: string | null };
 type CacheMiss = { hit: false };
 
 /** Read a previous lookup from the cache. Returns hit=false if not yet cached. */
@@ -26,11 +26,11 @@ export async function getCardCache(lookupKey: string): Promise<CacheHit | CacheM
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("card_image_cache")
-      .select("image_url")
+      .select("image_url,source")
       .eq("lookup_key", lookupKey)
       .maybeSingle();
     if (error || data === null) return { hit: false };
-    return { hit: true, imageUrl: data.image_url ?? null };
+    return { hit: true, imageUrl: data.image_url ?? null, source: (data.source as string | null) ?? null };
   } catch {
     return { hit: false };
   }
@@ -61,6 +61,63 @@ export async function setCardCache(
     });
   } catch {
     // Cache writes are non-critical — swallow errors silently
+  }
+}
+
+export async function clearCacheEntry(
+  name: string,
+  setName?: string | null,
+  cardNumber?: string | null
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const key = makeLookupKey(name, setName, cardNumber);
+    await admin.from("card_image_cache").delete().eq("lookup_key", key);
+  } catch {
+    // Non-critical
+  }
+}
+
+export async function findManualCacheEntry(
+  name: string,
+  cardNumber: string | null | undefined,
+  setName?: string | null
+): Promise<string | null> {
+  try {
+    const admin = createAdminClient();
+    const num = (cardNumber ?? "").split("/")[0].trim();
+
+    if (num) {
+      const { data } = await admin
+        .from("card_image_cache")
+        .select("image_url")
+        .ilike("name", name.trim())
+        .ilike("card_number", num)
+        .in("source", ["manual", "manual_admin"])
+        .not("image_url", "is", null)
+        .order("cached_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data?.image_url) return data.image_url as string;
+    }
+
+    if (setName) {
+      const { data } = await admin
+        .from("card_image_cache")
+        .select("image_url")
+        .ilike("name", name.trim())
+        .ilike("set_name", setName.trim())
+        .in("source", ["manual", "manual_admin"])
+        .not("image_url", "is", null)
+        .order("cached_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data?.image_url) return data.image_url as string;
+    }
+
+    return null;
+  } catch {
+    return null;
   }
 }
 
