@@ -42,6 +42,13 @@
  *
  *   -- Added in polish pass (undo support):
  *   ALTER TABLE show_scans ADD COLUMN IF NOT EXISTS item_id uuid;
+ *
+ *   -- Deal photos:
+ *   ALTER TABLE show_scans ADD COLUMN IF NOT EXISTS deal_photo_url text;
+ *   ALTER TABLE show_scans ADD COLUMN IF NOT EXISTS deal_notes text;
+ *
+ *   -- Batch grouping (groups batch buys together in the feed):
+ *   ALTER TABLE show_scans ADD COLUMN IF NOT EXISTS batch_id uuid;
  */
 
 import { createClient } from "@/lib/supabase/server";
@@ -81,6 +88,9 @@ export type ShowScanEntry = {
   buy_percentage: number | null;
   notes: string | null;
   scanned_at: string;
+  deal_photo_url: string | null;
+  deal_notes: string | null;
+  batch_id: string | null;
 };
 
 export type InventorySearchResult = {
@@ -124,6 +134,53 @@ export async function createShowSession(data: {
   revalidatePath("/protected/shows");
   revalidatePath("/protected/dashboard");
   return row.id as string;
+}
+
+export async function deleteShowSession(
+  id: string,
+  deleteTransactions: boolean
+): Promise<void> {
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify ownership
+  const { data: session, error: fetchErr } = await supabase
+    .from("show_sessions")
+    .select("id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (fetchErr || !session) throw new Error("Show not found");
+
+  if (deleteTransactions) {
+    // Remove items bought during this show (those with a show_scan linkage via item_id)
+    const { data: scans } = await supabase
+      .from("show_scans")
+      .select("item_id")
+      .eq("show_session_id", id)
+      .not("item_id", "is", null);
+
+    const itemIds = (scans ?? []).map((s: { item_id: string }) => s.item_id).filter(Boolean);
+    if (itemIds.length) {
+      await supabase.from("items").delete().in("id", itemIds);
+    }
+
+    // Remove linked expenses
+    await supabase.from("expenses").delete().eq("show_session_id", id);
+  }
+
+  // show_scans will cascade-delete via FK ON DELETE CASCADE
+  const { error } = await supabase
+    .from("show_sessions")
+    .delete()
+    .eq("id", id)
+    .eq("workspace_id", workspaceId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/protected/shows");
+  revalidatePath("/protected/dashboard");
 }
 
 export async function getShowSession(id: string): Promise<ShowSession | null> {
@@ -274,6 +331,7 @@ export async function recordShowBuy(input: {
   image_url: string | null;
   buy_percentage: number;
   notes: string | null;
+  batch_id?: string | null;
 }): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
@@ -305,7 +363,8 @@ export async function recordShowBuy(input: {
   if (itemErr) throw new Error(itemErr.message);
 
   // 2. Record in show_scans (activity feed)
-  const { data: scan, error: scanErr } = await supabase.from("show_scans").insert({
+  // Try with batch_id; fall back without it if the column doesn't exist yet (pre-migration)
+  const scanBase = {
     show_session_id: input.show_session_id,
     card_name: input.name,
     grade: input.grade,
@@ -315,7 +374,15 @@ export async function recordShowBuy(input: {
     item_id: item.id,
     notes: null,
     scanned_at: now,
+  };
+  let { data: scan, error: scanErr } = await supabase.from("show_scans").insert({
+    ...scanBase,
+    batch_id: input.batch_id ?? null,
   }).select("id").single();
+  if (scanErr?.code === "42703") {
+    // batch_id column not yet migrated — insert without it
+    ({ data: scan, error: scanErr } = await supabase.from("show_scans").insert(scanBase).select("id").single());
+  }
   if (scanErr) throw new Error(scanErr.message);
 
   // 3. Update session stats
@@ -325,7 +392,7 @@ export async function recordShowBuy(input: {
   });
 
   revalidatePath("/protected/inventory");
-  return { scanId: scan.id };
+  return { scanId: scan!.id };
 }
 
 export async function recordShowPass(input: {
@@ -413,7 +480,7 @@ export async function recordShowTrade(input: {
   // Positive = we received cash; negative = we paid cash
   cashDifference: number;
   notes: string | null;
-}): Promise<void> {
+}): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
@@ -439,10 +506,11 @@ export async function recordShowTrade(input: {
   const cashIn = Math.max(0, input.cashDifference);
   const newTotalBasis = parseFloat((totalOutCost + cashOut - cashIn).toFixed(2));
 
+  const inItemIds: string[] = [];
   for (const c of input.comingIn) {
     const share = gotTotal > 0 ? c.marketPrice / gotTotal : 1 / input.comingIn.length;
     const basis = parseFloat((newTotalBasis * share).toFixed(2));
-    const { error: inErr } = await supabase.from("items").insert({
+    const { data: newItem, error: inErr } = await supabase.from("items").insert({
       workspace_id: workspaceId,
       name: c.name.trim(),
       category: c.grade ? "slab" : "single",
@@ -456,11 +524,12 @@ export async function recordShowTrade(input: {
       acquired_market_price: c.marketPrice,
       acquired_date: now,
       updated_by: auth.user.id,
-    });
+    }).select("id").single();
     if (inErr) throw new Error(inErr.message);
+    if (newItem) inItemIds.push(newItem.id as string);
   }
 
-  // 3. Record in show_scans
+  // 3. Record in show_scans — embed undo data so trades can be reversed
   const gaveNames = input.goingOut.map((g) => g.name).join(", ") || "—";
   const gotNames = input.comingIn.map((c) => c.name).join(", ") || "—";
   const description = `${gaveNames} → ${gotNames}`;
@@ -469,14 +538,20 @@ export async function recordShowTrade(input: {
       ? ` · Cash ${input.cashDifference > 0 ? "received" : "paid"}: $${Math.abs(input.cashDifference).toFixed(2)}`
       : "";
 
-  await supabase.from("show_scans").insert({
+  const outIds = input.goingOut.map((g) => g.itemId);
+  const undoSuffix = `__UNDO__${JSON.stringify({ out: outIds, in: inItemIds })}`;
+  const displayNotes = ((input.notes ?? "") + cashNote).trim();
+  const fullNotes = displayNotes ? `${displayNotes}||${undoSuffix}` : undoSuffix;
+
+  const { data: tradeScan, error: tradeScanErr } = await supabase.from("show_scans").insert({
     show_session_id: input.show_session_id,
     card_name: description,
     market_price: gaveTotal + gotTotal,
     action: "trade",
-    notes: ((input.notes ?? "") + cashNote) || null,
+    notes: fullNotes,
     scanned_at: now,
-  });
+  }).select("id").single();
+  if (tradeScanErr) throw new Error(tradeScanErr.message);
 
   // 4. Update session stats
   await bumpSessionStats(supabase, input.show_session_id, {
@@ -487,6 +562,7 @@ export async function recordShowTrade(input: {
   });
 
   revalidatePath("/protected/inventory");
+  return { scanId: tradeScan.id as string };
 }
 
 export async function addShowExpense(input: {
@@ -629,7 +705,40 @@ export async function undoShowEntry(scanId: string): Promise<void> {
         await bumpSessionStats(supabase, sessionId, { total_spent: -((scan.market_price as number) ?? 0) });
       }
       break;
-    // "trade" excluded — too complex to reverse automatically
+    case "trade": {
+      // Parse embedded undo data stored in notes by recordShowTrade
+      const undoMatch = (scan.notes as string | null)?.match(/\|\|__UNDO__(.+)$|^__UNDO__(.+)$/);
+      if (undoMatch) {
+        try {
+          const undoData = JSON.parse(undoMatch[1] ?? undoMatch[2]);
+          // Delete coming-in items (newly added to inventory)
+          if (Array.isArray(undoData.in) && undoData.in.length > 0) {
+            await supabase.from("items").delete().in("id", undoData.in).eq("workspace_id", workspaceId);
+          }
+          // Restore going-out items (marked sold → back to inventory)
+          if (Array.isArray(undoData.out) && undoData.out.length > 0) {
+            await supabase.from("items")
+              .update({ status: "inventory", sold_at: null, sold_price: null, sale_id: null, updated_by: auth.user.id })
+              .in("id", undoData.out)
+              .eq("workspace_id", workspaceId);
+          }
+        } catch { /* ignore parse error */ }
+      }
+      // Reverse session stats
+      const tradeValue = (scan.market_price as number) ?? 0;
+      const cashMatch = (scan.notes as string | null)?.match(/Cash (received|paid): \$([\d.]+)/);
+      const statsReversal: Parameters<typeof bumpSessionStats>[2] = {
+        trades_count: -1,
+        total_trade_value: -tradeValue,
+      };
+      if (cashMatch) {
+        const v = parseFloat(cashMatch[2]);
+        if (cashMatch[1] === "received") statsReversal.total_revenue = -v;
+        else statsReversal.total_spent = -v;
+      }
+      await bumpSessionStats(supabase, sessionId, statsReversal);
+      break;
+    }
   }
 
   await supabase.from("show_scans").delete().eq("id", scanId);
@@ -637,6 +746,27 @@ export async function undoShowEntry(scanId: string): Promise<void> {
   revalidatePath("/protected/inventory");
   revalidatePath("/protected/show");
   revalidatePath("/protected/expenses");
+}
+
+// ── Active session (full row) — used by show/page.tsx ────────────────────────
+
+export async function getActiveShowSession(): Promise<ShowSession | null> {
+  try {
+    const supabase = await createClient();
+    const workspaceId = await getWorkspaceId();
+
+    const { data } = await supabase
+      .from("show_sessions")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+
+    return (data as ShowSession) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Active show helper (used by nav/layout) ───────────────────────────────────
@@ -671,4 +801,21 @@ export async function getActiveShow(): Promise<ActiveShowInfo | null> {
   } catch {
     return null;
   }
+}
+
+// ── Deal photo ────────────────────────────────────────────────────────────────
+
+export async function updateScanPhoto(
+  scanId: string,
+  photoUrl: string,
+  notes?: string | null
+): Promise<void> {
+  const supabase = await createClient();
+  const update: Record<string, string | null> = { deal_photo_url: photoUrl };
+  if (notes !== undefined) update.deal_notes = notes ?? null;
+  const { error } = await supabase
+    .from("show_scans")
+    .update(update)
+    .eq("id", scanId);
+  if (error) throw new Error(error.message);
 }

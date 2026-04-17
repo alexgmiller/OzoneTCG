@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 
+
 export type AutocompleteCard = {
   name: string;
   setName: string;
@@ -30,9 +31,12 @@ export default function CardAutocomplete({
 }: Props) {
   const [suggestions, setSuggestions] = useState<AutocompleteCard[]>([]);
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [focused, setFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Simple client-side cache: query → results
+  const cacheRef = useRef<Map<string, AutocompleteCard[]>>(new Map());
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -40,24 +44,40 @@ export default function CardAutocomplete({
     if (!focused || value.trim().length < 2) {
       setSuggestions([]);
       setOpen(false);
+      setLoading(false);
       return;
     }
+
+    const q = value.trim();
+
+    // Return cached result immediately
+    if (cacheRef.current.has(q)) {
+      const cached = cacheRef.current.get(q)!;
+      setSuggestions(cached);
+      setOpen(cached.length > 0);
+      return;
+    }
+
+    setLoading(true);
 
     timerRef.current = setTimeout(async () => {
       try {
         const res = await fetch("/api/search-cards", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: value.trim() }),
+          body: JSON.stringify({ query: q }),
         });
         const json = await res.json();
-        const cards: AutocompleteCard[] = json.cards?.slice(0, 12) ?? [];
+        const cards: AutocompleteCard[] = json.cards?.slice(0, 8) ?? [];
+        cacheRef.current.set(q, cards);
         setSuggestions(cards);
         setOpen(cards.length > 0);
       } catch {
         // silent
+      } finally {
+        setLoading(false);
       }
-    }, 300);
+    }, 200);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -108,7 +128,15 @@ export default function CardAutocomplete({
         }}
       />
 
-      {open && suggestions.length > 0 && (
+      {/* Loading indicator */}
+      {loading && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-xl shadow-xl px-3 py-2.5 text-xs text-muted-foreground flex items-center gap-2">
+          <span className="inline-block w-3 h-3 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin shrink-0" />
+          Searching…
+        </div>
+      )}
+
+      {open && !loading && suggestions.length > 0 && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-xl shadow-xl overflow-hidden max-h-72 overflow-y-auto">
           {suggestions.map((card, i) => (
             <button

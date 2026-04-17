@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Package, ArrowLeftRight,
   ScanLine, Users, Receipt, Wallet,
-  MoreHorizontal, Settings, LogOut, Eye, Zap,
+  MoreHorizontal, Settings, LogOut, Eye, Zap, CalendarDays,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { useState, useEffect, useRef } from "react";
@@ -21,7 +21,17 @@ function isShowsActive(pathname: string) {
   );
 }
 
+// Desktop nav shows Calendar between Transactions and Shows
 const primaryLinks = [
+  { href: "/protected/dashboard",    label: "Dashboard",    icon: LayoutDashboard },
+  { href: "/protected/inventory",    label: "Inventory",    icon: Package },
+  { href: "/protected/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { href: "/protected/calendar",     label: "Calendar",     icon: CalendarDays },
+  { href: "/protected/shows",        label: "Shows",        icon: Zap },
+];
+
+// Mobile bottom tab bar uses first 4 items; Calendar lives in More menu on mobile
+const mobileTabLinks = [
   { href: "/protected/dashboard",    label: "Dashboard",    icon: LayoutDashboard },
   { href: "/protected/inventory",    label: "Inventory",    icon: Package },
   { href: "/protected/transactions", label: "Transactions", icon: ArrowLeftRight },
@@ -29,6 +39,7 @@ const primaryLinks = [
 ];
 
 const moreNavLinks = [
+  { href: "/protected/calendar",     label: "Calendar",     icon: CalendarDays },
   { href: "/protected/scan",        label: "Scan",       icon: ScanLine },
   { href: "/protected/consigners",  label: "Consigners", icon: Users },
   { href: "/protected/expenses",    label: "Expenses",   icon: Receipt },
@@ -89,7 +100,7 @@ export default function MobileBottomNav({
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
-  const allLinks = [...primaryLinks, ...moreNavLinks];
+  const allLinks = [...mobileTabLinks, ...moreNavLinks];
 
   // Prefetch all routes on mount
   useEffect(() => {
@@ -245,7 +256,7 @@ export default function MobileBottomNav({
 
         {/* Tab bar — 4 primary items + More */}
         <nav className="bg-background border-t border-t-border flex h-14 w-full">
-          {primaryLinks.map((l) => {
+          {mobileTabLinks.map((l) => {
             const active =
               l.href === "/protected/shows"
                 ? isShowsActive(pathname)

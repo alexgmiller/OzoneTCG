@@ -42,32 +42,11 @@ export async function getEbayToken(): Promise<string> {
   return tokenCache.token;
 }
 
-// ── Grade parsing ─────────────────────────────────────────────────────────────
+// ── Grade parsing (re-exported from ebay-client.ts for server-side callers) ───
 
-export type ParsedGrade = { company: string; grade: string };
-
-export function parseGrade(rawGrade: string): ParsedGrade | null {
-  const m = rawGrade.trim().match(/^([A-Za-z]+)\s+(.+)$/);
-  if (!m) return null;
-  return { company: m[1].toUpperCase(), grade: m[2].trim() };
-}
-
-export function makeSlabPriceKey(
-  name: string,
-  setName: string | null | undefined,
-  cardNumber: string | null | undefined,
-  company: string,
-  grade: string
-): string {
-  const num = (cardNumber ?? "").split("/")[0].trim().toLowerCase();
-  return [
-    name.toLowerCase().trim(),
-    (setName ?? "").toLowerCase().trim(),
-    num,
-    company.toUpperCase(),
-    grade,
-  ].join("|");
-}
+export type { SlabSale } from "./ebay-client";
+export type { ParsedGrade } from "./ebay-client";
+export { parseGrade, makeSlabPriceKey } from "./ebay-client";
 
 // ── Query building ────────────────────────────────────────────────────────────
 
@@ -194,16 +173,6 @@ async function browseSearch(q: string, token: string): Promise<any[]> {
 }
 
 // ── Public search ─────────────────────────────────────────────────────────────
-
-export type SlabSale = {
-  price: number;
-  title: string;
-  soldDate: string;        // sold date (Insights) or listing end date (Browse active/ended)
-  isBestOffer: boolean;
-  buyingOptions: string[]; // e.g. ["FIXED_PRICE"], ["AUCTION"], ["FIXED_PRICE","BEST_OFFER"]
-  bidCount?: number;       // auctions only
-  itemUrl: string;         // direct eBay listing URL
-};
 
 export async function fetchSlabSales(
   name: string,

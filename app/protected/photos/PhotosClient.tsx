@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { uploadDealPhoto, createDealLog, toggleDealResolved, deleteDealLog } from "./actions";
 import type { DealLog } from "./PhotosServer";
+import ConfirmationModal from "@/components/ConfirmationModal";
 
 type DealType = "buy" | "sell" | "trade";
 
@@ -33,6 +34,7 @@ export default function PhotosClient({ initialLogs }: { initialLogs: DealLog[] }
   const [showAdd, setShowAdd] = useState(false);
   const [viewLog, setViewLog] = useState<DealLog | null>(null);
   const [filter, setFilter] = useState<"all" | "open" | "resolved">("open");
+  const [confirmDeleteLog, setConfirmDeleteLog] = useState<DealLog | null>(null);
 
   function handleAdded(log: DealLog) {
     setLogs((prev) => [log, ...prev]);
@@ -48,7 +50,6 @@ export default function PhotosClient({ initialLogs }: { initialLogs: DealLog[] }
   }
 
   async function deleteLog(log: DealLog) {
-    if (!confirm("Delete this deal log?")) return;
     const photoPaths = log.photos
       .map((url) => url.split("/deal-photos/")[1] ?? "")
       .filter(Boolean);
@@ -210,7 +211,18 @@ export default function PhotosClient({ initialLogs }: { initialLogs: DealLog[] }
           log={viewLog}
           onClose={() => setViewLog(null)}
           onToggleResolved={() => toggleResolved(viewLog)}
-          onDelete={() => deleteLog(viewLog)}
+          onDelete={() => setConfirmDeleteLog(viewLog)}
+        />
+      )}
+
+      {confirmDeleteLog && (
+        <ConfirmationModal
+          title="Delete this deal log?"
+          description="This deal log and its photos will be permanently removed."
+          confirmLabel="Delete"
+          destructive
+          onConfirm={() => { const log = confirmDeleteLog; setConfirmDeleteLog(null); deleteLog(log); }}
+          onCancel={() => setConfirmDeleteLog(null)}
         />
       )}
     </div>

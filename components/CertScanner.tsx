@@ -12,7 +12,7 @@ import { createItem } from "@/app/protected/inventory/actions";
 import { recordCertBuy, type CertBuyItem } from "@/app/protected/transactions/actions";
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 import type { SlabSale, PricingResult, SoldPricingResult } from "@/lib/ebay";
-import { selectTierFMV, type PricingStrategyOverride } from "@/lib/fmv";
+import { computeBlendedFMV, type PricingStrategyOverride } from "@/lib/fmv";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -798,14 +798,15 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
   const rawDisplayMarket = displayGrade?.market ?? null;
   const displayYear = result?.year ? parseInt(result.year) : null;
   const displayPopulation = result?.population ?? null;
-  const fmvSel = selectTierFMV(
-    displayGrade?.q1 ?? null,
-    rawDisplayMarket,
-    displayGrade?.q3 ?? null,
-    { year: displayYear, population: displayPopulation, strategy: pricingStrategy }
+  const fmvSel = computeBlendedFMV(
+    displayGrade?.sold.items ?? [],
+    displayGrade?.listings.items ?? [],
   );
-  const displayMarket = fmvSel.fmv;
-  const displayTierLabel = fmvSel.label;
+  const displayMarket = fmvSel.fmv ?? rawDisplayMarket;
+  const displayTierLabel = fmvSel.mode === "blended" ? "Blended"
+    : fmvSel.mode === "sold_only" ? "Sold"
+    : fmvSel.mode === "active_only" ? "Listed"
+    : "Market";
   const displayCompCount = displayGrade?.compCount ?? 0;
   const displayListings: ActiveListingsState = displayGrade?.listings ?? { items: [], lowest: null, loading: !!selectedGrade };
   const displaySold: SoldState = displayGrade?.sold ?? { items: [], pricing: null, loading: !!selectedGrade, showAll: false };

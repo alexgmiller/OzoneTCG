@@ -3,19 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import type { ShowSession } from "@/app/protected/show/actions";
 import ShowsClient from "./ShowsClient";
+import ShowsPastList from "./ShowsPastList";
 
 function money(v: number) {
   return `$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function moneySign(v: number) {
   return (v >= 0 ? "+" : "−") + money(v);
-}
-function fmtDate(iso: string) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 export default async function ShowsServer() {
@@ -93,44 +87,7 @@ export default async function ShowsServer() {
       {totalShows > 0 && (
         <div>
           <div className="text-xs font-medium mb-2 opacity-60 uppercase tracking-wide">Past Shows</div>
-          <div className="border rounded-xl divide-y">
-            {completed.map((show) => (
-              <div key={show.id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-sm">{show.name}</div>
-                    <div className="text-xs opacity-50 mt-0.5">{fmtDate(show.date)}</div>
-                  </div>
-                  <div
-                    className={`text-base font-bold tabular-nums shrink-0 ${show.net_pl >= 0 ? "text-emerald-500" : "text-rose-500"}`}
-                  >
-                    {moneySign(show.net_pl)}
-                  </div>
-                </div>
-
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs opacity-50">
-                  <span>{show.cards_bought} bought</span>
-                  <span>{show.cards_sold} sold</span>
-                  {show.trades_count > 0 && <span>{show.trades_count} trade{show.trades_count !== 1 ? "s" : ""}</span>}
-                  {show.passes_count > 0 && <span>{show.passes_count} passed</span>}
-                  {show.total_revenue > 0 && <span>Revenue {money(show.total_revenue)}</span>}
-                  {show.total_spent > 0 && <span>Spent {money(show.total_spent)}</span>}
-                </div>
-
-                {show.actual_cash != null && show.ending_cash != null && (
-                  <div className="mt-2 text-xs">
-                    {Math.abs(show.actual_cash - show.ending_cash) < 0.01 ? (
-                      <span className="text-emerald-500">✓ Cash reconciled</span>
-                    ) : (
-                      <span className="text-amber-500">
-                        Cash discrepancy: {moneySign(show.actual_cash - show.ending_cash)}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <ShowsPastList shows={completed} />
         </div>
       )}
 

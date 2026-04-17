@@ -12,23 +12,13 @@
 import { createAdminClient } from "./supabase/admin";
 
 export type CardImageRow = {
-  id: string;
-  card_name: string;
-  set_name: string;
+  lookup_key: string;
+  name: string;
+  set_name: string | null;
   card_number: string | null;
-  language: string;
-  category: string;
-  variant: string | null;
-  product_type: string | null;
-  grading_company: string | null;
-  image_url: string;
-  thumbnail_url: string | null;
+  image_url: string | null;
   source: string | null;
-  verified: boolean;
-  flagged: boolean;
-  flag_count: number;
-  created_at: string;
-  updated_at: string;
+  cached_at: string;
 };
 
 export type CardImageUpsert = {
@@ -267,36 +257,17 @@ export type CardImageStats = {
   notFoundCached: number;
 };
 
-export async function getCardImageStats(): Promise<CardImageStats> {
+export async function getCardImageStats() {
   const admin = createAdminClient();
-
-  const [totalRes, verifiedRes, flaggedRes, categoryRes, languageRes, notFoundRes] =
-    await Promise.all([
-      admin.from("card_images").select("id", { count: "exact", head: true }),
-      admin.from("card_images").select("id", { count: "exact", head: true }).eq("verified", true),
-      admin.from("card_images").select("id", { count: "exact", head: true }).eq("flagged", true),
-      admin.from("card_images").select("category"),
-      admin.from("card_images").select("language"),
-      admin.from("card_image_cache").select("id", { count: "exact", head: true }).eq("source", "not_found"),
-    ]);
-
-  const total = totalRes.count ?? 0;
-  const verified = verifiedRes.count ?? 0;
-  const flagged = flaggedRes.count ?? 0;
-  const notFoundCached = notFoundRes.count ?? 0;
-
-  const byCategory = { single: 0, slab: 0, sealed: 0 };
-  for (const row of categoryRes.data ?? []) {
-    const c = row.category as string;
-    if (c === "single" || c === "slab" || c === "sealed") byCategory[c]++;
-  }
-
-  const byLanguage = { English: 0, Japanese: 0, Chinese: 0, other: 0 };
-  for (const row of languageRes.data ?? []) {
-    const l = row.language as string;
-    if (l === "English" || l === "Japanese" || l === "Chinese") byLanguage[l]++;
-    else byLanguage.other++;
-  }
-
-  return { total, verified, unverified: total - verified, flagged, byCategory, byLanguage, notFoundCached };
+  const [totalRes, notFoundRes] = await Promise.all([
+    admin.from("card_image_cache").select("lookup_key", { count: "exact", head: true }).neq("source", "not_found"),
+    admin.from("card_image_cache").select("lookup_key", { count: "exact", head: true }).eq("source", "not_found"),
+  ]);
+  return {
+    total: totalRes.count ?? 0,
+    verified: 0, unverified: 0, flagged: 0,
+    byCategory: { single: 0, slab: 0, sealed: 0 },
+    byLanguage: { English: 0, Japanese: 0, Other: 0 },
+    notFoundCached: notFoundRes.count ?? 0,
+  };
 }

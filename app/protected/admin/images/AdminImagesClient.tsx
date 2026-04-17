@@ -2,19 +2,21 @@
 
 import { useState, useRef, useCallback } from "react";
 import {
-  Upload, Search, CheckCircle, Flag, Trash2,
+  Upload, Search, Trash2,
   ChevronLeft, ChevronRight, AlertCircle, Loader2,
-  X, ExternalLink,
+  ExternalLink, Wrench,
 } from "lucide-react";
 import type { CardImageRow } from "@/lib/cardImages";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tab = "browse" | "upload" | "flagged" | "missing";
+type Tab = "browse" | "upload" | "flagged" | "missing" | "inventory";
 
 type ListResponse = { images: CardImageRow[]; total: number; page: number };
 type MissingEntry = { lookup_key: string; name: string; set_name: string | null; card_number: string | null; cached_at: string };
 type MissingResponse = { missing: MissingEntry[]; total: number; page: number };
+type InventoryItem = { id: string; name: string; set_name: string | null; card_number: string | null; category: string; grade: string | null };
+type InventoryResponse = { items: InventoryItem[]; total: number; page: number };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -42,7 +44,7 @@ export default function AdminImagesClient() {
     <div className="space-y-4">
       {toast && (
         <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium ${toast.ok ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}`}>
-          {toast.ok ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
+          {toast.ok ? <Search size={15} /> : <AlertCircle size={15} />}
           {toast.msg}
         </div>
       )}
@@ -50,10 +52,11 @@ export default function AdminImagesClient() {
       {/* Tab bar */}
       <div className="flex gap-1 p-1 bg-muted/40 rounded-xl w-fit">
         {([
-          { id: "browse",  label: "Browse" },
-          { id: "upload",  label: "Upload" },
-          { id: "flagged", label: "Flagged" },
-          { id: "missing", label: "Missing" },
+          { id: "browse",    label: "Browse" },
+          { id: "upload",    label: "Upload" },
+          { id: "flagged",   label: "Flagged" },
+          { id: "missing",   label: "Missing" },
+          { id: "inventory", label: "Inventory" },
         ] as { id: Tab; label: string }[]).map((t) => (
           <button
             key={t.id}
@@ -65,10 +68,11 @@ export default function AdminImagesClient() {
         ))}
       </div>
 
-      {tab === "browse"  && <BrowseTab showToast={showToast} />}
-      {tab === "upload"  && <UploadTab showToast={showToast} />}
-      {tab === "flagged" && <FlaggedTab showToast={showToast} />}
-      {tab === "missing" && <MissingTab showToast={showToast} />}
+      {tab === "browse"    && <BrowseTab showToast={showToast} />}
+      {tab === "upload"    && <UploadTab showToast={showToast} />}
+      {tab === "flagged"   && <FlaggedTab />}
+      {tab === "missing"   && <MissingTab showToast={showToast} />}
+      {tab === "inventory" && <InventoryTab showToast={showToast} />}
     </div>
   );
 }
@@ -76,22 +80,16 @@ export default function AdminImagesClient() {
 // ── Browse tab ────────────────────────────────────────────────────────────────
 
 function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void }) {
-  const [category, setCategory] = useState("");
-  const [language, setLanguage] = useState("");
-  const [status, setStatus]     = useState("");
-  const [setSearch, setSetSearch] = useState("");
-  const [page, setPage]         = useState(1);
-  const [data, setData]         = useState<ListResponse | null>(null);
-  const [loading, setLoading]   = useState(false);
+  const [source, setSource] = useState("");
+  const [page, setPage]     = useState(1);
+  const [data, setData]     = useState<ListResponse | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ action: "list", page: String(p) });
-      if (category)  params.set("category", category);
-      if (language)  params.set("language", language);
-      if (status)    params.set("status", status);
-      if (setSearch) params.set("set", setSearch);
+      if (source) params.set("source", source);
       const result = await apiFetch(`/api/admin/card-images?${params}`);
       setData(result);
       setPage(p);
@@ -100,35 +98,22 @@ function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
     } finally {
       setLoading(false);
     }
-  }, [category, language, status, setSearch, showToast]);
+  }, [source, showToast]);
 
-  async function handleVerify(id: string) {
-    try {
-      await apiFetch("/api/admin/card-images?action=verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageId: id }),
-      });
-      showToast("Verified");
-      setData((prev) => prev ? {
-        ...prev,
-        images: prev.images.map((img) => img.id === id ? { ...img, verified: true } : img),
-      } : prev);
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Failed", false);
-    }
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this image record?")) return;
+  async function handleDelete(lookupKey: string) {
+    if (!confirm("Delete this cache entry?")) return;
     try {
       await apiFetch("/api/admin/card-images?action=delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageId: id }),
+        body: JSON.stringify({ lookupKey }),
       });
       showToast("Deleted");
-      setData((prev) => prev ? { ...prev, images: prev.images.filter((img) => img.id !== id), total: prev.total - 1 } : prev);
+      setData((prev) => prev ? {
+        ...prev,
+        images: prev.images.filter((img) => img.lookup_key !== lookupKey),
+        total: prev.total - 1,
+      } : prev);
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Failed", false);
     }
@@ -140,33 +125,14 @@ function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
     <div className="space-y-3">
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
-        <select value={category} onChange={(e) => setCategory(e.target.value)}
+        <select value={source} onChange={(e) => setSource(e.target.value)}
           className="bg-background border rounded-lg px-2 py-1.5 text-sm">
-          <option value="">All categories</option>
-          <option value="single">Singles</option>
-          <option value="slab">Slabs</option>
-          <option value="sealed">Sealed</option>
+          <option value="">All sources</option>
+          <option value="tcgdex">TCGdex</option>
+          <option value="pokemontcg">pokemontcg.io</option>
+          <option value="manual">Manual</option>
+          <option value="manual_admin">Manual (admin)</option>
         </select>
-        <select value={language} onChange={(e) => setLanguage(e.target.value)}
-          className="bg-background border rounded-lg px-2 py-1.5 text-sm">
-          <option value="">All languages</option>
-          <option value="English">English</option>
-          <option value="Japanese">Japanese</option>
-          <option value="Chinese">Chinese</option>
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}
-          className="bg-background border rounded-lg px-2 py-1.5 text-sm">
-          <option value="">All statuses</option>
-          <option value="verified">Verified</option>
-          <option value="unverified">Unverified</option>
-          <option value="flagged">Flagged</option>
-        </select>
-        <input
-          value={setSearch}
-          onChange={(e) => setSetSearch(e.target.value)}
-          placeholder="Filter by set..."
-          className="bg-background border rounded-lg px-3 py-1.5 text-sm w-40"
-        />
         <button
           onClick={() => load(1)}
           disabled={loading}
@@ -183,7 +149,7 @@ function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
           <div className="text-xs opacity-50">{data.total.toLocaleString()} results</div>
           <div className="space-y-2">
             {data.images.map((img) => (
-              <ImageRow key={img.id} img={img} onVerify={handleVerify} onDelete={handleDelete} />
+              <CacheRow key={img.lookup_key} img={img} onDelete={handleDelete} />
             ))}
           </div>
           {totalPages > 1 && (
@@ -205,16 +171,14 @@ function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
   );
 }
 
-// ── Image row ─────────────────────────────────────────────────────────────────
+// ── Cache row ─────────────────────────────────────────────────────────────────
 
-function ImageRow({
+function CacheRow({
   img,
-  onVerify,
   onDelete,
 }: {
   img: CardImageRow;
-  onVerify: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (lookupKey: string) => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -222,16 +186,16 @@ function ImageRow({
     <div className="flex items-start gap-3 p-3 border rounded-xl hover:bg-muted/20 transition-colors">
       {/* Thumbnail */}
       <div className="w-10 h-14 rounded flex-shrink-0 overflow-hidden bg-muted/40 flex items-center justify-center">
-        {!imgFailed ? (
+        {img.image_url && !imgFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={img.thumbnail_url ?? img.image_url}
-            alt={img.card_name}
+            src={img.image_url}
+            alt={img.name}
             className="w-full h-full object-cover"
             onError={() => setImgFailed(true)}
           />
         ) : (
-          <span className="text-[8px] text-center opacity-40 px-1">{img.card_name.slice(0, 8)}</span>
+          <span className="text-[8px] text-center opacity-40 px-1">{img.name.slice(0, 8)}</span>
         )}
       </div>
 
@@ -239,33 +203,25 @@ function ImageRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-sm font-medium truncate">{img.card_name}</div>
+            <div className="text-sm font-medium truncate">{img.name}</div>
             <div className="text-xs opacity-50 truncate">
-              {img.set_name}{img.card_number ? ` · #${img.card_number}` : ""}
-              {img.variant ? ` · ${img.variant}` : ""}
+              {img.set_name ?? "Unknown set"}{img.card_number ? ` · #${img.card_number}` : ""}
             </div>
             <div className="flex gap-1.5 mt-1 flex-wrap">
-              <Badge label={img.language} />
-              <Badge label={img.category} />
               {img.source && <Badge label={img.source} dim />}
-              {img.verified && <Badge label="✓ verified" color="emerald" />}
-              {img.flagged && <Badge label={`⚑ flagged×${img.flag_count}`} color="rose" />}
+              <span className="text-[10px] opacity-30">{new Date(img.cached_at).toLocaleDateString()}</span>
             </div>
           </div>
 
           {/* Actions */}
           <div className="flex items-center gap-1 shrink-0">
-            <a href={img.image_url} target="_blank" rel="noopener noreferrer"
-              className="p-1.5 rounded-lg opacity-40 hover:opacity-100 transition-opacity" title="Open image">
-              <ExternalLink size={14} />
-            </a>
-            {!img.verified && (
-              <button onClick={() => onVerify(img.id)}
-                className="p-1.5 rounded-lg opacity-40 hover:opacity-100 transition-opacity text-emerald-500" title="Verify">
-                <CheckCircle size={14} />
-              </button>
+            {img.image_url && (
+              <a href={img.image_url} target="_blank" rel="noopener noreferrer"
+                className="p-1.5 rounded-lg opacity-40 hover:opacity-100 transition-opacity" title="Open image">
+                <ExternalLink size={14} />
+              </a>
             )}
-            <button onClick={() => onDelete(img.id)}
+            <button onClick={() => onDelete(img.lookup_key)}
               className="p-1.5 rounded-lg opacity-30 hover:opacity-100 transition-opacity text-rose-500" title="Delete">
               <Trash2 size={14} />
             </button>
@@ -280,7 +236,6 @@ function Badge({ label, color, dim }: { label: string; color?: string; dim?: boo
   const colors: Record<string, string> = {
     emerald: "bg-emerald-500/15 text-emerald-500",
     rose: "bg-rose-500/15 text-rose-500",
-    amber: "bg-amber-500/15 text-amber-500",
   };
   return (
     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
@@ -308,8 +263,7 @@ function UploadTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setPreview(url);
+    setPreview(URL.createObjectURL(file));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -325,7 +279,6 @@ function UploadTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
       const fd = new FormData();
       fd.append("file", file);
       Object.entries(form).forEach(([k, v]) => { if (v) fd.append(k, v); });
-
       await apiFetch("/api/admin/card-images?action=upload", { method: "POST", body: fd });
       showToast(`${form.card_name} uploaded`);
       setForm({ card_name: "", set_name: "", card_number: "", language: "English", category: "single", variant: "", product_type: "", grading_company: "" });
@@ -340,7 +293,6 @@ function UploadTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
 
   return (
     <form onSubmit={handleSubmit} className="max-w-lg space-y-4">
-      {/* Drop zone */}
       <div
         onClick={() => fileRef.current?.click()}
         className="border-2 border-dashed rounded-2xl aspect-[5/3] flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-muted/20 transition-colors overflow-hidden"
@@ -352,13 +304,11 @@ function UploadTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
           <>
             <Upload size={24} className="opacity-30" />
             <span className="text-sm opacity-40">Click to select image</span>
-            <span className="text-xs opacity-25">JPG, PNG, or WebP</span>
           </>
         )}
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
       </div>
 
-      {/* Fields */}
       <div className="grid grid-cols-2 gap-2">
         <div className="col-span-2">
           <label className="text-xs opacity-50 block mb-1">Card Name *</label>
@@ -396,53 +346,6 @@ function UploadTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
             <option value="sealed">Sealed</option>
           </select>
         </div>
-        {form.category === "single" && (
-          <div className="col-span-2">
-            <label className="text-xs opacity-50 block mb-1">Variant</label>
-            <select value={form.variant} onChange={(e) => set("variant", e.target.value)}
-              className="w-full bg-background border rounded-lg px-3 py-2 text-sm">
-              <option value="">— none —</option>
-              <option>Normal</option>
-              <option>Holo</option>
-              <option>Reverse Holo</option>
-              <option>1st Edition</option>
-              <option>Full Art</option>
-              <option>Ultra Rare</option>
-              <option>Special Illustration Rare</option>
-              <option>Secret Rare</option>
-            </select>
-          </div>
-        )}
-        {form.category === "slab" && (
-          <div className="col-span-2">
-            <label className="text-xs opacity-50 block mb-1">Grading Company</label>
-            <select value={form.grading_company} onChange={(e) => set("grading_company", e.target.value)}
-              className="w-full bg-background border rounded-lg px-3 py-2 text-sm">
-              <option value="">— none —</option>
-              <option>PSA</option>
-              <option>BGS</option>
-              <option>CGC</option>
-              <option>TAG</option>
-            </select>
-          </div>
-        )}
-        {form.category === "sealed" && (
-          <div className="col-span-2">
-            <label className="text-xs opacity-50 block mb-1">Product Type</label>
-            <select value={form.product_type} onChange={(e) => set("product_type", e.target.value)}
-              className="w-full bg-background border rounded-lg px-3 py-2 text-sm">
-              <option value="">— none —</option>
-              <option value="booster_box">Booster Box</option>
-              <option value="etb">Elite Trainer Box</option>
-              <option value="booster_bundle">Booster Bundle</option>
-              <option value="booster_pack">Booster Pack</option>
-              <option value="tin">Tin</option>
-              <option value="collection_box">Collection Box</option>
-              <option value="blister">Blister Pack</option>
-              <option value="premium_collection">Premium Collection</option>
-            </select>
-          </div>
-        )}
       </div>
 
       <button
@@ -459,77 +362,10 @@ function UploadTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
 
 // ── Flagged tab ───────────────────────────────────────────────────────────────
 
-function FlaggedTab({ showToast }: { showToast: (m: string, ok?: boolean) => void }) {
-  const [data, setData] = useState<ListResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const loaded = useRef(false);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const result = await apiFetch("/api/admin/card-images?action=list&status=flagged&page=1");
-      setData(result);
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Load failed", false);
-    } finally {
-      setLoading(false);
-      loaded.current = true;
-    }
-  }
-
-  async function handleDismiss(id: string) {
-    try {
-      await apiFetch("/api/admin/card-images?action=dismiss-flag", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageId: id }),
-      });
-      showToast("Flag dismissed");
-      setData((prev) => prev ? { ...prev, images: prev.images.filter((img) => img.id !== id), total: prev.total - 1 } : prev);
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Failed", false);
-    }
-  }
-
-  if (!loaded.current && !loading) {
-    return (
-      <button onClick={load}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl border text-sm opacity-60 hover:opacity-100 transition-opacity">
-        <Flag size={14} />
-        Load flagged images
-      </button>
-    );
-  }
-
-  if (loading) return <div className="flex items-center gap-2 opacity-40 text-sm"><Loader2 size={16} className="animate-spin" /> Loading…</div>;
-  if (!data?.images.length) return <div className="text-sm opacity-40">No flagged images.</div>;
-
+function FlaggedTab() {
   return (
-    <div className="space-y-2">
-      <div className="text-xs opacity-50">{data.total} flagged</div>
-      {data.images.map((img) => (
-        <div key={img.id} className="flex items-start gap-3 p-3 border rounded-xl border-rose-500/20 bg-rose-500/5">
-          <div className="w-10 h-14 rounded overflow-hidden bg-muted/40 shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img.thumbnail_url ?? img.image_url} alt={img.card_name} className="w-full h-full object-cover" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium">{img.card_name}</div>
-            <div className="text-xs opacity-50">{img.set_name}{img.card_number ? ` · #${img.card_number}` : ""}</div>
-            <div className="text-xs text-rose-500 mt-0.5">Flagged {img.flag_count}×</div>
-          </div>
-          <div className="flex gap-1 shrink-0">
-            <a href={img.image_url} target="_blank" rel="noopener noreferrer"
-              className="p-1.5 rounded-lg opacity-40 hover:opacity-100 transition-opacity">
-              <ExternalLink size={14} />
-            </a>
-            <button onClick={() => handleDismiss(img.id)} title="Dismiss flag — image is correct"
-              className="p-1.5 rounded-lg opacity-40 hover:opacity-100 transition-opacity text-emerald-500">
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-      ))}
+    <div className="text-sm opacity-40 py-4">
+      Image flagging is not available with the current card_image_cache schema.
     </div>
   );
 }
@@ -589,6 +425,174 @@ function MissingTab({ showToast }: { showToast: (m: string, ok?: boolean) => voi
           </div>
         ))}
       </div>
+      {totalPages > 1 && (
+        <div className="flex items-center gap-2 justify-center">
+          <button onClick={() => load(page - 1)} disabled={page <= 1 || loading}
+            className="p-1.5 rounded-lg border disabled:opacity-30">
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-sm opacity-60">Page {page} / {totalPages}</span>
+          <button onClick={() => load(page + 1)} disabled={page >= totalPages || loading}
+            className="p-1.5 rounded-lg border disabled:opacity-30">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Inventory tab ─────────────────────────────────────────────────────────────
+
+function InventoryTab({ showToast }: { showToast: (m: string, ok?: boolean) => void }) {
+  const [data, setData] = useState<InventoryResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [bulkFixing, setBulkFixing] = useState(false);
+  const [fixing, setFixing] = useState<Record<string, boolean>>({});
+  const [urlInputs, setUrlInputs] = useState<Record<string, string>>({});
+  const [savingUrl, setSavingUrl] = useState<Record<string, boolean>>({});
+  const loaded = useRef(false);
+
+  async function load(p: number) {
+    setLoading(true);
+    try {
+      const result = await apiFetch(`/api/admin/card-images?action=inventory-missing&page=${p}`);
+      setData(result);
+      setPage(p);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Load failed", false);
+    } finally {
+      setLoading(false);
+      loaded.current = true;
+    }
+  }
+
+  async function handleAutoFix(item: InventoryItem) {
+    setFixing((f) => ({ ...f, [item.id]: true }));
+    try {
+      const res = await apiFetch("/api/admin/card-images?action=auto-fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: item.id, name: item.name, setName: item.set_name, cardNumber: item.card_number }),
+      });
+      if (res.imageUrl) {
+        showToast(`Found image for ${item.name}`);
+        setData((prev) => prev ? { ...prev, items: prev.items.filter((i) => i.id !== item.id), total: prev.total - 1 } : prev);
+      } else {
+        showToast(`No image found for ${item.name}`, false);
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed", false);
+    } finally {
+      setFixing((f) => ({ ...f, [item.id]: false }));
+    }
+  }
+
+  async function handleBulkFix() {
+    setBulkFixing(true);
+    try {
+      const res = await apiFetch("/api/admin/card-images?action=auto-fix-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      showToast(`Fixed ${res.fixed} items`);
+      if (res.fixed > 0) load(1);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Bulk fix failed", false);
+    } finally {
+      setBulkFixing(false);
+    }
+  }
+
+  async function handleSaveUrl(item: InventoryItem) {
+    const imageUrl = urlInputs[item.id]?.trim();
+    if (!imageUrl) { showToast("Enter a URL first", false); return; }
+    setSavingUrl((s) => ({ ...s, [item.id]: true }));
+    try {
+      await apiFetch("/api/admin/card-images?action=save-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: item.id, imageUrl, name: item.name, setName: item.set_name, cardNumber: item.card_number }),
+      });
+      showToast(`Saved for ${item.name}`);
+      setData((prev) => prev ? { ...prev, items: prev.items.filter((i) => i.id !== item.id), total: prev.total - 1 } : prev);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Save failed", false);
+    } finally {
+      setSavingUrl((s) => ({ ...s, [item.id]: false }));
+    }
+  }
+
+  if (!loaded.current && !loading) {
+    return (
+      <button onClick={() => load(1)}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl border text-sm opacity-60 hover:opacity-100 transition-opacity">
+        <Search size={14} />
+        Load items missing images
+      </button>
+    );
+  }
+
+  if (loading) return <div className="flex items-center gap-2 opacity-40 text-sm"><Loader2 size={16} className="animate-spin" /> Loading…</div>;
+  if (!data?.items.length) return <div className="text-sm opacity-40">All inventory items have images.</div>;
+
+  const totalPages = Math.ceil(data.total / 50);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-xs opacity-50">{data.total.toLocaleString()} items missing images</div>
+        <button
+          onClick={handleBulkFix}
+          disabled={bulkFixing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs disabled:opacity-50"
+        >
+          {bulkFixing ? <Loader2 size={12} className="animate-spin" /> : <Wrench size={12} />}
+          {bulkFixing ? "Fixing…" : "Bulk Fix (100)"}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {data.items.map((item) => (
+          <div key={item.id} className="p-3 border rounded-xl space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{item.name}</div>
+                <div className="text-xs opacity-50 truncate">
+                  {item.set_name ?? "Unknown set"}{item.card_number ? ` · #${item.card_number}` : ""}
+                  {item.grade ? ` · ${item.grade}` : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => handleAutoFix(item)}
+                disabled={fixing[item.id]}
+                className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                {fixing[item.id] ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />}
+                Auto-find
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={urlInputs[item.id] ?? ""}
+                onChange={(e) => setUrlInputs((u) => ({ ...u, [item.id]: e.target.value }))}
+                placeholder="Paste image URL…"
+                className="flex-1 bg-background border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+              />
+              <button
+                onClick={() => handleSaveUrl(item)}
+                disabled={savingUrl[item.id] || !urlInputs[item.id]?.trim()}
+                className="shrink-0 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs disabled:opacity-50"
+              >
+                {savingUrl[item.id] ? <Loader2 size={11} className="animate-spin" /> : "Save"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {totalPages > 1 && (
         <div className="flex items-center gap-2 justify-center">
           <button onClick={() => load(page - 1)} disabled={page <= 1 || loading}

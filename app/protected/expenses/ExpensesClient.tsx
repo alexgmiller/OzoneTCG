@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
 import { addExpense, deleteExpense, updateExpense } from "./actions";
 import type { ExpenseRow } from "./ExpensesServer";
+import ConfirmationModal from "@/components/ConfirmationModal";
 
 type PaidBy = "alex" | "mila" | "shared";
 
@@ -26,6 +27,7 @@ export default function ExpensesClient({
 }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // create form
   const [description, setDescription] = useState("");
@@ -112,6 +114,12 @@ export default function ExpensesClient({
   async function remove(id: string) {
     await deleteExpense(id);
     router.refresh();
+  }
+
+  async function confirmRemove() {
+    if (!confirmDeleteId) return;
+    await remove(confirmDeleteId);
+    setConfirmDeleteId(null);
   }
 
   return (
@@ -214,8 +222,8 @@ export default function ExpensesClient({
                             Edit
                           </button>
                           <button
-                            className="text-xs border rounded-md px-2 py-1 hover:bg-white/5"
-                            onClick={() => remove(e.id)}
+                            className="text-xs border rounded-md px-2 py-1 hover:bg-white/5 hover:text-red-500 transition-colors"
+                            onClick={() => setConfirmDeleteId(e.id)}
                           >
                             Delete
                           </button>
@@ -268,6 +276,17 @@ export default function ExpensesClient({
           </div>
         )}
       </div>
+
+      {confirmDeleteId && (
+        <ConfirmationModal
+          title="Delete expense?"
+          description="This expense will be permanently removed."
+          confirmLabel="Delete"
+          destructive
+          onConfirm={confirmRemove}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
     </div>
   );
 }
