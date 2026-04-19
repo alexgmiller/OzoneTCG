@@ -332,11 +332,22 @@ export async function recordShowBuy(input: {
   buy_percentage: number;
   notes: string | null;
   batch_id?: string | null;
+  client_id?: string | null;
 }): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
+
+  // Idempotency: if this client_id was already recorded, return existing scanId
+  if (input.client_id) {
+    const { data: existing } = await supabase
+      .from("show_scans")
+      .select("id")
+      .eq("client_id", input.client_id)
+      .maybeSingle();
+    if (existing) return { scanId: existing.id as string };
+  }
 
   const now = new Date().toISOString();
 
@@ -378,9 +389,10 @@ export async function recordShowBuy(input: {
   let { data: scan, error: scanErr } = await supabase.from("show_scans").insert({
     ...scanBase,
     batch_id: input.batch_id ?? null,
+    client_id: input.client_id ?? null,
   }).select("id").single();
   if (scanErr?.code === "42703") {
-    // batch_id column not yet migrated — insert without it
+    // batch_id or client_id column not yet migrated — insert without them
     ({ data: scan, error: scanErr } = await supabase.from("show_scans").insert(scanBase).select("id").single());
   }
   if (scanErr) throw new Error(scanErr.message);
@@ -423,11 +435,21 @@ export async function recordShowSell(input: {
   item_id: string;
   item_name: string;
   sell_price: number;
+  client_id?: string | null;
 }): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
+
+  if (input.client_id) {
+    const { data: existing } = await supabase
+      .from("show_scans")
+      .select("id")
+      .eq("client_id", input.client_id)
+      .maybeSingle();
+    if (existing) return { scanId: existing.id as string };
+  }
 
   const now = new Date().toISOString();
   const saleId = crypto.randomUUID();
@@ -449,14 +471,25 @@ export async function recordShowSell(input: {
   if (sellErr) throw new Error(sellErr.message);
 
   // 2. Record in show_scans
-  const { data: scan, error: scanErr } = await supabase.from("show_scans").insert({
+  let { data: scan, error: scanErr } = await supabase.from("show_scans").insert({
     show_session_id: input.show_session_id,
     card_name: input.item_name,
     market_price: input.sell_price,
     action: "sold",
     item_id: input.item_id,
     scanned_at: now,
+    client_id: input.client_id ?? null,
   }).select("id").single();
+  if (scanErr?.code === "42703") {
+    ({ data: scan, error: scanErr } = await supabase.from("show_scans").insert({
+      show_session_id: input.show_session_id,
+      card_name: input.item_name,
+      market_price: input.sell_price,
+      action: "sold",
+      item_id: input.item_id,
+      scanned_at: now,
+    }).select("id").single());
+  }
   if (scanErr) throw new Error(scanErr.message);
 
   // 3. Update session stats
@@ -468,23 +501,31 @@ export async function recordShowSell(input: {
   revalidatePath("/protected/inventory");
   revalidatePath("/protected/sold");
   revalidatePath("/protected/dashboard");
-  return { scanId: scan.id };
+  return { scanId: scan!.id };
 }
 
 export async function recordShowTrade(input: {
   show_session_id: string;
-  // Cards leaving our inventory
   goingOut: { itemId: string; tradeValue: number; name: string; cost: number | null }[];
-  // Cards arriving into inventory
   comingIn: { name: string; grade: string | null; marketPrice: number }[];
-  // Positive = we received cash; negative = we paid cash
   cashDifference: number;
   notes: string | null;
+  client_id?: string | null;
 }): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
+
+  if (input.client_id) {
+    const { data: existing } = await supabase
+      .from("show_scans")
+      .select("id")
+      .eq("client_id", input.client_id)
+      .maybeSingle();
+    if (existing) return { scanId: existing.id as string };
+  }
+
   const now = new Date().toISOString();
 
   // 1. Mark going-out items as sold (traded out)
@@ -543,14 +584,25 @@ export async function recordShowTrade(input: {
   const displayNotes = ((input.notes ?? "") + cashNote).trim();
   const fullNotes = displayNotes ? `${displayNotes}||${undoSuffix}` : undoSuffix;
 
-  const { data: tradeScan, error: tradeScanErr } = await supabase.from("show_scans").insert({
+  let { data: tradeScan, error: tradeScanErr } = await supabase.from("show_scans").insert({
     show_session_id: input.show_session_id,
     card_name: description,
     market_price: gaveTotal + gotTotal,
     action: "trade",
     notes: fullNotes,
     scanned_at: now,
+    client_id: input.client_id ?? null,
   }).select("id").single();
+  if (tradeScanErr?.code === "42703") {
+    ({ data: tradeScan, error: tradeScanErr } = await supabase.from("show_scans").insert({
+      show_session_id: input.show_session_id,
+      card_name: description,
+      market_price: gaveTotal + gotTotal,
+      action: "trade",
+      notes: fullNotes,
+      scanned_at: now,
+    }).select("id").single());
+  }
   if (tradeScanErr) throw new Error(tradeScanErr.message);
 
   // 4. Update session stats
@@ -562,7 +614,7 @@ export async function recordShowTrade(input: {
   });
 
   revalidatePath("/protected/inventory");
-  return { scanId: tradeScan.id as string };
+  return { scanId: tradeScan!.id as string };
 }
 
 export async function addShowExpense(input: {
@@ -571,10 +623,21 @@ export async function addShowExpense(input: {
   cost: number;
   category: string;
   paid_by: "alex" | "mila";
+  client_id?: string | null;
 }): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
+
+  if (input.client_id) {
+    const { data: existing } = await supabase
+      .from("show_scans")
+      .select("id")
+      .eq("client_id", input.client_id)
+      .maybeSingle();
+    if (existing) return { scanId: existing.id as string };
+  }
+
   const now = new Date().toISOString();
 
   const desc = `[Show] ${input.category}: ${input.description}`;
@@ -591,14 +654,25 @@ export async function addShowExpense(input: {
   if (expErr) throw new Error(expErr.message);
 
   // 2. Record in show_scans (item_id = expense row id for undo)
-  const { data: scan, error: scanErr } = await supabase.from("show_scans").insert({
+  let { data: scan, error: scanErr } = await supabase.from("show_scans").insert({
     show_session_id: input.show_session_id,
     card_name: desc,
     market_price: input.cost,
     action: "expense",
     item_id: expense.id,
     scanned_at: now,
+    client_id: input.client_id ?? null,
   }).select("id").single();
+  if (scanErr?.code === "42703") {
+    ({ data: scan, error: scanErr } = await supabase.from("show_scans").insert({
+      show_session_id: input.show_session_id,
+      card_name: desc,
+      market_price: input.cost,
+      action: "expense",
+      item_id: expense.id,
+      scanned_at: now,
+    }).select("id").single());
+  }
   if (scanErr) throw new Error(scanErr.message);
 
   // 3. Update session stats (expenses count toward cash out)
@@ -607,7 +681,7 @@ export async function addShowExpense(input: {
   });
 
   revalidatePath("/protected/expenses");
-  return { scanId: scan.id };
+  return { scanId: scan!.id };
 }
 
 // ── Inventory search / load ───────────────────────────────────────────────────

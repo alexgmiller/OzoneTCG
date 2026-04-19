@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend, Space_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -47,6 +48,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <ServiceWorkerRegistrar />
           {children}
         </ThemeProvider>
       </body>

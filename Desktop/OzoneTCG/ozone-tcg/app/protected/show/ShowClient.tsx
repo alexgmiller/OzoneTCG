@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { ScanLine, ShoppingBag, DollarSign, ArrowLeftRight, Handshake, Camera, X as XIcon, ChevronDown } from "lucide-react";
+import { ScanLine, ShoppingBag, DollarSign, ArrowLeftRight, Handshake, Camera, X as XIcon, ChevronDown, Clock, RefreshCw } from "lucide-react";
 import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
 import CertLookupWidget, { type CertWidgetResult } from "@/components/CertLookupWidget";
 import CardImageScanner, { type CardImageScanResult } from "@/components/CardImageScanner";
@@ -13,11 +13,7 @@ import {
   getShowSession,
   loadShowFeed,
   loadInventoryItems,
-  recordShowBuy,
   recordShowPass,
-  recordShowSell,
-  recordShowTrade,
-  addShowExpense,
   endShowSession,
   undoShowEntry,
   updateScanPhoto,
@@ -25,6 +21,19 @@ import {
   type ShowScanEntry,
   type InventorySearchResult,
 } from "./actions";
+import {
+  offlineRecordShowBuy,
+  offlineRecordShowSell,
+  offlineRecordShowTrade,
+  offlineAddShowExpense,
+} from "@/lib/offlineAwareActions";
+import {
+  getPendingCount,
+  getPendingActions,
+  type PendingAction,
+  pendingActionLabel,
+} from "@/lib/offlineQueue";
+import { startAutoSync, replayPendingActions, replayOneAction } from "@/lib/offlineSync";
 import { uploadDealPhoto } from "../photos/actions";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -89,6 +98,7 @@ type FeedEntry = {
   amount: number | null;
   photoUrl?: string | null;
   batchId?: string | null;
+  pending?: boolean;
 };
 
 function scanToFeed(s: ShowScanEntry): FeedEntry {
@@ -290,6 +300,11 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   const [tab, setTab] = useState<"scan" | "buy" | "sell" | "deal" | "trade">("scan");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const [pendingModalActions, setPendingModalActions] = useState<PendingAction[]>([]);
+  const [syncToast, setSyncToast] = useState<{ msg: string; kind: "success" | "warn" } | null>(null);
 
   // ── Start form ────────────────────────────────────────────────────────────
 
@@ -506,9 +521,63 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   useEffect(() => {
     if ((tab !== "trade" && tab !== "sell" && tab !== "deal") || tradeInventoryLoaded || phase !== "active") return;
     loadInventoryItems()
-      .then((items) => { setTradeInventory(items); setTradeInventoryLoaded(true); })
+      .then((items) => {
+        setTradeInventory(items);
+        setTradeInventoryLoaded(true);
+        // Pre-cache card images for offline use at shows
+        const urls = items.map((i) => i.image_url).filter(Boolean) as string[];
+        if (urls.length > 0 && typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: "precache-images", urls });
+        }
+      })
       .catch(() => { /* silent */ });
   }, [tab, tradeInventoryLoaded, phase]);
+
+  // Track online/offline status
+  useEffect(() => {
+    setIsOffline(!navigator.onLine);
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => setIsOffline(false);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+  }, []);
+
+  // Start auto-sync and listen for sync results when show is active
+  useEffect(() => {
+    if (phase !== "active") return;
+    const stopSync = startAutoSync();
+
+    const onSyncResult = (e: Event) => {
+      const { synced, failed } = (e as CustomEvent<{ synced: number; failed: number }>).detail;
+      if (synced > 0 && failed === 0) {
+        setSyncToast({ msg: `Synced ${synced} transaction${synced !== 1 ? "s" : ""}`, kind: "success" });
+      } else if (failed > 0) {
+        setSyncToast({ msg: `${failed} transaction${failed !== 1 ? "s" : ""} failed to sync`, kind: "warn" });
+      }
+      setTimeout(() => setSyncToast(null), 4000);
+      getPendingCount().then(setPendingCount).catch(() => {});
+    };
+    window.addEventListener("offline-sync-result", onSyncResult);
+
+    return () => {
+      stopSync();
+      window.removeEventListener("offline-sync-result", onSyncResult);
+    };
+  }, [phase]);
+
+  // Poll pending count every 10 seconds
+  useEffect(() => {
+    if (phase !== "active") return;
+    getPendingCount().then(setPendingCount).catch(() => {});
+    const interval = setInterval(() => {
+      getPendingCount().then(setPendingCount).catch(() => {});
+    }, 10_000);
+    return () => clearInterval(interval);
+  }, [phase]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -517,8 +586,14 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   }
 
   function err(msg: string) {
-    setError(msg);
+    setError(isOffline ? "No connection — try again when online" : msg);
     setTimeout(() => setError(null), 4000);
+  }
+
+  function notifyQueued() {
+    setSyncToast({ msg: "Saved offline — will sync when connected", kind: "warn" });
+    setTimeout(() => setSyncToast(null), 4000);
+    getPendingCount().then(setPendingCount).catch(() => {});
   }
 
   // ── Card image scanner handler ────────────────────────────────────────────
@@ -690,6 +765,8 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       const tradeCards = dealCards.filter((c) => c.disposition === "trade");
 
       let lastScanId: string | null = null;
+      let anyQueued = false;
+      const dealTimestamp = new Date().toISOString();
 
       // Record cash buys
       const batchId = dealCards.length > 1 ? crypto.randomUUID() : null;
@@ -698,7 +775,8 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         const pct = card.marketPrice && card.marketPrice > 0
           ? parseFloat(((card.buyPrice / card.marketPrice) * 100).toFixed(1))
           : dealCashPct;
-        const { scanId } = await recordShowBuy({
+        const client_id = crypto.randomUUID();
+        const res = await offlineRecordShowBuy({
           show_session_id: sessionId,
           name: card.name,
           category: card.grade ? "slab" : "single",
@@ -713,16 +791,20 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           buy_percentage: pct,
           notes: null,
           batch_id: batchId,
+          client_id,
         });
+        const scanId = res.queued ? res.id : res.result.scanId;
+        if (res.queued) anyQueued = true;
         lastScanId = scanId;
         pushFeedEntry({
           id: scanId,
           kind: "buy",
-          time: new Date().toISOString(),
+          time: dealTimestamp,
           label: card.name,
           sub: `${card.grade ? card.grade + " · " : ""}Deal · ${pct}%`,
           amount: -card.buyPrice,
           batchId: batchId ?? undefined,
+          pending: res.queued,
         });
       }
 
@@ -742,22 +824,27 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         const tradeVal = tradeCards.reduce((s, c) => s + (c.buyPrice ?? (c.marketPrice ? c.marketPrice * dealTradePct / 100 : 0)), 0);
         const inventoryVal = dealTradeSelections.reduce((s, g) => s + (parseFloat(g.tradeValue) || (g.item.market ?? 0)), 0);
         const cashDiff = parseFloat((tradeVal - inventoryVal).toFixed(2));
-        const { scanId } = await recordShowTrade({
+        const client_id = crypto.randomUUID();
+        const res = await offlineRecordShowTrade({
           show_session_id: sessionId,
           goingOut,
           comingIn,
           cashDifference: cashDiff,
           notes: `Deal trade · ${tradeCards.length} card${tradeCards.length !== 1 ? "s" : ""} in`,
+          client_id,
         });
+        const scanId = res.queued ? res.id : res.result.scanId;
+        if (res.queued) anyQueued = true;
         lastScanId = scanId;
         const label = tradeCards.map((c) => c.name).join(", ");
         pushFeedEntry({
           id: scanId,
           kind: "trade",
-          time: new Date().toISOString(),
+          time: dealTimestamp,
           label,
           sub: `Deal trade`,
           amount: cashDiff !== 0 ? cashDiff : null,
+          pending: res.queued,
         });
       } else if (tradeCards.length > 0) {
         // Trade cards but no inventory going out — record as buys at trade %
@@ -767,7 +854,8 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           const pct = card.marketPrice && card.marketPrice > 0
             ? parseFloat(((tradePrice / card.marketPrice) * 100).toFixed(1))
             : dealTradePct;
-          const { scanId } = await recordShowBuy({
+          const client_id = crypto.randomUUID();
+          const res = await offlineRecordShowBuy({
             show_session_id: sessionId,
             name: card.name,
             category: card.grade ? "slab" : "single",
@@ -782,28 +870,33 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
             buy_percentage: pct,
             notes: "Deal trade-in",
             batch_id: batchId,
+            client_id,
           });
+          const scanId = res.queued ? res.id : res.result.scanId;
+          if (res.queued) anyQueued = true;
           lastScanId = scanId;
           pushFeedEntry({
             id: scanId,
             kind: "buy",
-            time: new Date().toISOString(),
+            time: dealTimestamp,
             label: card.name,
             sub: `${card.grade ? card.grade + " · " : ""}Trade-in · ${pct}%`,
             amount: -tradePrice,
             batchId: batchId ?? undefined,
+            pending: res.queued,
           });
         }
       }
 
-      await refreshSession(sessionId);
+      if (anyQueued) { notifyQueued(); } else {
+        await refreshSession(sessionId);
+        if (lastScanId) triggerPhotoPrompt(lastScanId, "buy");
+      }
 
       const cashOut = cashCards.reduce((s, c) => s + (c.buyPrice ?? 0), 0);
       const tradeValue = tradeCards.reduce((s, c) => s + (c.buyPrice ?? (c.marketPrice ? c.marketPrice * dealTradePct / 100 : 0)), 0);
       setDealCompleteSummary({ scanId: lastScanId ?? "", cashOut, tradeValue });
       setDealStep("complete");
-
-      if (lastScanId) triggerPhotoPrompt(lastScanId, "buy");
     } catch (e) {
       err(e instanceof Error ? e.message : "Deal failed");
     } finally {
@@ -857,7 +950,8 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       : `${scanResult.company} ${scanResult.grade}`;
     setBusy(true);
     try {
-      const { scanId } = await recordShowBuy({
+      const client_id = crypto.randomUUID();
+      const res = await offlineRecordShowBuy({
         show_session_id: sessionId,
         name: scanResult.name,
         category: "slab",
@@ -871,7 +965,9 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         image_url: null,
         buy_percentage: pct,
         notes: null,
+        client_id,
       });
+      const scanId = res.queued ? res.id : res.result.scanId;
       pushFeedEntry({
         id: scanId,
         kind: "buy",
@@ -879,13 +975,16 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         label: scanResult.name,
         sub: `${gradeStr} · ${pct}%`,
         amount: -cost,
+        pending: res.queued,
       });
-      await refreshSession(sessionId);
+      if (res.queued) { notifyQueued(); } else {
+        await refreshSession(sessionId);
+        triggerPhotoPrompt(scanId, "buy");
+      }
       setScanResult(null);
       setScanMarket("");
       setScanShowCustom(false);
       setScanCustomPct("");
-      triggerPhotoPrompt(scanId, "buy");
     } catch (e) {
       err(e instanceof Error ? e.message : "Buy failed");
     } finally {
@@ -904,7 +1003,8 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       : `${scanResult.company} ${scanResult.grade}`;
     setBusy(true);
     try {
-      const { scanId } = await recordShowBuy({
+      const client_id = crypto.randomUUID();
+      const res = await offlineRecordShowBuy({
         show_session_id: sessionId,
         name: scanResult.name,
         category: "slab",
@@ -918,7 +1018,9 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         image_url: null,
         buy_percentage: pct,
         notes: null,
+        client_id,
       });
+      const scanId = res.queued ? res.id : res.result.scanId;
       pushFeedEntry({
         id: scanId,
         kind: "buy",
@@ -926,13 +1028,16 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         label: scanResult.name,
         sub: `${gradeStr} · $${cost.toFixed(2)}`,
         amount: -cost,
+        pending: res.queued,
       });
-      await refreshSession(sessionId);
+      if (res.queued) { notifyQueued(); } else {
+        await refreshSession(sessionId);
+        triggerPhotoPrompt(scanId, "buy");
+      }
       setScanResult(null);
       setScanMarket("");
       setScanShowFlat(false);
       setScanFlatAmount("");
-      triggerPhotoPrompt(scanId, "buy");
     } catch (e) {
       err(e instanceof Error ? e.message : "Buy failed");
     } finally {
@@ -1112,11 +1217,12 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     setBusy(true);
     try {
       let lastScanId: string | null = null;
-      // Assign a shared batch_id when buying multiple cards at once
+      let anyQueued = false;
       const batchId = batchQueue.length > 1 ? crypto.randomUUID() : null;
       const now = new Date().toISOString();
       for (const item of batchQueue) {
-        const { scanId } = await recordShowBuy({
+        const client_id = crypto.randomUUID();
+        const res = await offlineRecordShowBuy({
           show_session_id: sessionId,
           name: item.name,
           category: item.category,
@@ -1131,7 +1237,10 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           buy_percentage: item.buy_pct,
           notes: null,
           batch_id: batchId,
+          client_id,
         });
+        const scanId = res.queued ? res.id : res.result.scanId;
+        if (res.queued) anyQueued = true;
         lastScanId = scanId;
         pushFeedEntry({
           id: scanId,
@@ -1141,11 +1250,14 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           sub: `${item.buy_pct}%`,
           amount: -item.cost,
           batchId,
+          pending: res.queued,
         });
       }
-      await refreshSession(sessionId);
+      if (anyQueued) { notifyQueued(); } else {
+        await refreshSession(sessionId);
+        if (lastScanId) triggerPhotoPrompt(lastScanId, "buy");
+      }
       setBatchQueue([]);
-      if (lastScanId) triggerPhotoPrompt(lastScanId, "buy");
     } catch (e) {
       err(e instanceof Error ? e.message : "Batch buy failed");
     } finally {
@@ -1232,24 +1344,31 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       const now = new Date().toISOString();
       const soldIds = new Set<string>();
       let lastScanId: string | null = null;
+      let anyQueued = false;
       for (const { item, price } of priceList) {
-        const { scanId } = await recordShowSell({
+        const client_id = crypto.randomUUID();
+        const res = await offlineRecordShowSell({
           show_session_id: sessionId,
           item_id: item.id,
           item_name: item.name,
           sell_price: price,
+          client_id,
         });
-        pushFeedEntry({ id: scanId, kind: "sell", time: now, label: item.name, sub: item.grade ?? undefined, amount: price });
+        const scanId = res.queued ? res.id : res.result.scanId;
+        if (res.queued) anyQueued = true;
+        pushFeedEntry({ id: scanId, kind: "sell", time: now, label: item.name, sub: item.grade ?? undefined, amount: price, pending: res.queued });
         soldIds.add(item.id);
         lastScanId = scanId;
       }
-      await refreshSession(sessionId);
+      if (anyQueued) { notifyQueued(); } else {
+        await refreshSession(sessionId);
+        if (lastScanId) triggerPhotoPrompt(lastScanId, "sell");
+      }
       setTradeInventory((prev) => prev.filter((i) => !soldIds.has(i.id)));
       setSellSelected(new Map());
       setSellPrices({});
       setSellPriceLocked(new Set());
       setSellTotalInput("");
-      if (lastScanId) triggerPhotoPrompt(lastScanId, "sell");
     } catch (e) {
       err(e instanceof Error ? e.message : "Sell failed");
     } finally {
@@ -1270,7 +1389,8 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
 
     setBusy(true);
     try {
-      const { scanId: tradeScanId } = await recordShowTrade({
+      const client_id = crypto.randomUUID();
+      const res = await offlineRecordShowTrade({
         show_session_id: sessionId,
         goingOut: tradeGoingOut.map((g) => ({
           itemId: g.item.id,
@@ -1287,8 +1407,10 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           })),
         cashDifference: cashDiff,
         notes: tradeNotes.trim() || null,
+        client_id,
       });
 
+      const tradeScanId = res.queued ? res.id : res.result.scanId;
       const gaveNames = tradeGoingOut.map((g) => g.item.name).join(", ") || "—";
       const gotNames = tradeComingIn.filter((c) => c.name.trim()).map((c) => c.name).join(", ") || "—";
       pushFeedEntry({
@@ -1298,8 +1420,12 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         label: `${gaveNames} → ${gotNames}`,
         sub: Math.abs(cashDiff) > 0.01 ? `Cash ${cashDiff > 0 ? "received" : "paid"}: $${Math.abs(cashDiff).toFixed(2)}` : undefined,
         amount: Math.abs(cashDiff) > 0.01 ? cashDiff : null,
+        pending: res.queued,
       });
-      await refreshSession(sessionId);
+      if (res.queued) { notifyQueued(); } else {
+        await refreshSession(sessionId);
+        triggerPhotoPrompt(tradeScanId, "trade");
+      }
 
       const tradedIds = new Set(tradeGoingOut.map((g) => g.item.id));
       setTradeInventory((prev) => prev.filter((i) => !tradedIds.has(i.id)));
@@ -1307,7 +1433,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       setTradeComingIn([blankTradeComingIn()]);
       setTradeCashOverride(""); setTradeNotes("");
       setTradeInventoryQuery("");
-      triggerPhotoPrompt(tradeScanId, "trade");
     } catch (e) {
       err(e instanceof Error ? e.message : "Trade failed");
     } finally {
@@ -1323,21 +1448,25 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     if (!expenseDesc.trim() || !cost) { err("Enter description and amount"); return; }
     setBusy(true);
     try {
-      const { scanId } = await addShowExpense({
+      const client_id = crypto.randomUUID();
+      const res = await offlineAddShowExpense({
         show_session_id: sessionId,
         description: expenseDesc.trim(),
         cost,
         category: expenseCategory,
         paid_by: expensePaidBy,
+        client_id,
       });
+      const scanId = res.queued ? res.id : res.result.scanId;
       pushFeedEntry({
         id: scanId,
         kind: "expense",
         time: new Date().toISOString(),
         label: expenseDesc.trim(),
         amount: -cost,
+        pending: res.queued,
       });
-      await refreshSession(sessionId);
+      if (res.queued) { notifyQueued(); } else { await refreshSession(sessionId); }
       setExpenseDesc(""); setExpenseCost("");
       setExpenseOpen(false);
     } catch (e) {
@@ -1488,7 +1617,25 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
               SHOW
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">{session.name}</div>
+              <div className="flex items-center gap-1.5">
+                <div className="text-sm font-semibold truncate">{session.name}</div>
+                {isOffline && (
+                  <span className="shrink-0 w-2 h-2 rounded-full bg-red-500" title="Offline" />
+                )}
+                {pendingCount > 0 && (
+                  <button
+                    onClick={async () => {
+                      const actions = await getPendingActions().catch(() => []);
+                      setPendingModalActions(actions);
+                      setPendingModalOpen(true);
+                    }}
+                    className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{ background: "rgba(234,179,8,0.2)", color: "#eab308" }}
+                  >
+                    {pendingCount} pending
+                  </button>
+                )}
+              </div>
               <div className="text-[10px] opacity-40 leading-tight">{fmtDate(session.date)}</div>
             </div>
           </div>
@@ -1602,6 +1749,18 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         </div>
       )}
 
+      {/* ── Sync toast ── */}
+      {syncToast && (
+        <div className={`mx-4 mt-3 text-sm rounded-xl px-3 py-2 flex items-center gap-2 ${
+          syncToast.kind === "success"
+            ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+            : "text-amber-400 bg-amber-500/10 border border-amber-500/20"
+        }`}>
+          <Clock size={13} className="shrink-0" />
+          {syncToast.msg}
+        </div>
+      )}
+
       {/* ── Scan success toast ── */}
       {scanToast && (
         <div className="mx-4 mt-3 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 flex items-center gap-2">
@@ -1655,9 +1814,9 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
                 kind === "buy" ? "BUY" : kind === "sell" ? "SELL" : kind === "trade" ? "TRADE" : kind === "expense" ? "EXP" : "PASS";
 
               function renderSingleEntry(entry: FeedEntry, compact = false) {
-                const canUndo = entry.kind !== "pass";
+                const canUndo = entry.kind !== "pass" && !entry.pending;
                 return (
-                  <div key={entry.id} className={`flex items-start gap-3 ${compact ? "py-1.5" : "py-2.5"} border-t first:border-t-0`}>
+                  <div key={entry.id} className={`flex items-start gap-3 ${compact ? "py-1.5" : "py-2.5"} border-t first:border-t-0 ${entry.pending ? "opacity-70" : ""}`}>
                     {!compact && (
                       <div className="text-[10px] opacity-40 tabular-nums shrink-0 pt-0.5 w-14">{fmtTime(entry.time)}</div>
                     )}
@@ -1681,6 +1840,9 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
                         <div className={`${compact ? "text-xs" : "text-sm"} font-semibold tabular-nums ${entry.amount > 0 ? "text-emerald-400" : "text-rose-400"}`}>
                           {entry.amount > 0 ? "+" : "−"}{money(Math.abs(entry.amount))}
                         </div>
+                      )}
+                      {entry.pending && (
+                        <Clock size={12} className="text-amber-400 shrink-0" aria-label="Pending sync" />
                       )}
                       {canUndo && (
                         <button
@@ -1759,6 +1921,76 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       {endOpen && renderEndModal()}
       {expenseOpen && renderExpenseModal()}
       {cashCountOpen && renderCashCountModal()}
+
+      {/* ── Pending sync modal ── */}
+      {pendingModalOpen && (
+        <div
+          className="fixed inset-0 flex items-end sm:items-center justify-center modal-backdrop p-4"
+          style={{ zIndex: 9999 }}
+          onClick={() => setPendingModalOpen(false)}
+        >
+          <div
+            className="modal-panel w-full max-w-sm p-5 space-y-4 max-h-[70vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Pending Transactions</div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const { synced, failed } = await replayPendingActions();
+                    const actions = await getPendingActions().catch(() => []);
+                    setPendingModalActions(actions);
+                    getPendingCount().then(setPendingCount).catch(() => {});
+                    if (synced > 0 && failed === 0) setPendingModalOpen(false);
+                  }}
+                  className="text-xs px-2.5 py-1 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 flex items-center gap-1.5"
+                >
+                  <RefreshCw size={11} />
+                  Retry All
+                </button>
+                <button onClick={() => setPendingModalOpen(false)}>
+                  <XIcon size={16} className="opacity-50" />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto space-y-2 flex-1">
+              {pendingModalActions.length === 0 ? (
+                <div className="text-xs opacity-50 text-center py-4">No pending transactions</div>
+              ) : (
+                pendingModalActions.map((action) => {
+                  const isFailed = action.retryCount > 3;
+                  return (
+                    <div
+                      key={action.id}
+                      className={`flex items-start gap-3 p-2.5 rounded-xl border ${isFailed ? "border-red-500/30 bg-red-500/5" : "border-amber-500/20 bg-amber-500/5"}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium truncate">{pendingActionLabel(action)}</div>
+                        <div className={`text-[10px] mt-0.5 ${isFailed ? "text-red-400" : "opacity-40"}`}>
+                          {action.actionType.toUpperCase()} · {new Date(action.timestamp).toLocaleTimeString()}
+                          {isFailed && action.errorMessage && ` · ${action.errorMessage}`}
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          await replayOneAction(action.id);
+                          const actions = await getPendingActions().catch(() => []);
+                          setPendingModalActions(actions);
+                          getPendingCount().then(setPendingCount).catch(() => {});
+                        }}
+                        className="shrink-0 text-[10px] px-2 py-0.5 rounded border border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Deal photo modal (centered, above bottom nav) ── */}
       {photoPrompt && (
@@ -2589,6 +2821,7 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
                       if (card.market != null) setDealAddMarket(card.market.toFixed(2));
                     }}
                     placeholder="Card name…"
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
                   />
                 </div>
                 <button
