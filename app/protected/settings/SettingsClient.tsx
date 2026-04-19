@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 import {
   User, Building2, ShieldCheck, TrendingUp, Monitor, Database,
   Bell, Trash2, KeyRound, Download, LogOut, CheckCircle2, AlertCircle,
-  ChevronRight, Eye, EyeOff,
+  ChevronRight, Eye, EyeOff, HardDrive,
 } from "lucide-react";
 import {
   saveSettings, sendPasswordResetEmail, deleteAccount,
@@ -14,6 +14,8 @@ import {
   type UserSettings,
 } from "./actions";
 import { verifyGuestPin, saveGuestPin } from "@/app/protected/guest/actions";
+import { getPendingCount, clearAll as clearQueueAll } from "@/lib/offlineQueue";
+import { replayPendingActions } from "@/lib/offlineSync";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,9 +194,72 @@ export default function SettingsClient({
   const [exportingInv, setExportingInv] = useState(false);
   const [exportingTx, setExportingTx] = useState(false);
 
+  // ── Image cache ───────────────────────────────────────────────────────────
+  const [cacheClearing, setCacheClearing] = useState(false);
+  const [cacheCleared, setCacheCleared] = useState(false);
+
+  // ── Pending sync queue ────────────────────────────────────────────────────
+  const [pendingQueueCount, setPendingQueueCount] = useState<number | null>(null);
+  const [syncingQueue, setSyncingQueue] = useState(false);
+  const [syncQueueResult, setSyncQueueResult] = useState<string | null>(null);
+  const [clearQueueConfirm, setClearQueueConfirm] = useState(false);
+  const [clearingQueue, setClearingQueue] = useState(false);
+
+  async function clearImageCache() {
+    setCacheClearing(true);
+    try {
+      if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: "clear-image-cache" });
+      }
+      // Also clear via Cache API directly in case SW isn't active
+      if (typeof caches !== "undefined") {
+        await caches.delete("ozone-card-images-v1");
+      }
+      setCacheCleared(true);
+      setTimeout(() => setCacheCleared(false), 3000);
+    } finally {
+      setCacheClearing(false);
+    }
+  }
+
   // ── Password reset ────────────────────────────────────────────────────────
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+
+  useEffect(() => {
+    getPendingCount().then(setPendingQueueCount).catch(() => setPendingQueueCount(0));
+  }, []);
+
+  async function syncQueue() {
+    setSyncingQueue(true);
+    setSyncQueueResult(null);
+    try {
+      const { synced, failed } = await replayPendingActions();
+      const count = await getPendingCount().catch(() => 0);
+      setPendingQueueCount(count);
+      if (synced > 0 && failed === 0) {
+        setSyncQueueResult(`Synced ${synced} transaction${synced !== 1 ? "s" : ""}`);
+      } else if (failed > 0) {
+        setSyncQueueResult(`${failed} failed, ${synced} synced`);
+      } else {
+        setSyncQueueResult("Nothing to sync");
+      }
+      setTimeout(() => setSyncQueueResult(null), 4000);
+    } finally {
+      setSyncingQueue(false);
+    }
+  }
+
+  async function clearQueue() {
+    setClearingQueue(true);
+    try {
+      await clearQueueAll();
+      setPendingQueueCount(0);
+      setClearQueueConfirm(false);
+    } finally {
+      setClearingQueue(false);
+    }
+  }
 
   // ── Save helpers ──────────────────────────────────────────────────────────
 
@@ -596,6 +661,81 @@ export default function SettingsClient({
             <Download size={13} />
             {exportingTx ? "Exporting…" : "Download CSV"}
           </button>
+        </SettingRow>
+      </Section>
+
+      {/* ── STORAGE ──────────────────────────────────────────────────────── */}
+      <Section icon={HardDrive} title="Storage">
+        <SettingRow label="Card Image Cache" description="Cached images load instantly at shows with poor cell service">
+          <button
+            onClick={clearImageCache}
+            disabled={cacheClearing || cacheCleared}
+            className="btn-outline text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {cacheCleared ? (
+              <>
+                <CheckCircle2 size={13} />
+                Cleared
+              </>
+            ) : cacheClearing ? (
+              "Clearing…"
+            ) : (
+              "Clear Cache"
+            )}
+          </button>
+        </SettingRow>
+      </Section>
+
+      {/* ── PENDING SYNC ─────────────────────────────────────────────────── */}
+      <Section icon={HardDrive} title="Pending Sync">
+        <SettingRow
+          label="Offline Queue"
+          description={
+            pendingQueueCount === null ? "Loading…"
+            : pendingQueueCount === 0 ? "No pending transactions"
+            : `${pendingQueueCount} transaction${pendingQueueCount !== 1 ? "s" : ""} waiting to sync`
+          }
+        >
+          <div className="flex items-center gap-2">
+            {syncQueueResult && (
+              <span className="text-xs text-emerald-400">{syncQueueResult}</span>
+            )}
+            <button
+              onClick={syncQueue}
+              disabled={syncingQueue || pendingQueueCount === 0}
+              className="btn-outline text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {syncingQueue ? "Syncing…" : "Sync Now"}
+            </button>
+          </div>
+        </SettingRow>
+        <SettingRow label="Clear Queue" description="Permanently discard all pending transactions — use only if you no longer need this data">
+          {clearQueueConfirm ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-red-400">Are you sure?</span>
+              <button
+                onClick={clearQueue}
+                disabled={clearingQueue}
+                className="text-xs px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+              >
+                {clearingQueue ? "Clearing…" : "Confirm"}
+              </button>
+              <button
+                onClick={() => setClearQueueConfirm(false)}
+                className="text-xs px-2 py-1 rounded-lg border opacity-50 hover:opacity-80"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setClearQueueConfirm(true)}
+              disabled={pendingQueueCount === 0}
+              className="btn-outline text-xs px-3 py-1.5 disabled:opacity-50"
+            >
+              Clear Queue
+            </button>
+          )}
         </SettingRow>
       </Section>
 
