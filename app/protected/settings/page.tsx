@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { hasPinConfigured } from "@/app/protected/guest/actions";
-import { loadSettings } from "./actions";
+import { loadSettings, loadWorkspaceData, getSavedLocations } from "./actions";
 import SettingsClient from "./SettingsClient";
 
 async function SettingsLoader() {
@@ -10,12 +9,13 @@ async function SettingsLoader() {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return <div className="p-8 text-center opacity-40">Not signed in.</div>;
 
-  const [settings, pinConfigured] = await Promise.all([
+  const [settings, workspaceData, pinConfigured, savedLocations] = await Promise.all([
     loadSettings(),
+    loadWorkspaceData(),
     hasPinConfigured().catch(() => false),
+    getSavedLocations().catch(() => []),
   ]);
 
-  // Check which API keys are configured (server-side only — never expose keys)
   const apiStatus = {
     ebay: !!(process.env.EBAY_APP_ID && process.env.EBAY_CERT_ID),
     justtcg: !!process.env.JUSTTCG_API_KEY,
@@ -26,8 +26,10 @@ async function SettingsLoader() {
     <SettingsClient
       email={auth.user.email ?? ""}
       settings={settings}
+      workspaceData={workspaceData}
       pinConfigured={pinConfigured}
       apiStatus={apiStatus}
+      savedLocations={savedLocations}
     />
   );
 }

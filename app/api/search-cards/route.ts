@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchBaseNames, nameVariants, isJapaneseName } from "@/lib/cardNameUtils";
 import { createClient } from "@/lib/supabase/server";
+import { scoreLocalCard, parseTerms } from "@/lib/cardSearchScoring";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
 const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
@@ -16,42 +17,6 @@ type SearchResult = {
   market: null;
   cardId: string;
 };
-
-// ── Scoring ───────────────────────────────────────────────────────────────────
-
-/**
- * Score a local DB card against the parsed search terms + full query string.
- * Higher score = better match.
- */
-function scoreLocalCard(
-  c: { name: string; set_name: string | null; set_id: string; card_number: string | null },
-  terms: string[],
-  fullQuery: string
-): number {
-  const name = c.name.toLowerCase();
-  const setName = (c.set_name ?? c.set_id ?? "").toLowerCase();
-  const num = (c.card_number ?? "").toLowerCase();
-  let score = 0;
-
-  // Full name exactly equals the full query (e.g. "Charizard ex")
-  if (name === fullQuery) score += 100;
-  // Name starts with the full query
-  if (name.startsWith(fullQuery)) score += 50;
-  // Name starts with the first term
-  if (terms.length > 0 && name.startsWith(terms[0])) score += 20;
-
-  for (const term of terms) {
-    const numClean = term.replace(/^0+/, "");
-    if (name === term) score += 30;
-    if (name.startsWith(term)) score += 10;
-    if (name.includes(term)) score += 5;
-    if (setName.includes(term)) score += 3;
-    if (numClean && num === numClean) score += 25;
-    else if (numClean && /^\d/.test(numClean) && num.startsWith(numClean)) score += 12;
-  }
-
-  return score;
-}
 
 // ── Local DB search ───────────────────────────────────────────────────────────
 
@@ -70,13 +35,7 @@ async function searchLocalDB(
 ): Promise<SearchResult[]> {
   try {
     const supabase = await createClient();
-    const terms = rawQuery
-      .toLowerCase()
-      .replace(/[',\-.]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .split(" ")
-      .filter((t) => t.length > 0);
+    const terms = parseTerms(rawQuery);
 
     if (!terms.length) return [];
 

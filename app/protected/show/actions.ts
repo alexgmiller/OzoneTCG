@@ -49,6 +49,10 @@
  *
  *   -- Batch grouping (groups batch buys together in the feed):
  *   ALTER TABLE show_scans ADD COLUMN IF NOT EXISTS batch_id uuid;
+ *
+ *   -- Offline dedup (20240423_client_id_dedup.sql):
+ *   ALTER TABLE show_scans ADD COLUMN IF NOT EXISTS client_id uuid;
+ *   CREATE UNIQUE INDEX IF NOT EXISTS show_scans_client_id_unique ON show_scans (client_id) WHERE client_id IS NOT NULL;
  */
 
 import { createClient } from "@/lib/supabase/server";
@@ -62,6 +66,7 @@ export type ShowSession = {
   workspace_id: string;
   name: string;
   date: string;
+  venue_address: string | null;
   starting_cash: number | null;
   ending_cash: number | null;
   actual_cash: number | null;
@@ -113,6 +118,7 @@ export async function createShowSession(data: {
   name: string;
   date: string;
   starting_cash: number | null;
+  venue_address?: string | null;
 }): Promise<string> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
@@ -124,6 +130,7 @@ export async function createShowSession(data: {
       name: data.name.trim(),
       date: data.date,
       starting_cash: data.starting_cash,
+      venue_address: data.venue_address?.trim() || null,
       status: "active",
     })
     .select("id")
@@ -134,6 +141,20 @@ export async function createShowSession(data: {
   revalidatePath("/protected/shows");
   revalidatePath("/protected/dashboard");
   return row.id as string;
+}
+
+export async function updateShowVenue(id: string, venueAddress: string): Promise<void> {
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+  const { error } = await supabase
+    .from("show_sessions")
+    .update({ venue_address: venueAddress.trim() || null })
+    .eq("id", id)
+    .eq("workspace_id", workspaceId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/protected/show");
+  revalidatePath("/protected/shows");
+  revalidatePath("/protected/expenses");
 }
 
 export async function deleteShowSession(
@@ -332,11 +353,22 @@ export async function recordShowBuy(input: {
   buy_percentage: number;
   notes: string | null;
   batch_id?: string | null;
+  client_id?: string | null;
 }): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
+
+  // Idempotency check: if this client_id was already committed, return the existing scan id
+  if (input.client_id) {
+    const { data: existing } = await supabase
+      .from("show_scans")
+      .select("id")
+      .eq("client_id", input.client_id)
+      .maybeSingle();
+    if (existing) return { scanId: existing.id };
+  }
 
   const now = new Date().toISOString();
 
@@ -378,10 +410,14 @@ export async function recordShowBuy(input: {
   let { data: scan, error: scanErr } = await supabase.from("show_scans").insert({
     ...scanBase,
     batch_id: input.batch_id ?? null,
+    client_id: input.client_id ?? null,
   }).select("id").single();
   if (scanErr?.code === "42703") {
     // batch_id column not yet migrated — insert without it
-    ({ data: scan, error: scanErr } = await supabase.from("show_scans").insert(scanBase).select("id").single());
+    ({ data: scan, error: scanErr } = await supabase.from("show_scans").insert({
+      ...scanBase,
+      client_id: input.client_id ?? null,
+    }).select("id").single());
   }
   if (scanErr) throw new Error(scanErr.message);
 
@@ -423,11 +459,21 @@ export async function recordShowSell(input: {
   item_id: string;
   item_name: string;
   sell_price: number;
+  client_id?: string | null;
 }): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
+
+  if (input.client_id) {
+    const { data: existing } = await supabase
+      .from("show_scans")
+      .select("id")
+      .eq("client_id", input.client_id)
+      .maybeSingle();
+    if (existing) return { scanId: existing.id };
+  }
 
   const now = new Date().toISOString();
   const saleId = crypto.randomUUID();
@@ -456,6 +502,7 @@ export async function recordShowSell(input: {
     action: "sold",
     item_id: input.item_id,
     scanned_at: now,
+    client_id: input.client_id ?? null,
   }).select("id").single();
   if (scanErr) throw new Error(scanErr.message);
 
@@ -480,11 +527,22 @@ export async function recordShowTrade(input: {
   // Positive = we received cash; negative = we paid cash
   cashDifference: number;
   notes: string | null;
+  client_id?: string | null;
 }): Promise<{ scanId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
+
+  if (input.client_id) {
+    const { data: existing } = await supabase
+      .from("show_scans")
+      .select("id")
+      .eq("client_id", input.client_id)
+      .maybeSingle();
+    if (existing) return { scanId: existing.id };
+  }
+
   const now = new Date().toISOString();
 
   // 1. Mark going-out items as sold (traded out)
@@ -550,6 +608,7 @@ export async function recordShowTrade(input: {
     action: "trade",
     notes: fullNotes,
     scanned_at: now,
+    client_id: input.client_id ?? null,
   }).select("id").single();
   if (tradeScanErr) throw new Error(tradeScanErr.message);
 
@@ -565,19 +624,56 @@ export async function recordShowTrade(input: {
   return { scanId: tradeScan.id as string };
 }
 
+// Maps show modal category values to the unified ExpenseCategory taxonomy
+const SHOW_CATEGORY_MAP: Record<string, string> = {
+  table: "booth_fee",
+  travel: "other",
+  hotel: "lodging",
+  food: "meals",
+  supplies: "supplies",
+  booth_fee: "booth_fee",
+  lodging: "lodging",
+  meals: "meals",
+  shipping: "shipping",
+  grading_fees: "grading_fees",
+  software: "software",
+  other: "other",
+};
+
+const MEAL_DEDUCTIBLE_PCT = 50;
+
 export async function addShowExpense(input: {
   show_session_id: string;
   description: string;
   cost: number;
   category: string;
   paid_by: "alex" | "mila";
-}): Promise<{ scanId: string }> {
+  client_id?: string | null;
+  vendor_name?: string | null;
+  payment_method?: string | null;
+  mileage_miles?: number | null;
+  mileage_rate?: number | null;
+  expense_date?: string | null;
+  deductible_percentage?: number | null;
+}): Promise<{ scanId: string; expenseId: string }> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
+
+  if (input.client_id) {
+    const { data: existing } = await supabase
+      .from("show_scans")
+      .select("id")
+      .eq("client_id", input.client_id)
+      .maybeSingle();
+    if (existing) return { scanId: existing.id, expenseId: "" };
+  }
+
   const now = new Date().toISOString();
 
-  const desc = `[Show] ${input.category}: ${input.description}`;
+  const mappedCategory = SHOW_CATEGORY_MAP[input.category] ?? "other";
+  const deductiblePct = input.deductible_percentage ?? (mappedCategory === "meals" ? MEAL_DEDUCTIBLE_PCT : 100);
+  const desc = input.description;
 
   // 1. Add to expenses table
   const { data: expense, error: expErr } = await supabase.from("expenses").insert({
@@ -585,6 +681,13 @@ export async function addShowExpense(input: {
     paid_by: input.paid_by,
     description: desc,
     cost: input.cost,
+    category: mappedCategory,
+    deductible_percentage: deductiblePct,
+    expense_date: input.expense_date ?? new Date().toISOString().slice(0, 10),
+    vendor_name: input.vendor_name ?? null,
+    payment_method: input.payment_method ?? null,
+    mileage_miles: input.mileage_miles ?? null,
+    mileage_rate: input.mileage_rate ?? null,
     updated_by: auth.user?.id ?? null,
     show_session_id: input.show_session_id,
   }).select("id").single();
@@ -598,6 +701,7 @@ export async function addShowExpense(input: {
     action: "expense",
     item_id: expense.id,
     scanned_at: now,
+    client_id: input.client_id ?? null,
   }).select("id").single();
   if (scanErr) throw new Error(scanErr.message);
 
@@ -607,7 +711,7 @@ export async function addShowExpense(input: {
   });
 
   revalidatePath("/protected/expenses");
-  return { scanId: scan.id };
+  return { scanId: scan.id, expenseId: expense.id as string };
 }
 
 // ── Inventory search / load ───────────────────────────────────────────────────

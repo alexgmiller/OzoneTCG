@@ -70,7 +70,7 @@ export default function PhotosClient({ initialLogs }: { initialLogs: DealLog[] }
 
   return (
     // pb-20 on mobile clears the fixed bottom nav (h-14 = 56px)
-    <div className="max-w-2xl mx-auto p-4 pb-20 md:pb-6">
+    <div className="w-full max-w-2xl mx-auto p-4 pb-20 md:pb-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>

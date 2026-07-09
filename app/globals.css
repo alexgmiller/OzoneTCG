@@ -623,6 +623,11 @@ button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([dat
   border-color: var(--accent-primary) !important;
   box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
 }
+.modal-panel input.field-error,
+.modal-panel textarea.field-error {
+  border-color: rgb(244 63 94 / 0.65) !important;
+  box-shadow: 0 0 0 3px rgba(244,63,94,0.09) !important;
+}
 .modal-panel select {
   appearance: none;
   cursor: pointer;

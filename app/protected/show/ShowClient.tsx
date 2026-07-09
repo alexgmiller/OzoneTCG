@@ -3,11 +3,24 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { ScanLine, ShoppingBag, DollarSign, ArrowLeftRight, Handshake, Camera, X as XIcon, ChevronDown } from "lucide-react";
+import { ScanLine, ShoppingBag, DollarSign, ArrowLeftRight, Handshake, Camera, X as XIcon, ChevronDown, CheckCircle2, CloudOff, RefreshCw } from "lucide-react";
 import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
 import CertLookupWidget, { type CertWidgetResult } from "@/components/CertLookupWidget";
 import CardImageScanner, { type CardImageScanResult } from "@/components/CardImageScanner";
 import { preloadOcrWorker } from "@/lib/ocrCardReader";
+import { initCatalog } from "@/lib/clientCardCatalog";
+import { useShowHotkeys } from "@/lib/useShowHotkeys";
+import { getPendingCount, getPendingActions, clearAll, type PendingAction } from "@/lib/offlineQueue";
+import { startAutoSync } from "@/lib/offlineSync";
+import {
+  offlineRecordShowBuy,
+  offlineRecordShowSell,
+  offlineRecordShowTrade,
+  offlineAddShowExpense,
+  createExecutor,
+} from "@/lib/offlineAwareActions";
+import { getUpcomingShowsForPicker } from "../shows-calendar/actions";
+import type { CardShow } from "../shows-calendar/actions";
 import {
   createShowSession,
   getShowSession,
@@ -26,6 +39,11 @@ import {
   type InventorySearchResult,
 } from "./actions";
 import { uploadDealPhoto } from "../photos/actions";
+import { ShowHeader } from "@/components/show/ShowHeader";
+import { BottomTabBar } from "@/components/show/BottomTabBar";
+import { InventoryCardGrid } from "@/components/show/InventoryCardGrid";
+import { DealFlow } from "@/components/show/deal/DealFlow";
+import { ExpenseForm } from "@/components/expenses/ExpenseForm";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -43,14 +61,7 @@ const CONDITIONS_LIST = ["Near Mint", "Lightly Played", "Moderately Played", "He
 const COND_ABBREV: Record<string, string> = { "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "DMG" };
 const PRODUCT_TYPES_LIST = ["Booster Box", "ETB", "Booster Bundle", "Tin", "Collection Box", "Booster Pack", "Case", "Other"] as const;
 
-const EXPENSE_CATEGORIES = [
-  { value: "table", label: "Table fee" },
-  { value: "travel", label: "Travel / gas" },
-  { value: "hotel", label: "Hotel" },
-  { value: "food", label: "Food" },
-  { value: "supplies", label: "Supplies" },
-  { value: "other", label: "Other" },
-];
+
 const STORAGE_KEY = "ozone_active_show_session_id";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,6 +100,9 @@ type FeedEntry = {
   amount: number | null;
   photoUrl?: string | null;
   batchId?: string | null;
+  syncing?: boolean;
+  offlineQueued?: boolean;
+  clientId?: string;
 };
 
 function scanToFeed(s: ShowScanEntry): FeedEntry {
@@ -130,6 +144,26 @@ function scanToFeed(s: ShowScanEntry): FeedEntry {
   }
 
   return { id: s.id, kind, time: s.scanned_at, label, sub, amount, photoUrl: s.deal_photo_url, batchId: s.batch_id };
+}
+
+// ── Feed design tokens ────────────────────────────────────────────────────────
+
+const FEED_TOKENS: Record<FeedEntry["kind"], { color: string; bg: string; border: string; dot: string; label: string }> = {
+  buy:     { color: "#fb7185", bg: "rgba(244,63,94,0.10)",   border: "rgba(244,63,94,0.28)",   dot: "#f43f5e", label: "BUY"     },
+  sell:    { color: "#34d399", bg: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.28)",  dot: "#10b981", label: "SELL"    },
+  trade:   { color: "#c4b5fd", bg: "rgba(139,92,246,0.12)",  border: "rgba(139,92,246,0.32)",  dot: "#8b5cf6", label: "TRADE"   },
+  pass:    { color: "#94a3b8", bg: "rgba(148,163,184,0.08)", border: "rgba(148,163,184,0.22)", dot: "#64748b", label: "PASS"    },
+  expense: { color: "#fbbf24", bg: "rgba(245,158,11,0.10)",  border: "rgba(245,158,11,0.28)",  dot: "#f59e0b", label: "EXP"     },
+};
+
+function FeedEntryIcon({ kind, size = 10, color = "#fff" }: { kind: FeedEntry["kind"]; size?: number; color?: string }) {
+  const P: React.SVGProps<SVGSVGElement> = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round" };
+  if (kind === "buy")     return <svg {...P}><path d="M12 5v14M5 12l7 7 7-7"/></svg>;
+  if (kind === "sell")    return <svg {...P}><path d="M12 19V5M5 12l7-7 7 7"/></svg>;
+  if (kind === "trade")   return <svg {...P}><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>;
+  if (kind === "pass")    return <svg {...P}><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></svg>;
+  if (kind === "expense") return <svg {...P}><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M8 15h3"/></svg>;
+  return null;
 }
 
 // ── Inventory search scoring ──────────────────────────────────────────────────
@@ -296,6 +330,12 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   const [startName, setStartName] = useState("");
   const [startDate, setStartDate] = useState(todayDate);
   const [startCash, setStartCash] = useState("");
+  const [startVenue, setStartVenue] = useState("");
+  // Upcoming-shows picker
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerShows, setPickerShows] = useState<Pick<CardShow, "id" | "name" | "start_date" | "end_date" | "venue_name" | "venue_address" | "city" | "state">[]>([]);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [pickerLoading, setPickerLoading] = useState(false);
 
   // ── Scan tab ──────────────────────────────────────────────────────────────
 
@@ -401,19 +441,23 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   // ── Expense modal ─────────────────────────────────────────────────────────
 
   const [expenseOpen, setExpenseOpen] = useState(false);
-  const [expenseDesc, setExpenseDesc] = useState("");
-  const [expenseCost, setExpenseCost] = useState("");
-  const [expenseCategory, setExpenseCategory] = useState("other");
-  const [expensePaidBy, setExpensePaidBy] = useState<"alex" | "mila">("alex");
 
   // ── Cash count modal ──────────────────────────────────────────────────────
 
   const [cashCountOpen, setCashCountOpen] = useState(false);
   const [cashCountInput, setCashCountInput] = useState("");
 
+  // ── Offline queue ─────────────────────────────────────────────────────────
+
+  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
+  const [isOffline, setIsOffline] = useState(false);
+
   // ── Stats bar ─────────────────────────────────────────────────────────────
 
   const [statsExpanded, setStatsExpanded] = useState(false);
+  const [feedDensity, setFeedDensityRaw] = useState<"rail" | "tape">("rail");
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
   const [tradeShowMore, setTradeShowMore] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -425,8 +469,31 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   // Which tradeComingIn card id to fill (for trade-getting)
   const [scannerTradeCardId, setScannerTradeCardId] = useState<string | null>(null);
   const [scanToast, setScanToast] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   useEffect(() => { setIsMounted(true); }, []);
+  useEffect(() => {
+    const stored = localStorage.getItem("ozone_feed_density");
+    if (stored === "rail" || stored === "tape") setFeedDensityRaw(stored);
+  }, []);
+
+  // Track online/offline state for the ShowHeader indicator.
+  useEffect(() => {
+    setIsOffline(!navigator.onLine);
+    const goOnline  = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener("online",  goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online",  goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  function setFeedDensity(d: "rail" | "tape") {
+    localStorage.setItem("ozone_feed_density", d);
+    setFeedDensityRaw(d);
+  }
 
   // ── Deal photo capture ────────────────────────────────────────────────────
 
@@ -490,11 +557,55 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     })();
   }, [initialActiveSession]);
 
-  // Preload Tesseract OCR worker once the session is active
+  // Preload Tesseract OCR worker + card catalog once the session is active
   useEffect(() => {
     if (phase !== "active") return;
     preloadOcrWorker();
+    void initCatalog();
+
+    // Offline sync: replay queued actions and poll pending count
+    const executor = createExecutor({
+      recordShowBuy,
+      recordShowSell,
+      recordShowTrade,
+      addShowExpense,
+    });
+
+    const stopSync = startAutoSync(executor, {
+      onSynced: (clientId) => {
+        setFeed((prev) =>
+          prev.map((e) =>
+            e.clientId === clientId ? { ...e, offlineQueued: false, syncing: false } : e
+          )
+        );
+        setPendingCount((n) => Math.max(0, n - 1));
+      },
+      onQueueEmpty: () => setPendingCount(0),
+    });
+
+    // Poll pending count every 10 seconds
+    void getPendingCount().then(setPendingCount);
+    const poll = setInterval(() => void getPendingCount().then(setPendingCount), 10_000);
+
+    return () => {
+      stopSync();
+      clearInterval(poll);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
+
+  // Hotkeys: 1–5 switches tabs, Esc closes top modal
+  useShowHotkeys({
+    enabled: phase === "active" && !busy,
+    onTabChange: (t) => setTab(t as typeof tab),
+    onEscape: () => {
+      if (expenseOpen)   { setExpenseOpen(false);   return; }
+      if (cashCountOpen) { setCashCountOpen(false);  return; }
+      if (endOpen)       { setEndOpen(false);        return; }
+      if (lightboxUrl)   { setLightboxUrl(null);     return; }
+      if (photoPrompt)   { dismissPhotoPrompt();     return; }
+    },
+  });
 
   // Dismiss the card scanner whenever the user switches tabs
   useEffect(() => {
@@ -502,11 +613,29 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     setScannerTradeCardId(null);
   }, [tab]);
 
-  // Load trade/sell/deal inventory once when any of those tabs is opened
+  // Load trade/sell/deal inventory once when any of those tabs is opened,
+  // then warm the service worker image cache in the background.
   useEffect(() => {
     if ((tab !== "trade" && tab !== "sell" && tab !== "deal") || tradeInventoryLoaded || phase !== "active") return;
     loadInventoryItems()
-      .then((items) => { setTradeInventory(items); setTradeInventoryLoaded(true); })
+      .then((items) => {
+        setTradeInventory(items);
+        setTradeInventoryLoaded(true);
+        // Precache card images via the service worker so they load offline.
+        // Use .ready instead of .controller — controller is null on first-ever
+        // page load while the SW is still installing/activating.
+        if ("serviceWorker" in navigator) {
+          const urls = items.map((i) => i.image_url).filter((u): u is string => u != null);
+          if (urls.length > 0) {
+            navigator.serviceWorker.ready.then((reg) => {
+              reg.active?.postMessage({ type: "precache-images", urls });
+              if (process.env.NODE_ENV === "development") {
+                console.debug(`[sw] precache requested for ${urls.length} images`);
+              }
+            });
+          }
+        }
+      })
       .catch(() => { /* silent */ });
   }, [tab, tradeInventoryLoaded, phase]);
 
@@ -519,6 +648,11 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   function err(msg: string) {
     setError(msg);
     setTimeout(() => setError(null), 4000);
+  }
+
+  function toast(msg: string) {
+    setSuccessToast(msg);
+    setTimeout(() => setSuccessToast(null), 2500);
   }
 
   // ── Card image scanner handler ────────────────────────────────────────────
@@ -682,133 +816,148 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     setDealFulfillExpanded(false);
   }
 
+  function handleDealCashPctChange(p: number) {
+    setDealCashPct(p);
+    setDealCards((prev) => prev.map((c) => ({
+      ...c,
+      buyPrice: c.marketPrice != null ? parseFloat((c.marketPrice * p / 100).toFixed(2)) : c.buyPrice,
+    })));
+  }
+
+  function handleDealAllCash() {
+    setDealCustomerChoice("all-cash");
+    setDealCards((prev) => prev.map((c) => ({ ...c, disposition: "cash" as const })));
+  }
+
+  function handleDealAllTrade() {
+    setDealCustomerChoice("all-trade");
+    setDealCards((prev) => prev.map((c) => ({ ...c, disposition: "trade" as const })));
+  }
+
+  function handleDealSplit() {
+    setDealCustomerChoice("split");
+  }
+
   async function handleCompleteDeal() {
     if (!sessionId) return;
+    const cashCards  = dealCards.filter((c) => c.disposition === "cash");
+    const tradeCards = dealCards.filter((c) => c.disposition === "trade");
+    const batchId    = dealCards.length > 1 ? crypto.randomUUID() : null;
+    const now        = new Date().toISOString();
+
+    // Pre-compute values for optimistic summary
+    const cashOut    = cashCards.reduce((s, c) => s + (c.buyPrice ?? 0), 0);
+    const tradeValue = tradeCards.reduce((s, c) => s + (c.buyPrice ?? (c.marketPrice ? c.marketPrice * dealTradePct / 100 : 0)), 0);
+
+    // Optimistic: push all feed entries and advance step immediately
+    const cashTempIds: string[] = [];
+    const tradeTempId = `opt-${crypto.randomUUID()}`;
+    if (process.env.NODE_ENV === "development") performance.mark("deal-complete-tap");
+
+    for (const card of cashCards) {
+      if (!card.buyPrice) continue;
+      const pct    = card.marketPrice && card.marketPrice > 0 ? parseFloat(((card.buyPrice / card.marketPrice) * 100).toFixed(1)) : dealCashPct;
+      const tempId = `opt-${crypto.randomUUID()}`;
+      cashTempIds.push(tempId);
+      pushFeedEntry({ id: tempId, kind: "buy", time: now, label: card.name, sub: `${card.grade ? card.grade + " · " : ""}Deal · ${pct}%`, amount: -card.buyPrice, batchId: batchId ?? undefined, syncing: true });
+    }
+    if (tradeCards.length > 0) {
+      const label = tradeCards.map((c) => c.name).join(", ");
+      pushFeedEntry({ id: tradeTempId, kind: tradeCards.length > 0 && dealTradeSelections.length > 0 ? "trade" : "buy", time: now, label, sub: "Deal", amount: null, syncing: true });
+    }
+
+    setDealCompleteSummary({ scanId: "", cashOut, tradeValue });
+    setDealStep("complete");
+    toast("Deal complete");
+
     setBusy(true);
+    let lastScanId: string | null = null;
     try {
-      const cashCards = dealCards.filter((c) => c.disposition === "cash");
-      const tradeCards = dealCards.filter((c) => c.disposition === "trade");
-
-      let lastScanId: string | null = null;
-
-      // Record cash buys
-      const batchId = dealCards.length > 1 ? crypto.randomUUID() : null;
+      let cashTempIdx = 0;
       for (const card of cashCards) {
         if (!card.buyPrice) continue;
-        const pct = card.marketPrice && card.marketPrice > 0
-          ? parseFloat(((card.buyPrice / card.marketPrice) * 100).toFixed(1))
-          : dealCashPct;
+        const pct = card.marketPrice && card.marketPrice > 0 ? parseFloat(((card.buyPrice / card.marketPrice) * 100).toFixed(1)) : dealCashPct;
         const { scanId } = await recordShowBuy({
-          show_session_id: sessionId,
-          name: card.name,
-          category: card.grade ? "slab" : "single",
-          owner: "shared",
-          condition: card.condition,
-          grade: card.grade || null,
-          cost: card.buyPrice,
-          market: card.marketPrice,
-          set_name: card.set_name,
-          card_number: card.card_number,
-          image_url: card.image_url,
-          buy_percentage: pct,
-          notes: null,
-          batch_id: batchId,
+          show_session_id: sessionId, name: card.name, category: card.grade ? "slab" : "single",
+          owner: "shared", condition: card.condition, grade: card.grade || null,
+          cost: card.buyPrice, market: card.marketPrice, set_name: card.set_name,
+          card_number: card.card_number, image_url: card.image_url, buy_percentage: pct, notes: null, batch_id: batchId,
         });
         lastScanId = scanId;
-        pushFeedEntry({
-          id: scanId,
-          kind: "buy",
-          time: new Date().toISOString(),
-          label: card.name,
-          sub: `${card.grade ? card.grade + " · " : ""}Deal · ${pct}%`,
-          amount: -card.buyPrice,
-          batchId: batchId ?? undefined,
-        });
+        setFeed((prev) => prev.map((e) => e.id === cashTempIds[cashTempIdx] ? { ...e, id: scanId, syncing: false } : e));
+        cashTempIdx++;
       }
 
-      // Record as a trade if there are trade cards AND inventory items going out
       if (tradeCards.length > 0 && dealTradeSelections.length > 0) {
-        const goingOut = dealTradeSelections.map((s) => ({
-          itemId: s.item.id,
-          tradeValue: parseFloat(s.tradeValue) || (s.item.market ?? 0),
-          name: s.item.name,
-          cost: s.item.cost,
-        }));
-        const comingIn = tradeCards.map((c) => ({
-          name: c.name,
-          grade: c.grade.trim() || null,
-          marketPrice: c.marketPrice ?? 0,
-        }));
-        const tradeVal = tradeCards.reduce((s, c) => s + (c.buyPrice ?? (c.marketPrice ? c.marketPrice * dealTradePct / 100 : 0)), 0);
-        const inventoryVal = dealTradeSelections.reduce((s, g) => s + (parseFloat(g.tradeValue) || (g.item.market ?? 0)), 0);
-        const cashDiff = parseFloat((tradeVal - inventoryVal).toFixed(2));
-        const { scanId } = await recordShowTrade({
-          show_session_id: sessionId,
-          goingOut,
-          comingIn,
-          cashDifference: cashDiff,
-          notes: `Deal trade · ${tradeCards.length} card${tradeCards.length !== 1 ? "s" : ""} in`,
-        });
+        const goingOut   = dealTradeSelections.map((s) => ({ itemId: s.item.id, tradeValue: parseFloat(s.tradeValue) || (s.item.market ?? 0), name: s.item.name, cost: s.item.cost }));
+        const comingIn   = tradeCards.map((c) => ({ name: c.name, grade: c.grade.trim() || null, marketPrice: c.marketPrice ?? 0 }));
+        const tradeVal   = tradeCards.reduce((s, c) => s + (c.buyPrice ?? (c.marketPrice ? c.marketPrice * dealTradePct / 100 : 0)), 0);
+        const invVal     = dealTradeSelections.reduce((s, g) => s + (parseFloat(g.tradeValue) || (g.item.market ?? 0)), 0);
+        const cashDiff   = parseFloat((tradeVal - invVal).toFixed(2));
+        const { scanId } = await recordShowTrade({ show_session_id: sessionId, goingOut, comingIn, cashDifference: cashDiff, notes: `Deal trade · ${tradeCards.length} card${tradeCards.length !== 1 ? "s" : ""} in` });
         lastScanId = scanId;
-        const label = tradeCards.map((c) => c.name).join(", ");
-        pushFeedEntry({
-          id: scanId,
-          kind: "trade",
-          time: new Date().toISOString(),
-          label,
-          sub: `Deal trade`,
-          amount: cashDiff !== 0 ? cashDiff : null,
-        });
+        setFeed((prev) => prev.map((e) => e.id === tradeTempId ? { ...e, id: scanId, syncing: false } : e));
       } else if (tradeCards.length > 0) {
-        // Trade cards but no inventory going out — record as buys at trade %
         for (const card of tradeCards) {
           const tradePrice = card.buyPrice ?? (card.marketPrice ? parseFloat((card.marketPrice * dealTradePct / 100).toFixed(2)) : null);
           if (!tradePrice) continue;
-          const pct = card.marketPrice && card.marketPrice > 0
-            ? parseFloat(((tradePrice / card.marketPrice) * 100).toFixed(1))
-            : dealTradePct;
+          const pct = card.marketPrice && card.marketPrice > 0 ? parseFloat(((tradePrice / card.marketPrice) * 100).toFixed(1)) : dealTradePct;
           const { scanId } = await recordShowBuy({
-            show_session_id: sessionId,
-            name: card.name,
-            category: card.grade ? "slab" : "single",
-            owner: "shared",
-            condition: card.condition,
-            grade: card.grade || null,
-            cost: tradePrice,
-            market: card.marketPrice,
-            set_name: card.set_name,
-            card_number: card.card_number,
-            image_url: card.image_url,
-            buy_percentage: pct,
-            notes: "Deal trade-in",
-            batch_id: batchId,
+            show_session_id: sessionId, name: card.name, category: card.grade ? "slab" : "single",
+            owner: "shared", condition: card.condition, grade: card.grade || null,
+            cost: tradePrice, market: card.marketPrice, set_name: card.set_name,
+            card_number: card.card_number, image_url: card.image_url, buy_percentage: pct, notes: "Deal trade-in", batch_id: batchId,
           });
           lastScanId = scanId;
-          pushFeedEntry({
-            id: scanId,
-            kind: "buy",
-            time: new Date().toISOString(),
-            label: card.name,
-            sub: `${card.grade ? card.grade + " · " : ""}Trade-in · ${pct}%`,
-            amount: -tradePrice,
-            batchId: batchId ?? undefined,
-          });
+          setFeed((prev) => prev.map((e) => e.id === tradeTempId ? { ...e, id: scanId, syncing: false } : e));
         }
       }
 
       await refreshSession(sessionId);
-
-      const cashOut = cashCards.reduce((s, c) => s + (c.buyPrice ?? 0), 0);
-      const tradeValue = tradeCards.reduce((s, c) => s + (c.buyPrice ?? (c.marketPrice ? c.marketPrice * dealTradePct / 100 : 0)), 0);
-      setDealCompleteSummary({ scanId: lastScanId ?? "", cashOut, tradeValue });
-      setDealStep("complete");
-
-      if (lastScanId) triggerPhotoPrompt(lastScanId, "buy");
+      if (lastScanId) {
+        setDealCompleteSummary((prev) => prev ? { ...prev, scanId: lastScanId! } : null);
+        if (process.env.NODE_ENV === "development") {
+          performance.mark("deal-success-toast");
+          performance.measure("deal-complete", "deal-complete-tap", "deal-success-toast");
+          console.debug(`[perf] deal-complete: ${performance.getEntriesByName("deal-complete").at(-1)?.duration.toFixed(1)}ms`);
+        }
+        triggerPhotoPrompt(lastScanId, "buy");
+      }
     } catch (e) {
+      [...cashTempIds, tradeTempId].forEach((tid) => setFeed((prev) => prev.filter((fe) => fe.id !== tid)));
+      setDealStep("fulfill");
+      setDealCompleteSummary(null);
       err(e instanceof Error ? e.message : "Deal failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  // ── Upcoming shows picker ─────────────────────────────────────────────────
+
+  async function openShowPicker() {
+    setPickerOpen(true);
+    if (pickerShows.length === 0) {
+      setPickerLoading(true);
+      try {
+        const rows = await getUpcomingShowsForPicker();
+        setPickerShows(rows);
+      } finally {
+        setPickerLoading(false);
+      }
+    }
+  }
+
+  function selectUpcomingShow(
+    s: Pick<CardShow, "id" | "name" | "start_date" | "end_date" | "venue_name" | "venue_address" | "city" | "state">
+  ) {
+    setStartName(s.name);
+    setStartDate(s.start_date);
+    setStartVenue(
+      s.venue_address ?? [s.venue_name, s.city, s.state].filter(Boolean).join(", ")
+    );
+    setPickerOpen(false);
+    setPickerSearch("");
   }
 
   // ── Start show ────────────────────────────────────────────────────────────
@@ -821,6 +970,7 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         name: startName.trim(),
         date: startDate,
         starting_cash: startCash ? parseFloat(startCash) : null,
+        venue_address: startVenue.trim() || null,
       });
       localStorage.setItem(STORAGE_KEY, id);
       setSessionId(id);
@@ -851,42 +1001,41 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     if (!scanResult || !sessionId) return;
     const market = parseFloat(scanMarket) || null;
     if (!market) { err("Enter market price first"); return; }
-    const cost = parseFloat((market * pct / 100).toFixed(2));
+    const cost    = parseFloat((market * pct / 100).toFixed(2));
     const gradeStr = scanResult.gradeLabel
       ? `${scanResult.company} ${scanResult.gradeLabel} ${scanResult.grade}`
       : `${scanResult.company} ${scanResult.grade}`;
+
+    // Optimistic: push feed entry immediately
+    const clientId = crypto.randomUUID();
+    if (process.env.NODE_ENV === "development") performance.mark("deal-complete-tap");
+    pushFeedEntry({ id: clientId, clientId, kind: "buy", time: new Date().toISOString(), label: scanResult.name, sub: `${gradeStr} · ${pct}%`, amount: -cost, syncing: true });
+    toast(`Bought ${scanResult.name}`);
+    setScanResult(null); setScanMarket(""); setScanShowCustom(false); setScanCustomPct("");
+
     setBusy(true);
     try {
-      const { scanId } = await recordShowBuy({
-        show_session_id: sessionId,
-        name: scanResult.name,
-        category: "slab",
-        owner: scanOwner,
-        condition: "Near Mint",
-        grade: gradeStr,
-        cost,
-        market,
-        set_name: scanResult.setName,
-        card_number: scanResult.cardNumber,
-        image_url: null,
-        buy_percentage: pct,
-        notes: null,
-      });
-      pushFeedEntry({
-        id: scanId,
-        kind: "buy",
-        time: new Date().toISOString(),
-        label: scanResult.name,
-        sub: `${gradeStr} · ${pct}%`,
-        amount: -cost,
-      });
-      await refreshSession(sessionId);
-      setScanResult(null);
-      setScanMarket("");
-      setScanShowCustom(false);
-      setScanCustomPct("");
-      triggerPhotoPrompt(scanId, "buy");
+      const result = await offlineRecordShowBuy({
+        show_session_id: sessionId, name: scanResult.name,
+        category: "slab", owner: scanOwner, condition: "Near Mint", grade: gradeStr,
+        cost, market, set_name: scanResult.setName, card_number: scanResult.cardNumber,
+        image_url: null, buy_percentage: pct, notes: null, client_id: clientId,
+      }, recordShowBuy);
+      if (result.queued) {
+        setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, offlineQueued: true, syncing: false } : e));
+        setPendingCount((n) => n + 1);
+      } else {
+        setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, id: result.scanId, syncing: false } : e));
+        await refreshSession(sessionId);
+        if (process.env.NODE_ENV === "development") {
+          performance.mark("deal-success-toast");
+          performance.measure("scan-buy", "deal-complete-tap", "deal-success-toast");
+          console.debug(`[perf] scan-buy: ${performance.getEntriesByName("scan-buy").at(-1)?.duration.toFixed(1)}ms`);
+        }
+        triggerPhotoPrompt(result.scanId, "buy");
+      }
     } catch (e) {
+      setFeed((prev) => prev.filter((fe) => fe.id !== clientId));
       err(e instanceof Error ? e.message : "Buy failed");
     } finally {
       setBusy(false);
@@ -897,43 +1046,34 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     if (!scanResult || !sessionId) return;
     const cost = parseFloat(scanFlatAmount) || 0;
     if (!cost) { err("Enter flat dollar amount"); return; }
-    const market = parseFloat(scanMarket) || null;
-    const pct = market && market > 0 ? parseFloat((cost / market * 100).toFixed(1)) : 0;
+    const market   = parseFloat(scanMarket) || null;
+    const pct      = market && market > 0 ? parseFloat((cost / market * 100).toFixed(1)) : 0;
     const gradeStr = scanResult.gradeLabel
       ? `${scanResult.company} ${scanResult.gradeLabel} ${scanResult.grade}`
       : `${scanResult.company} ${scanResult.grade}`;
+
+    const clientId = crypto.randomUUID();
+    pushFeedEntry({ id: clientId, clientId, kind: "buy", time: new Date().toISOString(), label: scanResult.name, sub: `${gradeStr} · $${cost.toFixed(2)}`, amount: -cost, syncing: true });
+    toast(`Bought ${scanResult.name}`);
+    setScanResult(null); setScanMarket(""); setScanShowFlat(false); setScanFlatAmount("");
+
     setBusy(true);
     try {
-      const { scanId } = await recordShowBuy({
-        show_session_id: sessionId,
-        name: scanResult.name,
-        category: "slab",
-        owner: scanOwner,
-        condition: "Near Mint",
-        grade: gradeStr,
-        cost,
-        market,
-        set_name: scanResult.setName,
-        card_number: scanResult.cardNumber,
-        image_url: null,
-        buy_percentage: pct,
-        notes: null,
-      });
-      pushFeedEntry({
-        id: scanId,
-        kind: "buy",
-        time: new Date().toISOString(),
-        label: scanResult.name,
-        sub: `${gradeStr} · $${cost.toFixed(2)}`,
-        amount: -cost,
-      });
-      await refreshSession(sessionId);
-      setScanResult(null);
-      setScanMarket("");
-      setScanShowFlat(false);
-      setScanFlatAmount("");
-      triggerPhotoPrompt(scanId, "buy");
+      const result = await offlineRecordShowBuy({
+        show_session_id: sessionId, name: scanResult.name, category: "slab", owner: scanOwner,
+        condition: "Near Mint", grade: gradeStr, cost, market, set_name: scanResult.setName,
+        card_number: scanResult.cardNumber, image_url: null, buy_percentage: pct, notes: null, client_id: clientId,
+      }, recordShowBuy);
+      if (result.queued) {
+        setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, offlineQueued: true, syncing: false } : e));
+        setPendingCount((n) => n + 1);
+      } else {
+        setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, id: result.scanId, syncing: false } : e));
+        await refreshSession(sessionId);
+        triggerPhotoPrompt(result.scanId, "buy");
+      }
     } catch (e) {
+      setFeed((prev) => prev.filter((fe) => fe.id !== clientId));
       err(e instanceof Error ? e.message : "Buy failed");
     } finally {
       setBusy(false);
@@ -1109,44 +1249,74 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
 
   async function handleFinalizeBatch() {
     if (!sessionId || batchQueue.length === 0) return;
+    const batchId   = batchQueue.length > 1 ? crypto.randomUUID() : null;
+    const groupId   = batchQueue.length > 1 ? crypto.randomUUID() : null;
+    const now       = new Date().toISOString();
+    const clientIds = batchQueue.map(() => crypto.randomUUID());
+
+    // Optimistic: push all entries immediately
+    batchQueue.forEach((item, idx) => {
+      pushFeedEntry({ id: clientIds[idx], clientId: clientIds[idx], kind: "buy", time: now, label: item.name, sub: `${item.buy_pct}%`, amount: -item.cost, batchId, syncing: true });
+    });
+    toast(`Logged ${batchQueue.length} card${batchQueue.length > 1 ? "s" : ""}`);
+    if (process.env.NODE_ENV === "development") performance.mark("deal-complete-tap");
+
+    const snapshot = [...batchQueue];
+    setBatchQueue([]);
     setBusy(true);
     try {
       let lastScanId: string | null = null;
-      // Assign a shared batch_id when buying multiple cards at once
-      const batchId = batchQueue.length > 1 ? crypto.randomUUID() : null;
-      const now = new Date().toISOString();
-      for (const item of batchQueue) {
-        const { scanId } = await recordShowBuy({
-          show_session_id: sessionId,
-          name: item.name,
-          category: item.category,
-          owner: item.owner,
-          condition: item.condition,
-          grade: item.grade,
-          cost: item.cost,
-          market: item.market,
-          set_name: item.set_name,
-          card_number: item.card_number,
-          image_url: item.image_url,
-          buy_percentage: item.buy_pct,
-          notes: null,
-          batch_id: batchId,
-        });
-        lastScanId = scanId;
-        pushFeedEntry({
-          id: scanId,
-          kind: "buy",
-          time: now,
-          label: item.name,
-          sub: `${item.buy_pct}%`,
-          amount: -item.cost,
-          batchId,
-        });
+      let queueMode = false;
+      let newQueued = 0;
+      for (let i = 0; i < snapshot.length; i++) {
+        const item = snapshot[i];
+        const clientId = clientIds[i];
+        const result = await offlineRecordShowBuy({
+          show_session_id: sessionId, name: item.name, category: item.category, owner: item.owner,
+          condition: item.condition, grade: item.grade, cost: item.cost, market: item.market,
+          set_name: item.set_name, card_number: item.card_number, image_url: item.image_url,
+          buy_percentage: item.buy_pct, notes: null, batch_id: batchId, client_id: clientId,
+        }, recordShowBuy, groupId, i);
+        if (result.queued) {
+          queueMode = true;
+          newQueued++;
+          setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, offlineQueued: true, syncing: false } : e));
+        } else {
+          lastScanId = result.scanId;
+          setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, id: result.scanId, syncing: false } : e));
+        }
+        // If we hit a network error, queue remaining items directly
+        if (queueMode && i + 1 < snapshot.length) {
+          for (let j = i + 1; j < snapshot.length; j++) {
+            const rem = snapshot[j];
+            const remClientId = clientIds[j];
+            const remResult = await offlineRecordShowBuy({
+              show_session_id: sessionId, name: rem.name, category: rem.category, owner: rem.owner,
+              condition: rem.condition, grade: rem.grade, cost: rem.cost, market: rem.market,
+              set_name: rem.set_name, card_number: rem.card_number, image_url: rem.image_url,
+              buy_percentage: rem.buy_pct, notes: null, batch_id: batchId, client_id: remClientId,
+            }, recordShowBuy, groupId, j);
+            if (remResult.queued) {
+              newQueued++;
+              setFeed((prev) => prev.map((e) => e.id === remClientId ? { ...e, offlineQueued: true, syncing: false } : e));
+            }
+          }
+          break;
+        }
       }
-      await refreshSession(sessionId);
-      setBatchQueue([]);
-      if (lastScanId) triggerPhotoPrompt(lastScanId, "buy");
+      if (newQueued > 0) setPendingCount((n) => n + newQueued);
+      if (!queueMode) {
+        await refreshSession(sessionId);
+        if (process.env.NODE_ENV === "development") {
+          performance.mark("deal-success-toast");
+          performance.measure("batch-buy", "deal-complete-tap", "deal-success-toast");
+          console.debug(`[perf] batch-buy: ${performance.getEntriesByName("batch-buy").at(-1)?.duration.toFixed(1)}ms`);
+        }
+        if (lastScanId) triggerPhotoPrompt(lastScanId, "buy");
+      }
     } catch (e) {
+      clientIds.forEach((cid) => setFeed((prev) => prev.filter((fe) => fe.id !== cid)));
+      setBatchQueue(snapshot);
       err(e instanceof Error ? e.message : "Batch buy failed");
     } finally {
       setBusy(false);
@@ -1219,38 +1389,48 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
 
   async function handleConfirmSell() {
     if (!sessionId || sellSelected.size === 0) return;
-    const items = Array.from(sellSelected.values());
-    const priceList = items.map((item) => ({
-      item,
-      price: parseFloat(sellPrices[item.id] || "0"),
-    }));
-    if (priceList.some(({ price }) => !price || price <= 0)) {
-      err("All items need a sell price"); return;
-    }
+    const items     = Array.from(sellSelected.values());
+    const priceList = items.map((item) => ({ item, price: parseFloat(sellPrices[item.id] || "0") }));
+    if (priceList.some(({ price }) => !price || price <= 0)) { err("All items need a sell price"); return; }
+
+    const now       = new Date().toISOString();
+    const clientIds = items.map(() => crypto.randomUUID());
+    const soldIds   = new Set(items.map((i) => i.id));
+
+    // Optimistic
+    priceList.forEach(({ item, price }, idx) => {
+      pushFeedEntry({ id: clientIds[idx], clientId: clientIds[idx], kind: "sell", time: now, label: item.name, sub: item.grade ?? undefined, amount: price, syncing: true });
+    });
+    toast(`Sold ${items.length} item${items.length > 1 ? "s" : ""}`);
+    setTradeInventory((prev) => prev.filter((i) => !soldIds.has(i.id)));
+    setSellSelected(new Map()); setSellPrices({}); setSellPriceLocked(new Set()); setSellTotalInput("");
+
     setBusy(true);
     try {
-      const now = new Date().toISOString();
-      const soldIds = new Set<string>();
       let lastScanId: string | null = null;
-      for (const { item, price } of priceList) {
-        const { scanId } = await recordShowSell({
-          show_session_id: sessionId,
-          item_id: item.id,
-          item_name: item.name,
-          sell_price: price,
-        });
-        pushFeedEntry({ id: scanId, kind: "sell", time: now, label: item.name, sub: item.grade ?? undefined, amount: price });
-        soldIds.add(item.id);
-        lastScanId = scanId;
+      let newQueued = 0;
+      for (let i = 0; i < priceList.length; i++) {
+        const { item, price } = priceList[i];
+        const clientId = clientIds[i];
+        const result = await offlineRecordShowSell({
+          show_session_id: sessionId, item_id: item.id, item_name: item.name, sell_price: price, client_id: clientId,
+        }, recordShowSell);
+        if (result.queued) {
+          newQueued++;
+          setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, offlineQueued: true, syncing: false } : e));
+        } else {
+          lastScanId = result.scanId;
+          setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, id: result.scanId, syncing: false } : e));
+        }
       }
-      await refreshSession(sessionId);
-      setTradeInventory((prev) => prev.filter((i) => !soldIds.has(i.id)));
-      setSellSelected(new Map());
-      setSellPrices({});
-      setSellPriceLocked(new Set());
-      setSellTotalInput("");
-      if (lastScanId) triggerPhotoPrompt(lastScanId, "sell");
+      if (newQueued > 0) setPendingCount((n) => n + newQueued);
+      if (newQueued === 0) {
+        await refreshSession(sessionId);
+        if (lastScanId) triggerPhotoPrompt(lastScanId, "sell");
+      }
     } catch (e) {
+      clientIds.forEach((cid) => setFeed((prev) => prev.filter((fe) => fe.id !== cid)));
+      setTradeInventory((prev) => [...prev, ...items]);
       err(e instanceof Error ? e.message : "Sell failed");
     } finally {
       setBusy(false);
@@ -1262,53 +1442,55 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   async function handleRecordTrade() {
     if (!sessionId) return;
     const gaveTotal = tradeGoingOut.reduce((s, g) => s + (parseFloat(g.tradeValue) || (g.item.market ?? 0)), 0);
-    const gotTotal = tradeComingIn.reduce((s, c) => s + (parseFloat(c.marketPrice) || 0), 0);
-    const autoCash = parseFloat((gotTotal - gaveTotal).toFixed(2));
-    const cashDiff = tradeCashOverride.trim()
+    const gotTotal  = tradeComingIn.reduce((s, c) => s + (parseFloat(c.marketPrice) || 0), 0);
+    const autoCash  = parseFloat((gotTotal - gaveTotal).toFixed(2));
+    const cashDiff  = tradeCashOverride.trim()
       ? (tradeCashDir === "received" ? Math.abs(parseFloat(tradeCashOverride) || 0) : -(Math.abs(parseFloat(tradeCashOverride) || 0)))
       : autoCash;
 
+    const gaveNames = tradeGoingOut.map((g) => g.item.name).join(", ") || "—";
+    const gotNames  = tradeComingIn.filter((c) => c.name.trim()).map((c) => c.name).join(", ") || "—";
+    const clientId  = crypto.randomUUID();
+    const tradedIds = new Set(tradeGoingOut.map((g) => g.item.id));
+
+    // Optimistic
+    if (process.env.NODE_ENV === "development") performance.mark("trade-record-tap");
+    pushFeedEntry({
+      id: clientId, clientId, kind: "trade", time: new Date().toISOString(),
+      label: `${gaveNames} → ${gotNames}`,
+      sub: Math.abs(cashDiff) > 0.01 ? `Cash ${cashDiff > 0 ? "received" : "paid"}: $${Math.abs(cashDiff).toFixed(2)}` : undefined,
+      amount: Math.abs(cashDiff) > 0.01 ? cashDiff : null,
+      syncing: true,
+    });
+    toast("Trade recorded");
+    setTradeInventory((prev) => prev.filter((i) => !tradedIds.has(i.id)));
+    setTradeGoingOut([]); setTradeComingIn([blankTradeComingIn()]); setTradeCashOverride(""); setTradeNotes(""); setTradeInventoryQuery("");
+
     setBusy(true);
     try {
-      const { scanId: tradeScanId } = await recordShowTrade({
+      const result = await offlineRecordShowTrade({
         show_session_id: sessionId,
-        goingOut: tradeGoingOut.map((g) => ({
-          itemId: g.item.id,
-          tradeValue: parseFloat(g.tradeValue) || g.item.market || 0,
-          name: g.item.name,
-          cost: g.item.cost,
-        })),
-        comingIn: tradeComingIn
-          .filter((c) => c.name.trim())
-          .map((c) => ({
-            name: c.name.trim(),
-            grade: c.grade.trim() || null,
-            marketPrice: parseFloat(c.marketPrice) || 0,
-          })),
+        goingOut: tradeGoingOut.map((g) => ({ itemId: g.item.id, tradeValue: parseFloat(g.tradeValue) || g.item.market || 0, name: g.item.name, cost: g.item.cost })),
+        comingIn: tradeComingIn.filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), grade: c.grade.trim() || null, marketPrice: parseFloat(c.marketPrice) || 0 })),
         cashDifference: cashDiff,
         notes: tradeNotes.trim() || null,
-      });
-
-      const gaveNames = tradeGoingOut.map((g) => g.item.name).join(", ") || "—";
-      const gotNames = tradeComingIn.filter((c) => c.name.trim()).map((c) => c.name).join(", ") || "—";
-      pushFeedEntry({
-        id: tradeScanId,
-        kind: "trade",
-        time: new Date().toISOString(),
-        label: `${gaveNames} → ${gotNames}`,
-        sub: Math.abs(cashDiff) > 0.01 ? `Cash ${cashDiff > 0 ? "received" : "paid"}: $${Math.abs(cashDiff).toFixed(2)}` : undefined,
-        amount: Math.abs(cashDiff) > 0.01 ? cashDiff : null,
-      });
-      await refreshSession(sessionId);
-
-      const tradedIds = new Set(tradeGoingOut.map((g) => g.item.id));
-      setTradeInventory((prev) => prev.filter((i) => !tradedIds.has(i.id)));
-      setTradeGoingOut([]);
-      setTradeComingIn([blankTradeComingIn()]);
-      setTradeCashOverride(""); setTradeNotes("");
-      setTradeInventoryQuery("");
-      triggerPhotoPrompt(tradeScanId, "trade");
+        client_id: clientId,
+      }, recordShowTrade);
+      if (result.queued) {
+        setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, offlineQueued: true, syncing: false } : e));
+        setPendingCount((n) => n + 1);
+      } else {
+        setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, id: result.scanId, syncing: false } : e));
+        await refreshSession(sessionId);
+        if (process.env.NODE_ENV === "development") {
+          performance.mark("trade-success-toast");
+          performance.measure("trade-record", "trade-record-tap", "trade-success-toast");
+          console.debug(`[perf] trade-record: ${performance.getEntriesByName("trade-record").at(-1)?.duration.toFixed(1)}ms`);
+        }
+        triggerPhotoPrompt(result.scanId, "trade");
+      }
     } catch (e) {
+      setFeed((prev) => prev.filter((fe) => fe.id !== clientId));
       err(e instanceof Error ? e.message : "Trade failed");
     } finally {
       setBusy(false);
@@ -1317,31 +1499,47 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
 
   // ── Expense ───────────────────────────────────────────────────────────────
 
-  async function handleAddExpense() {
-    if (!sessionId) return;
-    const cost = parseFloat(expenseCost);
-    if (!expenseDesc.trim() || !cost) { err("Enter description and amount"); return; }
+  async function handleExpenseSave(payload: import("@/components/expenses/ExpenseForm").ExpenseFormPayload): Promise<string | null> {
+    if (!sessionId) return null;
+    const clientId = crypto.randomUUID();
+    pushFeedEntry({
+      id: clientId,
+      clientId,
+      kind: "expense",
+      time: new Date().toISOString(),
+      label: payload.vendor_name || payload.description,
+      amount: -payload.cost,
+      syncing: true,
+    });
     setBusy(true);
     try {
-      const { scanId } = await addShowExpense({
+      const result = await offlineAddShowExpense({
         show_session_id: sessionId,
-        description: expenseDesc.trim(),
-        cost,
-        category: expenseCategory,
-        paid_by: expensePaidBy,
-      });
-      pushFeedEntry({
-        id: scanId,
-        kind: "expense",
-        time: new Date().toISOString(),
-        label: expenseDesc.trim(),
-        amount: -cost,
-      });
-      await refreshSession(sessionId);
-      setExpenseDesc(""); setExpenseCost("");
-      setExpenseOpen(false);
+        description: payload.description,
+        cost: payload.cost,
+        category: payload.category,
+        paid_by: payload.paid_by === "shared" ? "alex" : payload.paid_by,
+        client_id: clientId,
+        vendor_name: payload.vendor_name,
+        payment_method: payload.payment_method,
+        mileage_miles: payload.mileage_miles,
+        mileage_rate: payload.mileage_rate,
+        expense_date: payload.expense_date,
+        deductible_percentage: payload.deductible_percentage,
+      }, addShowExpense);
+      if (result.queued) {
+        setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, offlineQueued: true, syncing: false } : e));
+        setPendingCount((n) => n + 1);
+        return null; // receipt can't be attached to a queued expense
+      } else {
+        setFeed((prev) => prev.map((e) => e.id === clientId ? { ...e, id: result.scanId, syncing: false } : e));
+        await refreshSession(sessionId);
+        return result.expenseId || null; // return ID so ExpenseForm can upload the receipt
+      }
     } catch (e) {
+      setFeed((prev) => prev.filter((fe) => fe.id !== clientId));
       err(e instanceof Error ? e.message : "Expense failed");
+      return null;
     } finally {
       setBusy(false);
     }
@@ -1381,14 +1579,31 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   // ── Phase: loading ────────────────────────────────────────────────────────
 
   if (phase === "loading") {
-    return <div className="p-8 text-center opacity-40 text-sm">Loading…</div>;
+    return (
+      <div className="animate-pulse space-y-3 p-4 -mx-4 sm:-mx-8">
+        <div className="flex items-center gap-3 px-4 pt-2 pb-1.5 border-b">
+          <div className="h-5 w-5 bg-muted rounded" />
+          <div className="h-4 bg-muted rounded w-40" />
+          <div className="ml-auto flex gap-2">
+            <div className="h-7 bg-muted rounded-lg w-20" />
+            <div className="h-7 bg-muted rounded-lg w-14" />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 px-4">
+          {[0, 1, 2].map((i) => <div key={i} className="h-14 bg-muted rounded-xl" />)}
+        </div>
+        <div className="flex gap-1.5 px-4">
+          {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-9 bg-muted rounded-lg flex-1" />)}
+        </div>
+      </div>
+    );
   }
 
   // ── Phase: start ──────────────────────────────────────────────────────────
 
   if (phase === "start") {
     return (
-      <div className="max-w-md mx-auto p-4 space-y-4">
+      <div className="w-full max-w-md mx-auto p-4 space-y-4">
         <div className="pt-4">
           <h1 className="text-xl font-bold">Show Mode</h1>
           <p className="text-sm opacity-50 mt-1">Fast scan, buy, sell, and trade at card shows.</p>
@@ -1398,8 +1613,74 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
         )}
 
+        {/* ── Upcoming shows picker modal ── */}
+        {pickerOpen && (
+          <div
+            className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.70)", backdropFilter: "blur(4px)" }}
+            onClick={(e) => { if (e.target === e.currentTarget) setPickerOpen(false); }}
+          >
+            <div className="modal-panel w-full max-w-md max-h-[75vh] flex flex-col">
+              <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                <span className="modal-title text-sm">Upcoming Shows</span>
+                <button onClick={() => setPickerOpen(false)} className="modal-close-btn">
+                  <XIcon size={15} />
+                </button>
+              </div>
+              <div className="px-4 pb-2">
+                <input
+                  autoFocus
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+                  placeholder="Search shows…"
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1.5">
+                {pickerLoading && (
+                  <p className="text-xs opacity-40 py-4 text-center">Loading shows…</p>
+                )}
+                {!pickerLoading && pickerShows.length === 0 && (
+                  <p className="text-xs opacity-40 py-4 text-center">No upcoming shows in database. Run the scraper first.</p>
+                )}
+                {!pickerLoading && pickerShows
+                  .filter((s) =>
+                    !pickerSearch ||
+                    s.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                    s.city.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                    s.state.toLowerCase().includes(pickerSearch.toLowerCase())
+                  )
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => selectUpcomingShow(s)}
+                      className="w-full text-left px-3 py-2.5 rounded-xl border transition-colors hover:bg-white/5 space-y-0.5"
+                      style={{ borderColor: "rgba(255,255,255,0.08)" }}
+                    >
+                      <div className="text-sm font-medium truncate">{s.name}</div>
+                      <div className="text-xs opacity-40 truncate">
+                        {new Date(s.start_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                        {" · "}{s.city}, {s.state}
+                      </div>
+                    </button>
+                  ))
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="border rounded-xl p-4 space-y-3">
-          <div className="text-sm font-semibold">New Show</div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold">New Show</div>
+            <button
+              onClick={openShowPicker}
+              className="text-xs px-2.5 py-1 rounded-lg border transition-colors hover:bg-white/5 opacity-60 hover:opacity-100"
+              style={{ borderColor: "rgba(255,255,255,0.12)" }}
+            >
+              From upcoming shows…
+            </button>
+          </div>
           <input
             className="w-full border rounded-lg px-3 py-3 text-sm bg-background"
             placeholder="Show name (e.g. Sacramento Card Show)"
@@ -1429,6 +1710,13 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
               />
             </div>
           </div>
+          <input
+            className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
+            placeholder="Venue address (optional) — 1001 J St, Sacramento CA"
+            value={startVenue}
+            onChange={(e) => setStartVenue(e.target.value)}
+          />
+          <p className="text-[11px] opacity-35 -mt-1">Helps auto-fill the &quot;To&quot; field when adding mileage for this show</p>
           <button
             className="w-full py-3 rounded-xl text-sm font-semibold text-white"
             style={{ background: "var(--accent-primary)" }}
@@ -1471,110 +1759,29 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       tab === t ? "text-white" : "opacity-50 hover:opacity-70"
     }`;
 
+  // Deal tab — pre-compute filtered inventory for DealFlow prop
+  const _dealInvCatFiltered = dealInventoryFilter === "all"
+    ? tradeInventory
+    : tradeInventory.filter((i) => i.category === dealInventoryFilter);
+  const _dealInvFiltered = filterInventory(_dealInvCatFiltered, dealInventoryQuery);
+  const dealInventoryDisplay = applyInventoryFilters(_dealInvFiltered, dealSortBy, dealPriceRange);
+  const dealInventoryTerms = queryTerms(dealInventoryQuery);
+
   return (
     <div className="space-y-0 -mx-4 sm:-mx-8 lg:-mx-14">
       {/* ── Show mode banner (sticky) ── */}
-      <div
-        className="sticky top-14 z-30 px-4 pt-2 pb-1.5 border-b"
-        style={{ background: "var(--bg-glass, rgba(13,11,20,0.92))", backdropFilter: "blur(12px)" }}
-      >
-        {/* Show name row */}
-        <div className="flex items-center justify-between gap-2 mb-2.5">
-          <div className="flex items-start gap-2 min-w-0">
-            <div
-              className="text-xs font-bold tracking-widest uppercase px-1.5 py-0.5 rounded shrink-0 mt-0.5"
-              style={{ background: "rgba(234,179,8,0.15)", color: "#eab308" }}
-            >
-              SHOW
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">{session.name}</div>
-              <div className="text-[10px] opacity-40 leading-tight">{fmtDate(session.date)}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setExpenseOpen(true)}
-              className="text-xs px-2 py-1 rounded-lg border opacity-50 hover:opacity-80 transition-opacity"
-            >
-              + Expense
-            </button>
-            <button
-              onClick={() => { setEndOpen(true); setEndStep("preview"); }}
-              className="text-xs px-2 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
-            >
-              End
-            </button>
-          </div>
-        </div>
-
-        {/* Primary stats row — always visible */}
-        <div className="grid grid-cols-3 gap-2 pb-0.5">
-          {/* Cash — tappable */}
-          <div
-            className="rounded-xl px-3 py-2 cursor-pointer"
-            style={{ background: "rgba(255,255,255,0.05)" }}
-            onClick={() => { setCashCountInput(""); setCashCountOpen(true); }}
-            title="Tap to count cash"
-          >
-            <div className="text-[9px] uppercase tracking-wide opacity-40 mb-1">Cash</div>
-            <div className={`text-base font-bold tabular-nums leading-none underline decoration-dotted underline-offset-2 ${expectedCash < 0 ? "text-rose-400" : ""}`}>
-              {moneyCash(expectedCash)}
-            </div>
-          </div>
-          {/* P&L */}
-          <div
-            className="rounded-xl px-3 py-2"
-            style={{ background: "rgba(255,255,255,0.05)" }}
-          >
-            <div className="text-[9px] uppercase tracking-wide opacity-40 mb-1">P&L</div>
-            <div className={`text-base font-bold tabular-nums leading-none ${session.net_pl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-              {moneySign(session.net_pl)}
-            </div>
-          </div>
-          {/* Cards in / out */}
-          <div
-            className="rounded-xl px-3 py-2"
-            style={{ background: "rgba(255,255,255,0.05)" }}
-          >
-            <div className="text-[9px] uppercase tracking-wide opacity-40 mb-1">Cards</div>
-            <div className="text-[11px] font-bold tabular-nums leading-none flex items-baseline gap-1.5">
-              <span className="text-emerald-400">{session.cards_bought}<span className="font-normal opacity-60 ml-0.5">in</span></span>
-              <span className="opacity-20">·</span>
-              <span>{session.cards_sold}<span className="font-normal opacity-60 ml-0.5">out</span></span>
-            </div>
-          </div>
-        </div>
-
-        {/* Expandable more stats */}
-        <button
-          onClick={() => setStatsExpanded((e) => !e)}
-          className="w-full text-[9px] uppercase tracking-wide opacity-30 hover:opacity-50 transition-opacity pt-1.5 pb-0"
-        >
-          {statsExpanded ? "▲ Less" : "▼ More stats"}
-        </button>
-        {statsExpanded && (
-          <div className="border-t mt-1.5 pt-2 pb-0.5">
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { label: "Spent",   value: money(session.total_spent),    color: "text-rose-400" },
-                { label: "Revenue", value: money(session.total_revenue),  color: "text-emerald-400" },
-                { label: "Trades",  value: String(session.trades_count),  color: "" },
-                { label: "Passed",  value: String(session.passes_count),  color: "" },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="rounded-xl px-2 py-1.5 text-center"
-                  style={{ background: "rgba(255,255,255,0.04)" }}
-                >
-                  <div className="text-[9px] uppercase tracking-wide opacity-40 mb-0.5">{stat.label}</div>
-                  <div className={`text-xs font-bold tabular-nums ${stat.color}`}>{stat.value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      <ShowHeader
+        session={session}
+        expectedCash={expectedCash}
+        pendingCount={pendingCount}
+        isOffline={isOffline}
+        statsExpanded={statsExpanded}
+        onCashTap={() => { setCashCountInput(""); setCashCountOpen(true); }}
+        onExpenseOpen={() => setExpenseOpen(true)}
+        onEndOpen={() => { setEndOpen(true); setEndStep("preview"); }}
+        onPendingTap={async () => { const a = await getPendingActions(); setPendingActions(a); setPendingOpen(true); }}
+        onStatsToggle={() => setStatsExpanded((e) => !e)}
+      />
 
       {/* ── Desktop tab bar (hidden on mobile — replaced by bottom nav) ── */}
       <div className="hidden md:block px-4 pt-3 pb-0">
@@ -1602,6 +1809,14 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         </div>
       )}
 
+      {/* ── Action success toast ── */}
+      {successToast && (
+        <div className="mx-4 mt-3 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 flex items-center gap-2 transition-opacity duration-150">
+          <CheckCircle2 size={14} className="shrink-0" />
+          {successToast}
+        </div>
+      )}
+
       {/* ── Scan success toast ── */}
       {scanToast && (
         <div className="mx-4 mt-3 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 flex items-center gap-2">
@@ -1615,150 +1830,501 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         {tab === "scan" && renderScanTab()}
         {tab === "buy" && renderBuyTab()}
         {tab === "sell" && renderSellTab()}
-        {tab === "deal" && renderDealTab()}
+        {tab === "deal" && (
+          <DealFlow
+            step={dealStep}
+            onStepChange={setDealStep}
+            cards={dealCards}
+            onRemoveCard={handleDealRemoveCard}
+            onSetDisposition={handleDealSetDisposition}
+            onSetBuyPrice={handleDealSetBuyPrice}
+            addName={dealAddName}
+            onAddNameChange={setDealAddName}
+            addCard={dealAddCard}
+            onAddCardChange={setDealAddCard}
+            addMarket={dealAddMarket}
+            onAddMarketChange={setDealAddMarket}
+            addCondition={dealAddCondition}
+            onAddConditionChange={setDealAddCondition}
+            addGrade={dealAddGrade}
+            onAddGradeChange={setDealAddGrade}
+            certOpen={dealCertOpen}
+            onCertOpenChange={setDealCertOpen}
+            onAddCard={handleDealAddCard}
+            onScanDealAdd={() => setScannerOpen("deal-add")}
+            cashPct={dealCashPct}
+            onCashPctChange={handleDealCashPctChange}
+            tradePct={dealTradePct}
+            onTradePctChange={setDealTradePct}
+            customerChoice={dealCustomerChoice}
+            onAllCash={handleDealAllCash}
+            onAllTrade={handleDealAllTrade}
+            onSplit={handleDealSplit}
+            inventoryDisplay={dealInventoryDisplay}
+            inventoryLoaded={tradeInventoryLoaded}
+            inventoryTerms={dealInventoryTerms}
+            inventoryShowMore={dealInventoryShowMore}
+            onInventoryShowMoreToggle={() => setDealInventoryShowMore((v) => !v)}
+            inventoryQuery={dealInventoryQuery}
+            onInventoryQueryChange={setDealInventoryQuery}
+            inventoryFilter={dealInventoryFilter}
+            onInventoryFilterChange={setDealInventoryFilter}
+            sortBy={dealSortBy}
+            onSortByChange={setDealSortBy}
+            priceRange={dealPriceRange}
+            onPriceRangeChange={setDealPriceRange}
+            tradeSelections={dealTradeSelections}
+            onTradeSelectionsChange={setDealTradeSelections}
+            onScanDealInventory={() => setScannerOpen("deal-inventory")}
+            completeSummary={dealCompleteSummary}
+            onComplete={handleCompleteDeal}
+            onReset={handleDealReset}
+            busy={busy}
+          />
+        )}
         {tab === "trade" && renderTradeTab()}
       </div>
 
       {/* ── Activity feed ── */}
-      <div className="px-4 pt-4 pb-24 md:pb-20">
-        <div className="text-xs font-semibold uppercase tracking-wide opacity-30 mb-2">Activity</div>
+      <div className="pb-24 md:pb-20">
+        {/* Feed header */}
+        <div
+          className="flex items-center justify-between px-4 pt-4 pb-3"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+        >
+          <div>
+            <div className="text-[10px] uppercase tracking-widest opacity-40" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{session.name}</div>
+            <div className="text-sm font-bold mt-0.5 leading-none">{feed.length} {feed.length === 1 ? "entry" : "entries"}</div>
+          </div>
+          <div
+            className="inline-flex p-0.5 rounded-[9px]"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            {(["rail", "tape"] as const).map((key) => {
+              const active = feedDensity === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setFeedDensity(key)}
+                  className="inline-flex items-center gap-1.5 rounded-[6px] px-2.5 py-[5px] transition-all"
+                  style={active ? { background: "linear-gradient(180deg, #8b5cf6, #6d42d8)", color: "#fff" } : { color: "#94a3b8" }}
+                >
+                  {key === "rail" ? (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><path d="M6 8v8"/><path d="M11 6h9"/><path d="M11 18h9"/>
+                    </svg>
+                  ) : (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>
+                    </svg>
+                  )}
+                  <span className="text-[9px] font-bold uppercase tracking-widest" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                    {key === "rail" ? "Rail" : "Tape"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {feed.length === 0 ? (
-          <div className="text-sm opacity-30 text-center py-6">No activity yet</div>
-        ) : (
-          <div className="space-y-0">
-            {(() => {
-              // Group consecutive entries that share a batch_id
-              type FeedGroup = { isBatch: true; batchId: string; entries: FeedEntry[] } | { isBatch: false; entry: FeedEntry };
-              const groups: FeedGroup[] = [];
-              const batchMap = new Map<string, FeedEntry[]>();
-              for (const entry of feed) {
-                if (entry.batchId) {
-                  if (!batchMap.has(entry.batchId)) {
-                    const arr: FeedEntry[] = [];
-                    batchMap.set(entry.batchId, arr);
-                    groups.push({ isBatch: true, batchId: entry.batchId, entries: arr });
-                  }
-                  batchMap.get(entry.batchId)!.push(entry);
-                } else {
-                  groups.push({ isBatch: false, entry });
-                }
-              }
-
-              const kindBadgeClass = (kind: FeedEntry["kind"]) =>
-                kind === "buy" ? "bg-rose-500/15 text-rose-400"
-                : kind === "sell" ? "bg-emerald-500/15 text-emerald-400"
-                : kind === "trade" ? "bg-violet-500/15 text-violet-400"
-                : kind === "expense" ? "bg-amber-500/15 text-amber-400"
-                : "bg-zinc-500/10 opacity-40";
-
-              const kindLabel = (kind: FeedEntry["kind"]) =>
-                kind === "buy" ? "BUY" : kind === "sell" ? "SELL" : kind === "trade" ? "TRADE" : kind === "expense" ? "EXP" : "PASS";
-
-              function renderSingleEntry(entry: FeedEntry, compact = false) {
-                const canUndo = entry.kind !== "pass";
+          /* ── Empty state ── */
+          <div className="px-4 pt-6 pb-4 flex flex-col">
+            <div className="text-center mb-5">
+              <div className="text-base font-bold">Ready when you are</div>
+              <div className="text-xs opacity-40 mt-1 leading-relaxed">Your entries for today will show up here.</div>
+            </div>
+            <div className="space-y-2 mb-5" style={{ opacity: 0.5 }}>
+              {(["buy", "sell", "trade"] as const).map((kind) => {
+                const tok = FEED_TOKENS[kind];
                 return (
-                  <div key={entry.id} className={`flex items-start gap-3 ${compact ? "py-1.5" : "py-2.5"} border-t first:border-t-0`}>
-                    {!compact && (
-                      <div className="text-[10px] opacity-40 tabular-nums shrink-0 pt-0.5 w-14">{fmtTime(entry.time)}</div>
-                    )}
-                    {!compact && (
-                      <div className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${kindBadgeClass(entry.kind)}`}>
-                        {kindLabel(entry.kind)}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className={`${compact ? "text-xs" : "text-sm"} leading-tight truncate`}>{entry.label}</div>
-                      {entry.sub && <div className="text-[10px] opacity-40 mt-0.5">{entry.sub}</div>}
+                  <div
+                    key={kind}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                    style={{ border: "1px dashed rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
+                  >
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                      style={{ background: tok.bg, border: `1px solid ${tok.border}` }}
+                    >
+                      <FeedEntryIcon kind={kind} size={10} color={tok.color} />
                     </div>
-                    {entry.photoUrl && (
-                      <button className="shrink-0 w-9 h-9 rounded-lg overflow-hidden border border-border/50" onClick={() => setLightboxUrl(entry.photoUrl!)}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={entry.photoUrl} alt="" className="w-full h-full object-cover" />
+                    <div className="text-xs font-medium opacity-60">
+                      {kind === "buy" ? "Charizard ex · –$247" : kind === "sell" ? "Moonbreon Alt Art · +$520" : "Umbreon VMAX → trade · boot +$40"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setTab("scan")}
+                className="py-3 rounded-xl text-xs font-bold text-white transition-opacity hover:opacity-90"
+                style={{ background: "linear-gradient(180deg, #8b5cf6, #6d42d8)" }}
+              >
+                + Scan cards
+              </button>
+              <button
+                onClick={() => setExpenseOpen(true)}
+                className="py-3 rounded-xl text-xs font-semibold transition-colors"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                Log expense
+              </button>
+            </div>
+          </div>
+        ) : (() => {
+          // Group by batchId (order-preserving, same logic as before)
+          type FeedGroup = { isBatch: true; batchId: string; entries: FeedEntry[] } | { isBatch: false; entry: FeedEntry };
+          const groups: FeedGroup[] = [];
+          const batchMap = new Map<string, FeedEntry[]>();
+          for (const e of feed) {
+            if (e.batchId) {
+              if (!batchMap.has(e.batchId)) {
+                const arr: FeedEntry[] = [];
+                batchMap.set(e.batchId, arr);
+                groups.push({ isBatch: true, batchId: e.batchId, entries: arr });
+              }
+              batchMap.get(e.batchId)!.push(e);
+            } else {
+              groups.push({ isBatch: false, entry: e });
+            }
+          }
+
+          /* ── Tape variant ── */
+          if (feedDensity === "tape") {
+            return (
+              <div>
+                {groups.map((group, gi) => {
+                  if (group.isBatch) {
+                    const { batchId, entries: bEntries } = group;
+                    const tok = FEED_TOKENS[bEntries[0].kind];
+                    const total = bEntries.reduce((s, e) => s + (e.amount ?? 0), 0);
+                    const syncing = bEntries.some((e) => e.syncing);
+                    return (
+                      <div
+                        key={batchId}
+                        className="flex items-center gap-2 px-4 py-2.5"
+                        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", borderLeft: `3px solid ${tok.dot}` }}
+                      >
+                        <div className="text-[10px] tabular-nums shrink-0 w-9" style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
+                          {fmtTime(bEntries[0].time)}
+                        </div>
+                        <div
+                          className="shrink-0 px-1.5 py-0.5 rounded"
+                          style={{ background: tok.bg, border: `1px solid ${tok.border}`, fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: tok.color, fontWeight: 700, letterSpacing: ".08em" }}
+                        >
+                          {tok.label}
+                        </div>
+                        <div className="flex-1 min-w-0 text-xs font-semibold truncate" style={{ letterSpacing: "-.2px" }}>
+                          {bEntries.length} cards
+                          <span className="font-normal opacity-40 ml-1">· {bEntries[0].label.split(" ").slice(0, 2).join(" ")}…</span>
+                          {syncing && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-1.5 mb-px" />}
+                        </div>
+                        <div className="text-xs tabular-nums font-bold shrink-0" style={{ color: tok.color, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "-.3px" }}>
+                          {total < 0 ? "–" : "+"}{money(Math.abs(total))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  const { entry } = group;
+                  const tok = FEED_TOKENS[entry.kind];
+                  const canUndo = entry.kind !== "pass" && !entry.syncing && !entry.offlineQueued;
+                  return (
+                    <div
+                      key={entry.id}
+                      className="flex items-center gap-2 px-4 py-2.5 transition-opacity duration-300"
+                      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", borderLeft: `3px solid ${entry.offlineQueued ? "#f59e0b" : tok.dot}`, opacity: (entry.syncing || entry.offlineQueued) ? 0.7 : 1 }}
+                    >
+                      <div className="text-[10px] tabular-nums shrink-0 w-9" style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
+                        {fmtTime(entry.time)}
+                      </div>
+                      <div
+                        className="shrink-0 px-1.5 py-0.5 rounded"
+                        style={{ background: tok.bg, border: `1px solid ${tok.border}`, fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: tok.color, fontWeight: 700, letterSpacing: ".08em" }}
+                      >
+                        {tok.label}
+                      </div>
+                      <div className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden">
+                        <span className="text-xs font-semibold truncate" style={{ letterSpacing: "-.2px" }}>{entry.label}</span>
+                        {entry.sub && <span className="text-[10px] opacity-40 shrink-0">· {entry.sub}</span>}
+                        {entry.syncing && !entry.offlineQueued && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0 ml-0.5" />}
+                        {entry.offlineQueued && <CloudOff size={10} className="shrink-0 ml-0.5 text-amber-400" />}
+                      </div>
+                      {entry.photoUrl && (
+                        <button className="shrink-0 w-7 h-7 rounded-md overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }} onClick={() => setLightboxUrl(entry.photoUrl!)}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={entry.photoUrl} alt="" className="w-full h-full object-cover" />
+                        </button>
+                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {entry.amount != null && (
+                          <div className="text-xs tabular-nums font-bold" style={{ color: tok.color, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "-.3px" }}>
+                            {entry.amount < 0 ? "–" : "+"}{money(Math.abs(entry.amount))}
+                          </div>
+                        )}
+                        {canUndo && (
+                          <button
+                            onClick={() => handleUndo(entry.id)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1 px-1.5 py-1 rounded-full disabled:opacity-30 transition-colors"
+                            style={{ background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.35)" }}
+                          >
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/>
+                            </svg>
+                            <span className="text-[9px] font-bold tracking-widest uppercase" style={{ fontFamily: "'JetBrains Mono', monospace", color: "#c4b5fd" }}>UNDO</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }
+
+          /* ── Rail variant (default) ── */
+          return (
+            <div className="pt-2 pb-7 relative">
+              {/* Central vertical rail */}
+              <div
+                className="absolute pointer-events-none"
+                style={{ left: 54, top: 16, bottom: 16, width: 2, background: "linear-gradient(180deg, rgba(139,92,246,0.22), rgba(139,92,246,0.04))" }}
+              />
+
+              {groups.map((group) => {
+                if (group.isBatch) {
+                  const { batchId, entries: bEntries } = group;
+                  const tok = FEED_TOKENS[bEntries[0].kind];
+                  const total = bEntries.reduce((s, e) => s + (e.amount ?? 0), 0);
+                  const syncing = bEntries.some((e) => e.syncing);
+                  const expanded = expandedBatches.has(batchId);
+                  const photoUrl = bEntries.find((e) => e.photoUrl)?.photoUrl;
+                  const toggle = () => setExpandedBatches((prev) => {
+                    const next = new Set(prev);
+                    next.has(batchId) ? next.delete(batchId) : next.add(batchId);
+                    return next;
+                  });
+
+                  return (
+                    <div key={batchId} className="relative" style={{ padding: "6px 16px 8px 78px" }}>
+                      {/* Rail dot */}
+                      <div
+                        className="absolute flex items-center justify-center"
+                        style={{ left: 45, top: 14, width: 18, height: 18, borderRadius: 999, background: "var(--bg-base, #0d0b14)", border: `2px solid ${tok.dot}`, zIndex: 2 }}
+                      >
+                        <FeedEntryIcon kind={bEntries[0].kind} size={8} color={tok.color} />
+                      </div>
+                      {/* Batch header button */}
+                      <button className="w-full flex items-baseline justify-between gap-2 pt-1 pb-0.5 text-left" onClick={toggle}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-bold" style={{ letterSpacing: "-.2px" }}>
+                            {tok.label[0] + tok.label.slice(1).toLowerCase()} · {bEntries.length} cards
+                          </span>
+                          {syncing && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />}
+                          <ChevronDown size={11} className={`opacity-30 shrink-0 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`} />
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {photoUrl && (
+                            <button
+                              className="w-6 h-6 rounded-md overflow-hidden shrink-0"
+                              style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                              onClick={(e) => { e.stopPropagation(); setLightboxUrl(photoUrl); }}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={photoUrl} alt="" className="w-full h-full object-cover" />
+                            </button>
+                          )}
+                          <span className="text-xs font-bold tabular-nums" style={{ color: tok.color, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "-.3px" }}>
+                            {total < 0 ? "–" : "+"}{money(Math.abs(total))}
+                          </span>
+                        </div>
                       </button>
-                    )}
-                    <div className="flex items-center gap-2 shrink-0">
-                      {entry.amount != null && (
-                        <div className={`${compact ? "text-xs" : "text-sm"} font-semibold tabular-nums ${entry.amount > 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                          {entry.amount > 0 ? "+" : "−"}{money(Math.abs(entry.amount))}
+                      {/* Expanded sub-entries */}
+                      {expanded && (
+                        <div className="mt-1.5 space-y-0" style={{ borderTop: "1px dashed rgba(255,255,255,0.06)" }}>
+                          {bEntries.map((e) => (
+                            <div key={e.id} className="flex items-center gap-2.5 py-1.5" style={{ borderBottom: "1px dashed rgba(255,255,255,0.05)" }}>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium truncate" style={{ letterSpacing: "-.2px" }}>{e.label}</div>
+                                {e.sub && <div className="text-[10px] opacity-40 truncate mt-px">{e.sub}</div>}
+                              </div>
+                              {e.photoUrl && (
+                                <button className="w-6 h-6 rounded-md overflow-hidden shrink-0" style={{ border: "1px solid rgba(255,255,255,0.1)" }} onClick={() => setLightboxUrl(e.photoUrl!)}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={e.photoUrl} alt="" className="w-full h-full object-cover" />
+                                </button>
+                              )}
+                              <div className="text-[11px] tabular-nums font-semibold shrink-0" style={{ color: "#cbd5e1", fontFamily: "'JetBrains Mono', monospace" }}>
+                                {e.amount != null ? money(Math.abs(e.amount)) : "—"}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
-                      {canUndo && (
+                      <div className="text-[10px] tabular-nums mt-1" style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
+                        {fmtTime(bEntries[0].time)}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const { entry } = group;
+                const tok = FEED_TOKENS[entry.kind];
+                const canUndo = entry.kind !== "pass" && !entry.syncing && !entry.offlineQueued;
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="relative transition-opacity duration-300"
+                    style={{ padding: "8px 16px 8px 78px", opacity: (entry.syncing || entry.offlineQueued) ? 0.7 : 1 }}
+                  >
+                    {/* Rail dot */}
+                    <div
+                      className="absolute flex items-center justify-center"
+                      style={{ left: 45, top: 14, width: 18, height: 18, borderRadius: 999, background: "var(--bg-base, #0d0b14)", border: `2px solid ${entry.offlineQueued ? "#f59e0b" : tok.dot}`, zIndex: 2 }}
+                    >
+                      {entry.offlineQueued ? <CloudOff size={8} color="#f59e0b" /> : <FeedEntryIcon kind={entry.kind} size={8} color={tok.color} />}
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <div className="text-sm font-semibold truncate" style={{ letterSpacing: "-.2px" }}>
+                            {entry.label}
+                            {entry.syncing && !entry.offlineQueued && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse ml-1.5 mb-px" />}
+                            {entry.offlineQueued && <CloudOff size={10} className="inline-block ml-1.5 mb-px text-amber-400" />}
+                          </div>
+                          {entry.amount != null && (
+                            <div className="text-sm font-bold tabular-nums shrink-0" style={{ color: tok.color, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "-.3px" }}>
+                              {entry.amount < 0 ? "–" : "+"}{money(Math.abs(entry.amount))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {entry.sub && <div className="text-[10.5px] opacity-40 truncate">{entry.sub}</div>}
+                          <div className="text-[10px] tabular-nums ml-auto shrink-0" style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>{fmtTime(entry.time)}</div>
+                        </div>
+                      </div>
+                      {entry.photoUrl && (
+                        <button className="shrink-0 w-9 h-9 rounded-lg overflow-hidden mt-0.5" style={{ border: "1px solid rgba(255,255,255,0.1)" }} onClick={() => setLightboxUrl(entry.photoUrl!)}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={entry.photoUrl} alt="" className="w-full h-full object-cover" />
+                        </button>
+                      )}
+                    </div>
+                    {canUndo && (
+                      <div className="mt-1.5">
                         <button
                           onClick={() => handleUndo(entry.id)}
                           disabled={busy}
-                          className="text-[10px] px-2 py-0.5 rounded border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 disabled:opacity-30 transition-colors"
+                          className="inline-flex items-center gap-1 px-2 py-[5px] rounded-full disabled:opacity-30 transition-colors"
+                          style={{ background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.35)" }}
                         >
-                          Undo
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/>
+                          </svg>
+                          <span className="text-[9px] font-bold tracking-widest uppercase" style={{ fontFamily: "'JetBrains Mono', monospace", color: "#c4b5fd" }}>UNDO</span>
                         </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
-              return groups.map((group, gi) => {
-                if (!group.isBatch) return renderSingleEntry(group.entry);
-
-                const { batchId, entries } = group;
-                const expanded = expandedBatches.has(batchId);
-                const totalAmt = entries.reduce((s, e) => s + (e.amount ?? 0), 0);
-                const firstEntry = entries[0];
-                const photoUrl = entries.find((e) => e.photoUrl)?.photoUrl;
-                const toggle = () => setExpandedBatches((prev) => {
-                  const next = new Set(prev);
-                  next.has(batchId) ? next.delete(batchId) : next.add(batchId);
-                  return next;
-                });
-
-                return (
-                  <div key={batchId} className={gi > 0 ? "border-t" : ""}>
-                    {/* Parent row */}
-                    <button
-                      className="w-full flex items-center gap-3 py-2.5 text-left"
-                      onClick={toggle}
-                    >
-                      <div className="text-[10px] opacity-40 tabular-nums shrink-0 w-14">{fmtTime(firstEntry.time)}</div>
-                      <div className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 bg-rose-500/15 text-rose-400">
-                        BATCH BUY
-                      </div>
-                      <div className="flex-1 min-w-0 text-xs font-medium opacity-70">
-                        {entries.length} cards
-                      </div>
-                      {photoUrl && (
-                        <button
-                          className="shrink-0 w-7 h-7 rounded-md overflow-hidden border border-border/50"
-                          onClick={(e) => { e.stopPropagation(); setLightboxUrl(photoUrl); }}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={photoUrl} alt="" className="w-full h-full object-cover" />
-                        </button>
-                      )}
-                      <div className="text-sm font-semibold tabular-nums text-rose-400 shrink-0">
-                        −{money(Math.abs(totalAmt))}
-                      </div>
-                      <ChevronDown
-                        size={12}
-                        className={`opacity-40 shrink-0 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                    {/* Expanded children */}
-                    {expanded && (
-                      <div className="ml-4 pl-3 border-l-2 border-rose-500/10 mb-2">
-                        {entries.map((e) => renderSingleEntry(e, true))}
                       </div>
                     )}
                   </div>
                 );
-              });
-            })()}
-          </div>
-        )}
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Modals ── */}
       {endOpen && renderEndModal()}
-      {expenseOpen && renderExpenseModal()}
+      {expenseOpen && (
+        <ExpenseForm
+          onClose={() => setExpenseOpen(false)}
+          onSave={handleExpenseSave}
+          showSessions={session ? [{ id: session.id, name: session.name, date: session.date, venue_address: session.venue_address ?? null }] : []}
+          defaultShowSessionId={sessionId ?? undefined}
+          title="Add Expense"
+        />
+      )}
       {cashCountOpen && renderCashCountModal()}
+
+      {/* ── Offline queue modal ── */}
+      {pendingOpen && (
+        <div
+          className="fixed inset-0 flex items-end justify-center modal-backdrop p-4"
+          style={{ zIndex: 9999 }}
+          onClick={() => setPendingOpen(false)}
+        >
+          <div
+            className="modal-panel w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden mb-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <div className="flex items-center gap-2">
+                <CloudOff size={15} className="text-amber-400" />
+                <span className="text-sm font-semibold">Offline Queue</span>
+                <span className="text-xs px-1.5 py-0.5 rounded-full font-mono" style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24" }}>{pendingActions.length}</span>
+              </div>
+              <button onClick={() => setPendingOpen(false)} className="p-1.5 rounded-lg hover:bg-white/8 transition-colors text-muted-foreground">
+                <XIcon size={15} />
+              </button>
+            </div>
+            <div className="px-5 pb-2 space-y-1 max-h-64 overflow-y-auto">
+              {pendingActions.map((a) => (
+                <div key={a.id} className="flex items-center gap-2 py-2 border-b border-white/5 last:border-0">
+                  <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded font-mono"
+                    style={{ background: FEED_TOKENS[a.kind as FeedEntry["kind"]]?.bg, color: FEED_TOKENS[a.kind as FeedEntry["kind"]]?.color }}>
+                    {a.kind.toUpperCase()}
+                  </span>
+                  <span className="flex-1 text-xs truncate opacity-70">
+                    {(a.payload as Record<string, unknown>).name as string
+                      || (a.payload as Record<string, unknown>).description as string
+                      || a.id.slice(0, 8)}
+                  </span>
+                  <span className="text-[10px] opacity-30 font-mono shrink-0">
+                    {new Date(a.queued_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 pb-5 pt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  void (async () => {
+                    const executor = createExecutor({ recordShowBuy, recordShowSell, recordShowTrade, addShowExpense });
+                    const { replayPendingActions } = await import("@/lib/offlineSync");
+                    await replayPendingActions(executor, {
+                      onSynced: (clientId) => {
+                        setFeed((prev) => prev.map((e) => e.clientId === clientId ? { ...e, offlineQueued: false, syncing: false } : e));
+                        setPendingCount((n) => Math.max(0, n - 1));
+                      },
+                      onQueueEmpty: () => { setPendingCount(0); setPendingOpen(false); },
+                    });
+                    const remaining = await getPendingActions();
+                    setPendingActions(remaining);
+                    setPendingCount(remaining.length);
+                  })();
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 rounded-xl font-semibold transition-colors"
+                style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.35)", color: "#fbbf24" }}
+              >
+                <RefreshCw size={12} />
+                Sync Now
+              </button>
+              <button
+                onClick={() => {
+                  if (!confirm("Clear all queued transactions? This cannot be undone.")) return;
+                  void clearAll().then(() => { setPendingCount(0); setPendingActions([]); setPendingOpen(false); });
+                }}
+                className="text-xs px-3 py-2 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Deal photo modal (centered, above bottom nav) ── */}
       {photoPrompt && (
@@ -1876,30 +2442,7 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       />
 
       {/* ── Mobile bottom nav (replaces regular app nav during show mode) ── */}
-      {isMounted && createPortal(
-        <div
-          className="show-mode-bottom-nav md:hidden bg-background border-t border-border flex h-14"
-          style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999 }}
-        >
-          {(["scan", "buy", "sell", "deal", "trade"] as const).map((t) => {
-            const active = tab === t;
-            const Icon = t === "scan" ? ScanLine : t === "buy" ? ShoppingBag : t === "sell" ? DollarSign : t === "deal" ? Handshake : ArrowLeftRight;
-            return (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                  active ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                <Icon size={20} strokeWidth={active ? 2.5 : 1.5} />
-                <span className="text-[10px] font-medium capitalize">{t}</span>
-              </button>
-            );
-          })}
-        </div>,
-        document.body
-      )}
+      {isMounted && <BottomTabBar tab={tab} setTab={setTab} />}
     </div>
   );
 
@@ -2360,7 +2903,7 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           {/* Custom % and Flat $ — bidirectional */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <div className="text-[10px] opacity-40 mb-1">Custom %</div>
+              <div className="text-xs opacity-40 mb-1">Custom %</div>
               <input
                 type="number"
                 inputMode="decimal"
@@ -2371,7 +2914,7 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
               />
             </div>
             <div>
-              <div className="text-[10px] opacity-40 mb-1">Flat $</div>
+              <div className="text-xs opacity-40 mb-1">Flat $</div>
               <input
                 type="number"
                 inputMode="decimal"
@@ -2483,587 +3026,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     );
   }
 
-  function renderDealTab() {
-    const cashCards = dealCards.filter((c) => c.disposition === "cash");
-    const tradeCards = dealCards.filter((c) => c.disposition === "trade");
-    const undecidedCards = dealCards.filter((c) => c.disposition === "undecided");
-
-    const cashTotal = cashCards.reduce((s, c) => s + (c.buyPrice ?? (c.marketPrice ? c.marketPrice * dealCashPct / 100 : 0)), 0);
-    const tradeTotal = tradeCards.reduce((s, c) => s + (c.buyPrice ?? (c.marketPrice ? c.marketPrice * dealTradePct / 100 : 0)), 0);
-    const totalOffer = cashTotal + tradeTotal;
-
-    const dealInventoryCategoryFiltered = dealInventoryFilter === "all"
-      ? tradeInventory
-      : tradeInventory.filter((i) => i.category === dealInventoryFilter);
-    const dealInventoryFiltered = filterInventory(dealInventoryCategoryFiltered, dealInventoryQuery);
-    const dealInventoryDisplay = applyInventoryFilters(dealInventoryFiltered, dealSortBy, dealPriceRange);
-    const dealInventoryTerms = queryTerms(dealInventoryQuery);
-
-    const SHOW_COUNT = dealInventoryShowMore ? dealInventoryDisplay.length : 12;
-
-    // Step progress indicator
-    const steps: { key: DealStep; label: string }[] = [
-      { key: "evaluate", label: "Evaluate" },
-      { key: "quote", label: "Quote" },
-      { key: "fulfill", label: "Fulfill" },
-      { key: "complete", label: "Done" },
-    ];
-    const stepIdx = steps.findIndex((s) => s.key === dealStep);
-
-    return (
-      <div className="space-y-4">
-        {/* Step progress bar */}
-        <div className="flex items-center gap-1">
-          {steps.map((s, i) => (
-            <React.Fragment key={s.key}>
-              <button
-                className={`text-[10px] font-bold uppercase px-2 py-1 rounded-lg transition-colors ${
-                  i === stepIdx
-                    ? "text-white"
-                    : i < stepIdx
-                    ? "opacity-60 hover:opacity-80"
-                    : "opacity-20"
-                }`}
-                style={i === stepIdx ? { background: "var(--accent-primary)" } : undefined}
-                onClick={() => {
-                  if (i <= stepIdx || i === stepIdx + 1) setDealStep(s.key);
-                }}
-                disabled={i > stepIdx + 1}
-              >
-                {s.label}
-              </button>
-              {i < steps.length - 1 && (
-                <div className={`flex-1 h-px ${i < stepIdx ? "bg-primary/40" : "bg-border"}`} />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-
-        {/* ── STEP 1: EVALUATE ── */}
-        {dealStep === "evaluate" && (
-          <div className="space-y-4">
-            <div className="text-xs opacity-50">Add cards the customer wants to sell or trade.</div>
-
-            {/* Existing cards list */}
-            {dealCards.length > 0 && (
-              <div className="space-y-2">
-                {dealCards.map((card) => (
-                  <div
-                    key={card._id}
-                    className="flex items-center gap-2 border rounded-xl p-2.5"
-                  >
-                    {card.image_url && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={card.image_url} alt="" className="w-8 h-11 rounded object-cover shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{card.name}</div>
-                      <div className="text-[10px] opacity-40 truncate">
-                        {[card.grade, card.set_name, card.card_number ? `#${card.card_number}` : null].filter(Boolean).join(" · ")}
-                      </div>
-                      {card.marketPrice != null && (
-                        <div className="text-xs opacity-60 mt-0.5">Mkt {money(card.marketPrice)}</div>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleDealRemoveCard(card._id)}
-                      className="text-xs opacity-30 hover:opacity-60 shrink-0 p-1"
-                    >✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Add card form */}
-            <div className="border rounded-xl p-3 space-y-2.5">
-              <div className="text-[10px] font-bold uppercase opacity-40">Add a card</div>
-
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <CardAutocomplete
-                    value={dealAddName}
-                    onChange={(q) => { setDealAddName(q); if (!q) setDealAddCard(null); }}
-                    onSelect={(card) => {
-                      setDealAddCard(card);
-                      setDealAddName(card.name);
-                      if (card.market != null) setDealAddMarket(card.market.toFixed(2));
-                    }}
-                    placeholder="Card name…"
-                  />
-                </div>
-                <button
-                  onClick={() => setScannerOpen("deal-add")}
-                  className="shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center opacity-60 hover:opacity-90 transition-opacity"
-                  title="Scan card"
-                >
-                  <Camera size={16} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <div className="text-[10px] opacity-40 mb-1">Market price</div>
-                  <div className="relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs opacity-40">$</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      className="w-full border rounded-lg pl-6 pr-3 py-2 text-sm bg-background font-mono"
-                      placeholder="0.00"
-                      value={dealAddMarket}
-                      onChange={(e) => setDealAddMarket(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] opacity-40 mb-1">Condition</div>
-                  <select
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-                    value={dealAddCondition}
-                    onChange={(e) => setDealAddCondition(e.target.value)}
-                  >
-                    {CONDITIONS_LIST.map((c) => <option key={c} value={c}>{COND_ABBREV[c] ?? c}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[10px] opacity-40 mb-1">Grade (optional)</div>
-                <input
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-                  placeholder="e.g. PSA 9, BGS 9.5"
-                  value={dealAddGrade}
-                  onChange={(e) => setDealAddGrade(e.target.value)}
-                />
-              </div>
-
-              {/* Cert lookup toggle */}
-              <button
-                onClick={() => setDealCertOpen((v) => !v)}
-                className="text-[10px] opacity-40 hover:opacity-70 transition-opacity"
-              >
-                {dealCertOpen ? "▲ Hide cert lookup" : "▼ Lookup cert #"}
-              </button>
-              {dealCertOpen && (
-                <CertLookupWidget
-                  embedded
-                  onResult={(r) => {
-                    setDealAddName(r.name);
-                    setDealAddGrade(`${r.company} ${r.gradeLabel ?? ""} ${r.grade}`.trim());
-                    if (r.market != null) setDealAddMarket(r.market.toFixed(2));
-                  }}
-                />
-              )}
-
-              <button
-                onClick={handleDealAddCard}
-                disabled={!dealAddName.trim()}
-                className="w-full py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-30 transition-opacity"
-                style={{ background: "var(--accent-primary)" }}
-              >
-                + Add Card
-              </button>
-            </div>
-
-            {dealCards.length > 0 && (
-              <button
-                onClick={() => setDealStep("quote")}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white"
-                style={{ background: "var(--accent-primary)" }}
-              >
-                Review {dealCards.length} card{dealCards.length !== 1 ? "s" : ""} →
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* ── STEP 2: QUOTE ── */}
-        {dealStep === "quote" && (
-          <div className="space-y-4">
-            {/* Percentage controls */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="border rounded-xl p-3 space-y-2">
-                <div className="text-[10px] font-bold uppercase opacity-40">Cash %</div>
-                <div className="flex flex-wrap gap-1">
-                  {[60, 65, 70, 75, 80].map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => {
-                        setDealCashPct(p);
-                        setDealCards((prev) => prev.map((c) => ({
-                          ...c,
-                          buyPrice: c.marketPrice != null ? parseFloat((c.marketPrice * p / 100).toFixed(2)) : c.buyPrice,
-                        })));
-                      }}
-                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
-                        dealCashPct === p ? "text-white border-transparent" : "opacity-40"
-                      }`}
-                      style={dealCashPct === p ? { background: "var(--accent-primary)", borderColor: "var(--accent-primary)" } : undefined}
-                    >
-                      {p}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="border rounded-xl p-3 space-y-2">
-                <div className="text-[10px] font-bold uppercase opacity-40">Trade %</div>
-                <div className="flex flex-wrap gap-1">
-                  {[75, 80, 85, 90, 95].map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setDealTradePct(p)}
-                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
-                        dealTradePct === p ? "text-white border-transparent" : "opacity-40"
-                      }`}
-                      style={dealTradePct === p ? { background: "#8b5cf6", borderColor: "#8b5cf6" } : undefined}
-                    >
-                      {p}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Cards with disposition selectors */}
-            <div className="space-y-2">
-              {dealCards.map((card) => {
-                const cashOffer = card.buyPrice ?? (card.marketPrice != null ? parseFloat((card.marketPrice * dealCashPct / 100).toFixed(2)) : null);
-                const tradeOffer = card.marketPrice != null ? parseFloat((card.marketPrice * dealTradePct / 100).toFixed(2)) : null;
-                return (
-                  <div key={card._id} className="border rounded-xl p-3 space-y-2">
-                    <div className="flex items-start gap-2">
-                      {card.image_url && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={card.image_url} alt="" className="w-8 h-11 rounded object-cover shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{card.name}</div>
-                        <div className="text-[10px] opacity-40 truncate">{[card.grade, card.condition].filter(Boolean).join(" · ")}</div>
-                        {card.marketPrice != null && (
-                          <div className="text-xs opacity-50 mt-0.5">Mkt {money(card.marketPrice)}</div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Disposition + price */}
-                    <div className="flex items-center gap-2">
-                      {(["cash", "trade", "undecided"] as const).map((d) => (
-                        <button
-                          key={d}
-                          onClick={() => handleDealSetDisposition(card._id, d)}
-                          className={`text-[10px] font-bold uppercase px-2 py-1 rounded-lg border transition-colors ${
-                            card.disposition === d ? "text-white border-transparent" : "opacity-30 hover:opacity-60"
-                          }`}
-                          style={card.disposition === d
-                            ? { background: d === "cash" ? "#f59e0b" : d === "trade" ? "#8b5cf6" : "#71717a" }
-                            : undefined}
-                        >
-                          {d === "undecided" ? "?" : d}
-                        </button>
-                      ))}
-                      <div className="flex-1" />
-                      {card.disposition !== "undecided" && (
-                        <div className="relative shrink-0">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs opacity-40">$</span>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            className="w-20 border rounded-lg pl-5 pr-2 py-1 text-xs font-mono text-right bg-background"
-                            value={card.disposition === "cash" ? (cashOffer?.toFixed(2) ?? "") : (tradeOffer?.toFixed(2) ?? "")}
-                            onChange={(e) => handleDealSetBuyPrice(card._id, e.target.value)}
-                            placeholder="0.00"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Summary */}
-            {dealCards.length > 0 && (
-              <div className="border rounded-xl p-3 space-y-1.5">
-                {cashCards.length > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="opacity-60">{cashCards.length} card{cashCards.length !== 1 ? "s" : ""} · cash</span>
-                    <span className="font-semibold text-amber-400">{money(cashTotal)}</span>
-                  </div>
-                )}
-                {tradeCards.length > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="opacity-60">{tradeCards.length} card{tradeCards.length !== 1 ? "s" : ""} · trade credit</span>
-                    <span className="font-semibold text-violet-400">{money(tradeTotal)}</span>
-                  </div>
-                )}
-                {undecidedCards.length > 0 && (
-                  <div className="text-xs opacity-40">{undecidedCards.length} card{undecidedCards.length !== 1 ? "s" : ""} not yet assigned</div>
-                )}
-                {totalOffer > 0 && (
-                  <div className="flex justify-between text-sm font-bold border-t pt-1.5">
-                    <span>Total offer</span>
-                    <span>{money(totalOffer)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setDealStep("evaluate")}
-                className="px-4 py-2.5 rounded-xl text-sm border opacity-50 hover:opacity-80 transition-opacity"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={() => setDealStep("fulfill")}
-                disabled={dealCards.length === 0 || undecidedCards.length === dealCards.length}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-30"
-                style={{ background: "var(--accent-primary)" }}
-              >
-                Proceed to Fulfill →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── STEP 3: FULFILL ── */}
-        {dealStep === "fulfill" && (
-          <div className="space-y-4">
-            {/* Summary of what we owe */}
-            <div className="border rounded-xl p-3 space-y-1.5">
-              <div className="text-[10px] font-bold uppercase opacity-40 mb-1">Deal Summary</div>
-              {cashCards.length > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="opacity-60">Cash to pay</span>
-                  <span className="font-semibold text-amber-400">{money(cashTotal)}</span>
-                </div>
-              )}
-              {tradeCards.length > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="opacity-60">Trade credit</span>
-                  <span className="font-semibold text-violet-400">{money(tradeTotal)}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Trade credit — pick from inventory */}
-            {tradeCards.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold opacity-60">Pick items to trade out</div>
-                  <button
-                    onClick={() => setScannerOpen("deal-inventory")}
-                    className="flex items-center gap-1 text-[10px] opacity-50 hover:opacity-80 border rounded-lg px-2 py-1 transition-opacity"
-                  >
-                    <Camera size={11} /> Scan
-                  </button>
-                </div>
-
-                <div className="flex gap-2">
-                  <input
-                    className="flex-1 border rounded-xl px-3 py-2 text-sm bg-background"
-                    placeholder="Search inventory…"
-                    value={dealInventoryQuery}
-                    onChange={(e) => setDealInventoryQuery(e.target.value)}
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <div className="flex gap-1 flex-1 flex-wrap">
-                    {(["all", "single", "slab", "sealed"] as const).map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => setDealInventoryFilter(f)}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase transition-colors ${
-                          dealInventoryFilter === f ? "text-white" : "border opacity-40"
-                        }`}
-                        style={dealInventoryFilter === f ? { background: "var(--accent-primary)" } : undefined}
-                      >
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <select className="flex-1 border rounded-lg px-2 py-1 text-[10px] bg-background" value={dealSortBy} onChange={(e) => setDealSortBy(e.target.value as SortBy)}>
-                    <option value="name">Name A–Z</option>
-                    <option value="price-high">Price ↑</option>
-                    <option value="price-low">Price ↓</option>
-                    <option value="recent">Recently Added</option>
-                  </select>
-                  <select className="flex-1 border rounded-lg px-2 py-1 text-[10px] bg-background" value={dealPriceRange} onChange={(e) => setDealPriceRange(e.target.value as PriceRange)}>
-                    <option value="all">All Prices</option>
-                    <option value="under25">Under $25</option>
-                    <option value="25to100">$25–$100</option>
-                    <option value="100to500">$100–$500</option>
-                    <option value="over500">$500+</option>
-                  </select>
-                </div>
-
-                {!tradeInventoryLoaded ? (
-                  <div className="text-xs opacity-40 text-center py-4">Loading inventory…</div>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2">
-                    {dealInventoryDisplay.slice(0, SHOW_COUNT).map((item) => {
-                      const selected = dealTradeSelections.some((s) => s.item.id === item.id);
-                      const sel = dealTradeSelections.find((s) => s.item.id === item.id);
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => {
-                            if (selected) {
-                              setDealTradeSelections((prev) => prev.filter((s) => s.item.id !== item.id));
-                            } else {
-                              setDealTradeSelections((prev) => [...prev, {
-                                item,
-                                tradeValue: item.sticker_price != null ? item.sticker_price.toFixed(2) : item.market != null ? item.market.toFixed(2) : "",
-                              }]);
-                            }
-                          }}
-                          className={`relative flex flex-col rounded-xl overflow-hidden text-left transition-all border-2 ${
-                            selected ? "border-violet-500 shadow-sm shadow-violet-500/20" : "border-border/40"
-                          }`}
-                        >
-                          <div className="relative w-full aspect-[3/4] bg-muted overflow-hidden">
-                            {item.image_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center opacity-20 text-[10px] font-bold uppercase text-center px-1">{item.category}</div>
-                            )}
-                            {item.grade && (
-                              <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
-                                <div className="text-[8px] font-bold text-white text-center truncate">{item.grade}</div>
-                              </div>
-                            )}
-                            {selected && (
-                              <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-violet-500 flex items-center justify-center">
-                                <span className="text-white text-[8px] font-bold">✓</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="px-1.5 pt-1 pb-1.5 bg-background">
-                            <div className="text-[9px] font-medium leading-tight truncate">
-                              <HighlightTerms text={item.name} terms={dealInventoryTerms} />
-                            </div>
-                            <div className="text-[9px] opacity-50 mt-0.5">
-                              {item.sticker_price != null ? money(item.sticker_price) : item.market != null ? money(item.market) : "—"}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {dealInventoryDisplay.length > 12 && (
-                  <button
-                    onClick={() => setDealInventoryShowMore((v) => !v)}
-                    className="w-full text-xs opacity-40 hover:opacity-70 py-2"
-                  >
-                    {dealInventoryShowMore ? "Show less" : `Show ${dealInventoryDisplay.length - 12} more…`}
-                  </button>
-                )}
-
-                {/* Selected trade-out items */}
-                {dealTradeSelections.length > 0 && (
-                  <div className="border rounded-xl p-3 space-y-2">
-                    <div className="text-[10px] font-bold uppercase opacity-40">Going out</div>
-                    {dealTradeSelections.map((sel) => (
-                      <div key={sel.item.id} className="flex items-center gap-2">
-                        <div className="w-7 h-10 rounded overflow-hidden bg-muted shrink-0">
-                          {sel.item.image_url
-                            // eslint-disable-next-line @next/next/no-img-element
-                            ? <img src={sel.item.image_url} alt="" className="w-full h-full object-cover" />
-                            : <div className="w-full h-full flex items-center justify-center text-[7px] opacity-20 font-bold uppercase">{sel.item.category}</div>
-                          }
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-medium truncate">{sel.item.name}</div>
-                          <div className="text-[10px] opacity-40 truncate">{sel.item.grade ?? sel.item.condition}</div>
-                        </div>
-                        <div className="relative shrink-0">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs opacity-40">$</span>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            className="w-20 border rounded-lg pl-5 pr-2 py-1 text-xs font-mono text-right bg-background"
-                            value={sel.tradeValue}
-                            onChange={(e) => setDealTradeSelections((prev) =>
-                              prev.map((s) => s.item.id === sel.item.id ? { ...s, tradeValue: e.target.value } : s)
-                            )}
-                            placeholder="0.00"
-                          />
-                        </div>
-                        <button
-                          onClick={() => setDealTradeSelections((prev) => prev.filter((s) => s.item.id !== sel.item.id))}
-                          className="text-xs opacity-30 hover:opacity-60 shrink-0"
-                        >✕</button>
-                      </div>
-                    ))}
-                    <div className="flex justify-between text-xs opacity-60 pt-1 border-t">
-                      <span>Trade-out value</span>
-                      <span className="font-semibold">
-                        {money(dealTradeSelections.reduce((s, g) => s + (parseFloat(g.tradeValue) || (g.item.market ?? 0)), 0))}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setDealStep("quote")}
-                className="px-4 py-2.5 rounded-xl text-sm border opacity-50 hover:opacity-80 transition-opacity"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={handleCompleteDeal}
-                disabled={busy || dealCards.length === 0 || undecidedCards.length === dealCards.length}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-30"
-                style={{ background: "var(--accent-primary)" }}
-              >
-                {busy ? "Recording…" : `Complete Deal · ${money(totalOffer)}`}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── STEP 4: COMPLETE ── */}
-        {dealStep === "complete" && (
-          <div className="space-y-4 text-center">
-            <div
-              className="w-16 h-16 rounded-full mx-auto flex items-center justify-center"
-              style={{ background: "rgba(34,197,94,0.15)" }}
-            >
-              <Handshake size={28} className="text-emerald-400" />
-            </div>
-            <div>
-              <div className="text-lg font-bold">Deal done!</div>
-              {dealCompleteSummary && (
-                <div className="text-sm opacity-60 mt-1 space-y-0.5">
-                  {dealCompleteSummary.cashOut > 0 && <div>Cash paid: {money(dealCompleteSummary.cashOut)}</div>}
-                  {dealCompleteSummary.tradeValue > 0 && <div>Trade credit: {money(dealCompleteSummary.tradeValue)}</div>}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleDealReset}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-white"
-              style={{ background: "var(--accent-primary)" }}
-            >
-              New Deal
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   function renderSellTab() {
     const filtered = filterInventory(tradeInventory, sellQuery);
     const categoryFiltered = sellCategoryFilter === "all"
@@ -3144,65 +3106,16 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
             </select>
           </div>
 
-          {!tradeInventoryLoaded ? (
-            <div className="text-xs opacity-40 text-center py-6">Loading inventory…</div>
-          ) : displayItems.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2">
-              {displayItems.map((item) => {
-                const selected = sellSelected.has(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => toggleSellSelect(item)}
-                    className={`relative flex flex-col rounded-xl overflow-hidden text-left transition-all border-2 ${
-                      selected ? "border-emerald-500 shadow-sm shadow-emerald-500/20" : "border-border/40"
-                    }`}
-                  >
-                    <div className="relative w-full aspect-[3/4] bg-muted overflow-hidden">
-                      {item.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center opacity-20 text-[10px] font-bold uppercase tracking-wide text-center px-1">
-                          {item.category}
-                        </div>
-                      )}
-                      {item.grade && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
-                          <div className="text-[8px] font-bold text-white text-center truncate">{item.grade}</div>
-                        </div>
-                      )}
-                      {selected && (
-                        <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
-                          <span className="text-white text-[8px] font-bold">✓</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="px-1.5 pt-1 pb-1.5 bg-background">
-                      <div className="text-[9px] font-medium leading-tight truncate">
-                        <HighlightTerms text={item.name} terms={searchTerms} />
-                      </div>
-                      {(item.set_name || item.card_number) && (
-                        <div className="text-[8px] opacity-40 truncate">
-                          <HighlightTerms
-                            text={[item.set_name, item.card_number ? `#${item.card_number}` : null].filter(Boolean).join(" ")}
-                            terms={searchTerms}
-                          />
-                        </div>
-                      )}
-                      <div className="text-[9px] opacity-50 mt-0.5">
-                        {item.sticker_price != null ? money(item.sticker_price) : item.market != null ? money(item.market) : "—"}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : sellQuery.trim() ? (
-            <div className="text-xs opacity-40 text-center py-4">No results for &ldquo;{sellQuery}&rdquo;</div>
-          ) : (
-            <div className="text-xs opacity-40 text-center py-6">No items in inventory</div>
-          )}
+          <InventoryCardGrid
+            items={displayItems}
+            isLoading={!tradeInventoryLoaded}
+            selectedIds={new Set(sellSelected.keys())}
+            onToggle={toggleSellSelect}
+            searchTerms={searchTerms}
+            selectionVariant="emerald"
+            footerVariant="sticker-or-market"
+            emptyMessage={sellQuery.trim() ? `No results for "${sellQuery}"` : "No items in inventory"}
+          />
         </div>
 
         {/* ── BOTTOM ZONE ── */}
@@ -3432,73 +3345,24 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           </div>
 
           {/* Inventory grid */}
-          {!tradeInventoryLoaded ? (
-            <div className="text-xs opacity-40 text-center py-6">Loading inventory…</div>
-          ) : filteredInventory.length === 0 ? (
-            <div className="text-xs opacity-40 text-center py-4">{tradeInventoryQuery ? `No results for "${tradeInventoryQuery}"` : "No items in inventory"}</div>
-          ) : (
-            <>
-              <div className="grid grid-cols-3 gap-2">
-                {filteredInventory.slice(0, tradeShowMore ? undefined : 15).map((item) => {
-                  const selected = !!tradeGoingOut.find((g) => g.item.id === item.id);
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setTradeGoingOut((prev) => {
-                        const exists = prev.find((g) => g.item.id === item.id);
-                        if (exists) return prev.filter((g) => g.item.id !== item.id);
-                        return [...prev, { item, tradeValue: item.market != null ? item.market.toFixed(2) : "" }];
-                      })}
-                      className={`relative flex flex-col rounded-xl overflow-hidden text-left transition-all border-2 ${
-                        selected ? "border-rose-500 shadow-sm shadow-rose-500/20" : "border-border/40"
-                      }`}
-                    >
-                      <div className="relative w-full aspect-[3/4] bg-muted overflow-hidden">
-                        {item.image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center opacity-20 text-[9px] font-bold uppercase tracking-wide text-center px-1">
-                            {item.category}
-                          </div>
-                        )}
-                        {item.grade && (
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
-                            <div className="text-[7px] font-bold text-white text-center truncate">{item.grade}</div>
-                          </div>
-                        )}
-                        {selected && (
-                          <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center">
-                            <span className="text-white text-[8px] font-bold">✓</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="px-1.5 pt-1 pb-1.5 bg-background">
-                        <div className="text-[9px] font-medium leading-tight truncate">
-                          <HighlightTerms text={item.name} terms={tradeSearchTerms} />
-                        </div>
-                        {(item.set_name || item.card_number) && (
-                          <div className="text-[8px] opacity-40 truncate">
-                            <HighlightTerms
-                              text={[item.set_name, item.card_number ? `#${item.card_number}` : null].filter(Boolean).join(" ")}
-                              terms={tradeSearchTerms}
-                            />
-                          </div>
-                        )}
-                        {item.market != null && (
-                          <div className="text-[8px] opacity-50 mt-0.5">{money(item.market)}</div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              {!tradeShowMore && filteredInventory.length > 15 && (
-                <button onClick={() => setTradeShowMore(true)} className="w-full text-[10px] opacity-40 hover:opacity-70 transition-opacity py-1">
-                  Show {filteredInventory.length - 15} more…
-                </button>
-              )}
-            </>
+          <InventoryCardGrid
+            items={filteredInventory.slice(0, tradeShowMore ? undefined : 15)}
+            isLoading={!tradeInventoryLoaded}
+            selectedIds={new Set(tradeGoingOut.map((g) => g.item.id))}
+            onToggle={(item) => setTradeGoingOut((prev) => {
+              const exists = prev.find((g) => g.item.id === item.id);
+              if (exists) return prev.filter((g) => g.item.id !== item.id);
+              return [...prev, { item, tradeValue: item.market != null ? item.market.toFixed(2) : "" }];
+            })}
+            searchTerms={tradeSearchTerms}
+            selectionVariant="rose"
+            footerVariant="market"
+            emptyMessage={tradeInventoryQuery ? `No results for "${tradeInventoryQuery}"` : "No items in inventory"}
+          />
+          {!tradeInventoryLoaded ? null : !tradeShowMore && filteredInventory.length > 15 && (
+            <button onClick={() => setTradeShowMore(true)} className="w-full text-[10px] opacity-40 hover:opacity-70 transition-opacity py-1">
+              Show {filteredInventory.length - 15} more…
+            </button>
           )}
         </div>
 
@@ -3722,7 +3586,7 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
 
     return (
       <div
-        className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4"
+        className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 transition-opacity duration-150"
         style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
       >
         <div className="modal-panel w-full max-w-sm p-5 space-y-4 max-h-[85vh] overflow-y-auto">
@@ -3781,6 +3645,7 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
                   placeholder={`Expected: ${money(expectedCashLocal)}`}
                   value={actualCash}
                   onChange={(e) => setActualCash(e.target.value)}
+                  autoFocus
                 />
               </div>
               {discrepancy != null && (
@@ -3807,53 +3672,12 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     );
   }
 
-  function renderExpenseModal() {
-    return (
-      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
-        <div className="modal-panel w-full max-w-sm p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="modal-title">Add Expense</div>
-            <button onClick={() => setExpenseOpen(false)} className="modal-close-btn">✕</button>
-          </div>
-          <select className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background" value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)}>
-            {EXPENSE_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-          <input
-            className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
-            placeholder="Description"
-            value={expenseDesc}
-            onChange={(e) => setExpenseDesc(e.target.value)}
-            autoFocus
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="number"
-              inputMode="decimal"
-              className="border rounded-lg px-3 py-2.5 text-sm bg-background font-mono"
-              placeholder="Amount $"
-              value={expenseCost}
-              onChange={(e) => setExpenseCost(e.target.value)}
-            />
-            <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={expensePaidBy} onChange={(e) => setExpensePaidBy(e.target.value as "alex" | "mila")}>
-              <option value="alex">Paid by Alex</option>
-              <option value="mila">Paid by Mila</option>
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button className="flex-1 modal-btn-primary" onClick={handleAddExpense} disabled={busy}>{busy ? "Adding…" : "Add Expense"}</button>
-            <button className="modal-btn-ghost" onClick={() => setExpenseOpen(false)}>Cancel</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   function renderCashCountModal() {
     const cashCountNum = parseFloat(cashCountInput) || null;
     const diff = cashCountNum != null ? cashCountNum - expectedCash : null;
     return (
       <div
-        className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4"
+        className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 transition-opacity duration-150"
         style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
         onClick={(e) => { if (e.target === e.currentTarget) setCashCountOpen(false); }}
       >
