@@ -603,18 +603,42 @@ function ScheduleShowModal({
   busy: boolean;
   err: string;
 }) {
-  const [name, setName]               = useState("");
-  const [location, setLocation]       = useState("");
-  const [hours, setHours]             = useState("");
+  const [name, setName]                 = useState("");
+  const [location, setLocation]         = useState("");
+  const [hours, setHours]               = useState("");
   const [startingCash, setStartingCash] = useState("");
-  const [notes, setNotes]             = useState("");
+  const [notes, setNotes]               = useState("");
+  const [submitted, setSubmitted]       = useState(false);
 
-  // Reset on open
+  // Reset field + validation state when the modal opens.
   useEffect(() => {
-    if (open) { setName(""); setLocation(""); setHours(""); setStartingCash(""); setNotes(""); }
+    if (open) {
+      setName(""); setLocation(""); setHours(""); setStartingCash(""); setNotes("");
+      setSubmitted(false);
+    }
   }, [open]);
 
+  // ESC to close.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   if (!open) return null;
+
+  const nameErr = submitted && !name.trim();
+  const dateErr = submitted && !date;
+
+  function handleSubmit() {
+    setSubmitted(true);
+    if (!name.trim() || !date) {
+      if (!name.trim()) document.getElementById("ssm-name")?.focus();
+      else document.getElementById("ssm-date")?.focus();
+      return;
+    }
+    onSubmit({ name, location, hours, startingCash, notes });
+  }
 
   return (
     <div
@@ -623,53 +647,55 @@ function ScheduleShowModal({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="modal-panel w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-        style={{ maxHeight: "85vh", display: "flex", flexDirection: "column" }}
+        className="modal-panel w-full max-w-md overflow-hidden flex flex-col"
+        style={{ maxHeight: "85vh" }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
-          <h2 className="modal-title text-base">Schedule Show</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/8 transition-colors text-muted-foreground"
-          >
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0">
+          <h2 className="modal-title">Schedule Show</h2>
+          <button onClick={onClose} className="modal-close-btn" aria-label="Close">
             <X size={16} />
           </button>
         </div>
 
-        {/* Scrollable fields */}
-        <div className="px-6 pb-2 space-y-3.5 overflow-y-auto flex-1">
+        {/* ── Scrollable fields ── */}
+        <div className="px-5 pb-2 space-y-3 overflow-y-auto flex-1">
+
           {/* Show Name — required */}
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-              Show Name <span className="text-rose-400">*</span>
+            <label htmlFor="ssm-name" className="block text-xs font-semibold uppercase tracking-wider opacity-60 mb-1.5">
+              Show Name <span className="text-negative">*</span>
             </label>
             <input
-              className="w-full"
+              id="ssm-name"
+              className={`w-full${nameErr ? " field-error" : ""}`}
               placeholder="e.g. Portland Card Show"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
             />
+            {nameErr && <p className="text-xs text-negative mt-1">Required</p>}
           </div>
 
           {/* Date — required */}
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-              Date <span className="text-rose-400">*</span>
+            <label htmlFor="ssm-date" className="block text-xs font-semibold uppercase tracking-wider opacity-60 mb-1.5">
+              Date <span className="text-negative">*</span>
             </label>
             <input
+              id="ssm-date"
               type="date"
-              className="w-full"
+              className={`w-full${dateErr ? " field-error" : ""}`}
               value={date}
               onChange={(e) => onDateChange(e.target.value)}
             />
+            {dateErr && <p className="text-xs text-negative mt-1">Required</p>}
           </div>
 
           {/* Location — optional */}
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-              Location <span className="text-muted-foreground/40 normal-case font-normal tracking-normal text-[11px]">optional</span>
+            <label className="block text-xs font-semibold uppercase tracking-wider opacity-60 mb-1.5">
+              Location <span className="text-xs normal-case font-normal tracking-normal opacity-40">optional</span>
             </label>
             <input
               className="w-full"
@@ -681,8 +707,8 @@ function ScheduleShowModal({
 
           {/* Hours — optional */}
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-              Hours <span className="text-muted-foreground/40 normal-case font-normal tracking-normal text-[11px]">optional</span>
+            <label className="block text-xs font-semibold uppercase tracking-wider opacity-60 mb-1.5">
+              Hours <span className="text-xs normal-case font-normal tracking-normal opacity-40">optional</span>
             </label>
             <input
               className="w-full"
@@ -694,8 +720,8 @@ function ScheduleShowModal({
 
           {/* Starting Cash — optional */}
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-              Starting Cash <span className="text-muted-foreground/40 normal-case font-normal tracking-normal text-[11px]">optional</span>
+            <label className="block text-xs font-semibold uppercase tracking-wider opacity-60 mb-1.5">
+              Starting Cash <span className="text-xs normal-case font-normal tracking-normal opacity-40">optional</span>
             </label>
             <input
               type="number"
@@ -710,8 +736,8 @@ function ScheduleShowModal({
 
           {/* Notes — optional */}
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-              Notes <span className="text-muted-foreground/40 normal-case font-normal tracking-normal text-[11px]">optional</span>
+            <label className="block text-xs font-semibold uppercase tracking-wider opacity-60 mb-1.5">
+              Notes <span className="text-xs normal-case font-normal tracking-normal opacity-40">optional</span>
             </label>
             <textarea
               className="w-full resize-none"
@@ -722,20 +748,25 @@ function ScheduleShowModal({
             />
           </div>
 
-          {err && <p className="text-xs text-rose-400 font-medium">{err}</p>}
+          {err && <p className="text-xs text-negative font-medium">{err}</p>}
         </div>
 
-        {/* Footer buttons */}
-        <div className="flex gap-2 px-6 py-4 shrink-0 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+        {/* ── Footer ── */}
+        <div
+          className="flex flex-col-reverse gap-2 px-5 py-4 shrink-0 border-t sm:flex-row"
+          style={{ borderColor: "var(--border-subtle)" }}
+        >
           <button className="modal-btn-ghost flex-1" onClick={onClose} disabled={busy}>
             Cancel
           </button>
           <button
             className="modal-btn-primary flex-1"
-            onClick={() => onSubmit({ name, location, hours, startingCash, notes })}
-            disabled={busy || !name.trim() || !date}
+            onClick={handleSubmit}
+            disabled={busy}
           >
-            {busy ? <span className="flex items-center justify-center gap-2"><Loader2 size={13} className="animate-spin" />Scheduling…</span> : "Schedule Show"}
+            {busy
+              ? <span className="flex items-center justify-center gap-2"><Loader2 size={13} className="animate-spin" />Scheduling…</span>
+              : "Schedule Show"}
           </button>
         </div>
       </div>
@@ -951,7 +982,7 @@ export default function CalendarClient({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pt-4 pb-28 space-y-4">
+    <div className="w-full max-w-2xl mx-auto px-4 pt-4 pb-28 space-y-4">
 
       {/* ── Today widget ── */}
       <div

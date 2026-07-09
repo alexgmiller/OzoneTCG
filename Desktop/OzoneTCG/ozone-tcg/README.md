@@ -98,6 +98,22 @@ If you wish to just develop locally and not deploy to Vercel, [follow the steps 
 
 > Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
 
+## Testing
+
+```bash
+npm test          # run all tests once
+npm run test:watch  # watch mode
+```
+
+49 tests across two files:
+
+| File | What it covers |
+|------|---------------|
+| `lib/fmv.test.ts` | Fair-market-value calculation logic |
+| `lib/cardNameUtils.test.ts` | Card name parsing and normalization |
+
+Any new utility code added to `lib/` should ship with a corresponding `.test.ts` file. Tests run automatically on every push and pull request to `main` via GitHub Actions (`.github/workflows/ci.yml`).
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
