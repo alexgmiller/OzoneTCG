@@ -282,6 +282,19 @@ export async function POST(req: NextRequest) {
       console.error("[cert-lookup] eBay pricing failed (non-fatal):", e);
     }
 
+    // ── Population snapshot (scarcity signal — idempotent per day) ────────────
+    if (certDetails.population != null) {
+      const { snapshotPopulation } = await import("@/lib/popSnapshots.server");
+      await snapshotPopulation({
+        company,
+        name: certDetails.name,
+        cardNumber: certDetails.cardNumber,
+        grade: certDetails.grade,
+        population: certDetails.population,
+        populationHigher: certDetails.populationHigher,
+      });
+    }
+
     const response: CertLookupResult = {
       certNumber,
       company,
