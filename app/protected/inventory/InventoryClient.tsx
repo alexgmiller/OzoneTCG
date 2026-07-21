@@ -2,738 +2,27 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Search, Plus, List, Grid2X2, Trophy, CreditCard, Folder, Clock, ChevronDown } from "lucide-react";
+import { Camera, Search, Plus, List, Grid2X2 } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
-import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, fetchCardData, uploadCardImage, uploadItemImage, refreshSlabPrice, getEbayDailyCallCount, refreshRawCardPrice, refreshSealedPrice, type RefreshedSlabPrice, type RefreshedRawCardPrice } from "./actions";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, fetchCardData, uploadItemImage, refreshSlabPrice, getEbayDailyCallCount, refreshRawCardPrice, refreshSealedPrice, type RefreshedSlabPrice, type RefreshedRawCardPrice } from "./actions";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
-import { makeSlabPriceKey, parseGrade, type SlabSale } from "@/lib/ebay-client";
+import { makeSlabPriceKey, parseGrade } from "@/lib/ebay-client";
 import { makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
 import { computeBlendedFMV, type FMVResult, type PricingStrategyOverride } from "@/lib/fmv";
-import CSVImport from "./CSVImport";
 import CardScanner, { type ScanResult } from "@/components/CardScanner";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
-import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
-import CardImage from "@/components/CardImage";
-
-type Category = "single" | "slab" | "sealed";
-type Owner = "alex" | "mila" | "shared" | "consigner";
-type Status = "inventory" | "grading";
-type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
-type SortKey =
-  | "date-desc" | "date-asc"
-  | "name-asc"  | "name-desc"
-  | "market-desc" | "market-asc"
-  | "cost-desc"   | "cost-asc"
-  | "fmv-desc"    | "fmv-asc"
-  | "margin-desc" | "margin-asc"
-  | "movement-desc" | "movement-asc";
-
-type ConsignerOption = { id: string; name: string; rate: number };
-
-type Item = {
-  id: string;
-  name: string;
-  category: Category;
-  owner: Owner;
-  status: Status;
-  market: number | null;
-  cost: number | null;
-  condition: Condition;
-  notes: string | null;
-  created_at: string;
-  consigner_id: string | null;
-  image_url: string | null;
-  set_name: string | null;
-  card_number: string | null;
-  grade: string | null;
-  cost_basis: number | null;
-  buy_percentage: number | null;
-  acquisition_type: string | null;
-  chain_depth: number;
-  original_cash_invested: number | null;
-  sticker_price: number | null;
-  acquired_market_price: number | null;
-  acquired_date: string | null;
-  // Sealed product metadata
-  product_type: string | null;
-  quantity: number;
-  language: string;
-};
-
-type ItemForm = {
-  category: Category;
-  owner: Owner;
-  status: Status;
-  name: string;
-  condition: Condition;
-  cost: string;
-  market: string;
-  buyPct: string; // helper: auto-fill cost from market price
-  notes: string;
-  consignerId: string;
-  imageUrl: string;
-  cardId: string;
-  setName: string;
-  cardNumber: string;
-  grade: string;
-  stickerPrice: string;
-  // Sealed product metadata
-  productType: string;
-  quantity: string;
-  language: string;
-};
-
-type StagedItem = ItemForm & { _id: string };
-
-function toNum(v: string) {
-  const t = v.trim();
-  if (!t) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmt(v: number | null) {
-  if (v == null) return "-";
-  return `$${v.toFixed(2)}`;
-}
-
-/**
- * Returns the effective cost for an item: prefer cost_basis (trade chain cash invested)
- * over manual cost. Returns null if neither is set (item is uncosted).
- */
-function effectiveCost(it: { cost: number | null; cost_basis: number | null }): number | null {
-  if (it.cost_basis != null) return it.cost_basis;
-  if (it.cost != null) return it.cost;
-  return null;
-}
-
-function getMovement(current: number | null, acquired: number | null): number | null {
-  if (current == null || acquired == null || acquired === 0) return null;
-  return ((current - acquired) / acquired) * 100;
-}
-
-function MovementBadge({ pct }: { pct: number | null }) {
-  if (pct == null) return null;
-  const abs = Math.abs(pct);
-  if (pct > 25) return <span className="text-[10px] font-semibold text-amber-500 tabular-nums whitespace-nowrap">▲ +{abs.toFixed(0)}%</span>;
-  if (pct > 10) return <span className="text-[10px] font-semibold text-green-500 tabular-nums whitespace-nowrap">▲ +{abs.toFixed(0)}%</span>;
-  if (pct < -10) return <span className="text-[10px] font-semibold text-red-500 tabular-nums whitespace-nowrap">▼ -{abs.toFixed(0)}%</span>;
-  return <span className="text-[10px] opacity-35 tabular-nums whitespace-nowrap">— {pct >= 0 ? "+" : ""}{pct.toFixed(0)}%</span>;
-}
-
-function MovementDot({ pct }: { pct: number | null }) {
-  if (pct == null) return null;
-  if (pct > 25) return <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title={`+${pct.toFixed(0)}% since acquired`} />;
-  if (pct > 10) return <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" title={`+${pct.toFixed(0)}% since acquired`} />;
-  if (pct < -10) return <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title={`${pct.toFixed(0)}% since acquired`} />;
-  return null;
-}
-
-const PRODUCT_TYPE_LABELS: Record<string, string> = {
-  booster_box: "Booster Box",
-  etb: "ETB",
-  tin: "Tin",
-  collection_box: "Collection Box",
-  bundle: "Bundle",
-  booster_pack: "Booster Pack",
-  promo_box: "Promo Box",
-  other: "Sealed",
-};
-
-function sealedTypeLabel(productType: string | null): string {
-  if (!productType) return "Sealed";
-  return PRODUCT_TYPE_LABELS[productType] ?? productType;
-}
-
-function buildSlabEbayQuery(name: string, grade: string | null, setName: string | null, cardNumber: string | null): string {
-  const cleanName = name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
-  const num = cardNumber?.split("/")[0]?.trim() ?? "";
-  return [grade, cleanName, setName, num].filter(Boolean).join(" ");
-}
-
-function buildRawEbayQuery(name: string, setName: string | null, cardNumber: string | null): string {
-  const cleanName = name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
-  const num = cardNumber?.split("/")[0]?.trim() ?? "";
-  return [cleanName, setName, num].filter(Boolean).join(" ");
-}
-
-// ── Year helpers (kept for reference / future use) ─────────────────────────
-
-const SET_YEAR_MAP: Record<string, number> = {
-  "Base Set": 1999, "Jungle": 1999, "Fossil": 1999, "Base Set 2": 2000,
-  "Team Rocket": 2000, "Gym Heroes": 2000, "Gym Challenge": 2000,
-  "Neo Genesis": 2000, "Neo Discovery": 2001, "Neo Revelation": 2001, "Neo Destiny": 2002,
-  "Expedition Base Set": 2002, "Aquapolis": 2003, "Skyridge": 2003,
-  "EX Ruby & Sapphire": 2003, "EX Sandstorm": 2003, "EX Dragon": 2003,
-  "EX Team Magma vs Team Aqua": 2004, "EX Hidden Legends": 2004,
-  "EX FireRed & LeafGreen": 2004, "EX Team Rocket Returns": 2004,
-  "EX Deoxys": 2005, "EX Emerald": 2005, "EX Unseen Forces": 2005,
-  "EX Delta Species": 2005, "EX Legend Maker": 2006, "EX Holon Phantoms": 2006,
-  "EX Crystal Guardians": 2006, "EX Dragon Frontiers": 2006, "EX Power Keepers": 2007,
-  "Diamond & Pearl": 2007, "Mysterious Treasures": 2007, "Secret Wonders": 2007,
-  "Great Encounters": 2008, "Majestic Dawn": 2008, "Legends Awakened": 2008,
-  "Stormfront": 2008, "Platinum": 2009, "Rising Rivals": 2009,
-  "Supreme Victors": 2009, "Arceus": 2009,
-  "HeartGold & SoulSilver": 2010, "Unleashed": 2010, "Undaunted": 2010, "Triumphant": 2010,
-  "Call of Legends": 2011,
-  "Black & White": 2011, "Emerging Powers": 2011, "Noble Victories": 2011,
-  "Next Destinies": 2012, "Dark Explorers": 2012, "Dragons Exalted": 2012,
-  "Dragon Vault": 2012, "Boundaries Crossed": 2012,
-  "Plasma Storm": 2013, "Plasma Freeze": 2013, "Plasma Blast": 2013,
-  "Legendary Treasures": 2013,
-  "XY": 2014, "Flashfire": 2014, "Furious Fists": 2014, "Phantom Forces": 2014,
-  "Primal Clash": 2015, "Roaring Skies": 2015, "Ancient Origins": 2015,
-  "BREAKthrough": 2015, "BREAKpoint": 2016, "Generations": 2016, "Fates Collide": 2016,
-  "Steam Siege": 2016, "Evolutions": 2016,
-  "Sun & Moon": 2017, "Guardians Rising": 2017, "Burning Shadows": 2017,
-  "Crimson Invasion": 2017, "Shining Legends": 2017,
-  "Ultra Prism": 2018, "Forbidden Light": 2018, "Celestial Storm": 2018,
-  "Dragon Majesty": 2018, "Lost Thunder": 2018,
-  "Team Up": 2019, "Detective Pikachu": 2019, "Unbroken Bonds": 2019,
-  "Unified Minds": 2019, "Hidden Fates": 2019, "Cosmic Eclipse": 2019,
-  "Sword & Shield": 2020, "Rebel Clash": 2020, "Darkness Ablaze": 2020,
-  "Champion's Path": 2020, "Vivid Voltage": 2020,
-  "Battle Styles": 2021, "Chilling Reign": 2021, "Evolving Skies": 2021,
-  "Celebrations": 2021, "Fusion Strike": 2021,
-  "Brilliant Stars": 2022, "Astral Radiance": 2022, "Pokémon GO": 2022,
-  "Lost Origin": 2022, "Silver Tempest": 2022,
-  "Crown Zenith": 2023, "Scarlet & Violet": 2023, "Paldea Evolved": 2023,
-  "Obsidian Flames": 2023, "151": 2023, "Paradox Rift": 2023,
-  "Paldean Fates": 2024, "Temporal Forces": 2024, "Twilight Masquerade": 2024,
-  "Shrouded Fable": 2024, "Stellar Crown": 2024, "Surging Sparks": 2024,
-  "Prismatic Evolutions": 2025, "Journey Together": 2025,
-};
-
-/** Extract a 4-digit year from a set name. */
-function inferCardYear(setName: string | null | undefined): number | null {
-  if (!setName) return null;
-  const mapped = SET_YEAR_MAP[setName.trim()];
-  if (mapped) return mapped;
-  const m = setName.match(/\b(19[0-9]{2}|20[0-9]{2})\b/);
-  return m ? parseInt(m[1]) : null;
-}
-
-/** Extract year from eBay listing titles (e.g. "2003 Pokemon EX Dragon ..."). */
-function yearFromEbayTitles(titles: string[]): number | null {
-  for (const t of titles) {
-    const m = t.match(/\b(19[0-9]{2}|20[0-9]{2})\b/);
-    if (m) return parseInt(m[1]);
-  }
-  return null;
-}
-
-const categoryColors: Record<string, string> = {
-  single: "bg-blue-100 text-blue-800",
-  slab: "bg-purple-100 text-purple-800",
-  sealed: "bg-teal-100 text-teal-800",
-};
-
-function gradeStyle(grade: string): string {
-  const parsed = parseGrade(grade);
-  const company = parsed?.company?.toUpperCase() ?? "";
-  const n = parsed ? parseFloat(parsed.grade) : 0;
-  const isBlack = parsed?.grade?.toLowerCase().includes("black") ?? false;
-
-  if (company === "PSA") {
-    if (n >= 10) return "grade-badge grade-psa grade-psa-10";
-    return "grade-badge grade-psa";
-  }
-  if (company === "BGS") {
-    if (isBlack || n >= 10) return "grade-badge grade-bgs grade-bgs-10";
-    return "grade-badge grade-bgs";
-  }
-  if (company === "CGC") {
-    if (n >= 10) return "grade-badge grade-cgc grade-cgc-10";
-    return "grade-badge grade-cgc";
-  }
-  if (company === "TAG") {
-    if (n >= 10) return "grade-badge grade-tag grade-tag-10";
-    return "grade-badge grade-tag";
-  }
-  return "grade-badge grade-other";
-}
-
-/** Maps a grade string to the slab label bar details for grid view rendering. */
-function slabGradeLabel(grade: string | null): { company: string; companyKey: string; gradeNum: string; labelText: string } | null {
-  if (!grade) return null;
-  const parsed = parseGrade(grade);
-  if (!parsed) return null;
-  const gradeStr = parsed.grade;
-  const n = parseFloat(gradeStr);
-  const isBlack = gradeStr.toLowerCase().includes("black");
-  let labelText: string;
-  if (isBlack)   labelText = "PRISTINE";
-  else if (n >= 10)  labelText = "GEM MT";
-  else if (n >= 9.5) labelText = "GEM MT";
-  else if (n >= 9)   labelText = "MINT";
-  else if (n >= 8.5) labelText = "NM-MT+";
-  else if (n >= 8)   labelText = "NM-MT";
-  else if (n >= 7.5) labelText = "NM+";
-  else if (n >= 7)   labelText = "NM";
-  else if (n >= 6)   labelText = "EX-MT";
-  else if (n >= 5)   labelText = "EX";
-  else if (n >= 4)   labelText = "VG-EX";
-  else if (n >= 3)   labelText = "VG";
-  else if (n >= 2)   labelText = "GOOD";
-  else if (n >= 1)   labelText = "POOR";
-  else labelText = gradeStr.toUpperCase();
-  const company = parsed.company.toUpperCase();
-  const companyKey = ["PSA", "BGS", "CGC", "TAG"].includes(company) ? company.toLowerCase() : "other";
-  return { company, companyKey, gradeNum: isBlack ? "10" : gradeStr, labelText };
-}
-
-// ── Staleness tiers ────────────────────────────────────────────────────────
-const TIER_2H = 2 * 60 * 60 * 1000;
-const TIER_4H = 4 * 60 * 60 * 1000;
-const TIER_8H = 8 * 60 * 60 * 1000;
-const EBAY_DAILY_BUDGET = 5000;
-const EBAY_BUDGET_WARN_PCT = 0.8;
-
-function getSlabTierMs(fmv: number | null, compCount: number): number {
-  if (compCount < 3) return TIER_2H;       // low confidence → 2h
-  if (fmv == null)   return TIER_2H;       // no data → treat as 2h (will be highest priority)
-  if (fmv > 200)     return TIER_2H;       // high value → 2h
-  if (fmv >= 50)     return TIER_4H;       // medium value → 4h
-  return TIER_8H;                          // low value → 8h
-}
-
-function isSlabTierStale(sp: SlabPrice | null | undefined, fmv: number | null): boolean {
-  if (!sp?.last_updated) return true;      // no cached data at all
-  const compCount = sp.sold_count > 0 ? sp.sold_count : sp.comp_count;
-  return Date.now() - new Date(sp.last_updated).getTime() > getSlabTierMs(fmv, compCount);
-}
-
-const blankForm = (): ItemForm => ({
-  category: "single",
-  owner: "shared",
-  status: "inventory",
-  name: "",
-  condition: "Near Mint",
-  cost: "",
-  market: "",
-  buyPct: "",
-  notes: "",
-  consignerId: "",
-  imageUrl: "",
-  cardId: "",
-  setName: "",
-  cardNumber: "",
-  grade: "",
-  stickerPrice: "",
-  productType: "",
-  quantity: "1",
-  language: "english",
-});
-
-function itemToForm(it: Item): ItemForm {
-  return {
-    category: it.category,
-    owner: it.owner,
-    status: it.status,
-    name: it.name,
-    condition: it.condition,
-    cost: it.cost != null ? String(it.cost) : "",
-    market: it.market != null ? String(it.market) : "",
-    buyPct: it.buy_percentage != null ? String(it.buy_percentage) : "",
-    notes: it.notes ?? "",
-    consignerId: it.consigner_id ?? "",
-    imageUrl: it.image_url ?? "",
-    cardId: "",
-    setName: it.set_name ?? "",
-    cardNumber: it.card_number ?? "",
-    grade: it.grade ?? "",
-    stickerPrice: it.sticker_price != null ? String(it.sticker_price) : "",
-    productType: it.product_type ?? "",
-    quantity: it.quantity != null ? String(it.quantity) : "1",
-    language: it.language ?? "english",
-  };
-}
-
-// Grade options per company: top = most-used (shown first), rest = full list
-const GRADE_OPTIONS: Record<string, { top: string[]; rest: string[] }> = {
-  PSA: {
-    top: ["10", "9", "8"],
-    rest: ["7", "6", "5", "4", "3", "2", "1"],
-  },
-  BGS: {
-    top: ["10 Black Label", "10", "9.5", "9", "8.5", "8"],
-    rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4.5", "4", "3.5", "3", "2.5", "2", "1.5", "1"],
-  },
-  CGC: {
-    top: ["10 Perfect", "10 Pristine", "9.5", "9", "8.5", "8"],
-    rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4.5", "4", "3.5", "3", "2.5", "2", "1.5", "1"],
-  },
-  TAG: {
-    top: ["10", "9.5", "9", "8.5", "8"],
-    rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4", "3", "2", "1"],
-  },
-};
-const GRADE_COMPANIES = ["PSA", "BGS", "CGC", "TAG"] as const;
-
-function ItemFormFields({
-  form,
-  setForm,
-  consigners,
-  onFind,
-  finding,
-  findConfirmed,
-  findError,
-}: {
-  form: ItemForm;
-  setForm: (f: ItemForm) => void;
-  consigners: ConsignerOption[];
-  onFind?: () => void;
-  finding?: boolean;
-  findConfirmed?: string | null;
-  findError?: string | null;
-}) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-
-  // Two-dropdown grade state: company is tracked locally, grade score derived from form.grade
-  const [gradeCompany, setGradeCompany] = useState<string>(() => {
-    const p = parseGrade(form.grade ?? "");
-    const co = p?.company?.toUpperCase() ?? "";
-    return GRADE_COMPANIES.includes(co as typeof GRADE_COMPANIES[number]) ? co : "PSA";
-  });
-  // Sync gradeCompany when form.grade is set externally (e.g. card search auto-fill)
-  useEffect(() => {
-    const p = parseGrade(form.grade ?? "");
-    const co = p?.company?.toUpperCase() ?? "";
-    if (GRADE_COMPANIES.includes(co as typeof GRADE_COMPANIES[number])) {
-      setGradeCompany(co);
-    }
-  }, [form.grade]);
-  const gradeScore = parseGrade(form.grade ?? "")?.grade ?? "";
-
-  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingImage(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      if (form.cardId) fd.append("cardId", form.cardId);
-      if (form.name) fd.append("name", form.name);
-      if (form.cardNumber) fd.append("cardNumber", form.cardNumber);
-      const url = await uploadCardImage(fd);
-      setForm({ ...form, imageUrl: url });
-    } catch {
-      // silent — user can retry
-    } finally {
-      setUploadingImage(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <select
-          className="border rounded-lg px-3 py-2 text-sm bg-background"
-          value={form.category}
-          onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
-        >
-          <option value="single">Single</option>
-          <option value="slab">Slab</option>
-          <option value="sealed">Sealed</option>
-        </select>
-
-        <select
-          className="border rounded-lg px-3 py-2 text-sm bg-background"
-          value={form.owner === "consigner" && form.consignerId ? `consigner:${form.consignerId}` : form.owner}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v.startsWith("consigner:")) {
-              setForm({ ...form, owner: "consigner", consignerId: v.slice("consigner:".length) });
-            } else {
-              setForm({ ...form, owner: v as Owner, consignerId: "" });
-            }
-          }}
-        >
-          <option value="shared">Shared</option>
-          <option value="alex">Alex</option>
-          <option value="mila">Mila</option>
-          {consigners.length > 0 && (
-            <optgroup label="Consigners">
-              {consigners.map((c) => (
-                <option key={c.id} value={`consigner:${c.id}`}>
-                  {c.name} ({Math.round(c.rate * 100)}%)
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-
-        <select
-          className="border rounded-lg px-3 py-2 text-sm bg-background"
-          value={form.status}
-          onChange={(e) => setForm({ ...form, status: e.target.value as Status })}
-        >
-          <option value="inventory">Inventory</option>
-          {form.category === "single" && <option value="grading">Grading</option>}
-        </select>
-
-        {/* Condition for singles; Grade for slabs (two dropdowns); Product type for sealed */}
-        {form.category === "slab" ? (
-          <div className="flex gap-1.5">
-            {/* Company */}
-            <select
-              className="border rounded-lg px-2 py-2 text-sm bg-background w-[68px] flex-none"
-              value={gradeCompany}
-              onChange={(e) => {
-                setGradeCompany(e.target.value);
-                setForm({ ...form, grade: "" });
-              }}
-            >
-              {GRADE_COMPANIES.map((co) => (
-                <option key={co} value={co}>{co}</option>
-              ))}
-            </select>
-            {/* Grade score */}
-            <select
-              className="border rounded-lg px-2 py-2 text-sm bg-background flex-1 min-w-0"
-              value={gradeScore}
-              onChange={(e) => {
-                const g = e.target.value;
-                setForm({ ...form, grade: g ? `${gradeCompany} ${g}` : "" });
-              }}
-            >
-              <option value="">— Grade —</option>
-              {GRADE_OPTIONS[gradeCompany]?.top.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-              <option disabled>──────</option>
-              {GRADE_OPTIONS[gradeCompany]?.rest.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
-          </div>
-        ) : form.category === "sealed" ? (
-          <select
-            className="border rounded-lg px-3 py-2 text-sm bg-background"
-            value={form.productType}
-            onChange={(e) => setForm({ ...form, productType: e.target.value })}
-          >
-            <option value="">— Type —</option>
-            <option value="booster_box">Booster Box</option>
-            <option value="etb">Elite Trainer Box</option>
-            <option value="tin">Tin</option>
-            <option value="collection_box">Collection Box</option>
-            <option value="bundle">Bundle</option>
-            <option value="booster_pack">Booster Pack</option>
-            <option value="promo_box">Promo Box</option>
-            <option value="other">Other</option>
-          </select>
-        ) : (
-          <select
-            className="border rounded-lg px-3 py-2 text-sm bg-background"
-            value={form.condition}
-            onChange={(e) => setForm({ ...form, condition: e.target.value as Condition })}
-          >
-            <option value="Near Mint">Near Mint</option>
-            <option value="Lightly Played">Lightly Played</option>
-            <option value="Moderately Played">Moderately Played</option>
-            <option value="Heavily Played">Heavily Played</option>
-            <option value="Damaged">Damaged</option>
-          </select>
-        )}
-      </div>
-
-      {/* Sealed-specific: quantity + language */}
-      {form.category === "sealed" && (
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            className="border rounded-lg px-3 py-2 text-sm bg-background"
-            placeholder="Quantity"
-            value={form.quantity}
-            inputMode="numeric"
-            onChange={(e) => setForm({ ...form, quantity: e.target.value.replace(/\D/g, "") || "1" })}
-          />
-          <select
-            className="border rounded-lg px-3 py-2 text-sm bg-background"
-            value={form.language}
-            onChange={(e) => setForm({ ...form, language: e.target.value })}
-          >
-            <option value="english">English</option>
-            <option value="japanese">Japanese</option>
-            <option value="korean">Korean</option>
-            <option value="chinese">Chinese</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-      )}
-
-      {/* Card identification — name + set + number + Find */}
-      <div className="space-y-2">
-        <CardAutocomplete
-          className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-          placeholder="Name *"
-          value={form.name}
-          onChange={(v) => setForm({ ...form, name: v })}
-          onSelect={(card: AutocompleteCard) => {
-            setForm({
-              ...form,
-              name: card.name,
-              setName: card.setName ?? "",
-              cardNumber: card.cardNumber ?? "",
-              imageUrl: card.imageUrl ?? "",
-              cardId: card.cardId ?? "",
-              ...(card.market != null ? { market: String(card.market) } : {}),
-            });
-          }}
-        />
-        {onFind && (
-          <div className="flex gap-2">
-            <input
-              className="border rounded-lg px-3 py-2 text-sm bg-background flex-1 min-w-0"
-              placeholder="Set name (optional)"
-              value={form.setName}
-              onChange={(e) => setForm({ ...form, setName: e.target.value })}
-            />
-            <input
-              className="border rounded-lg px-3 py-2 text-sm bg-background w-24 min-w-0"
-              placeholder="Card #"
-              value={form.cardNumber}
-              onChange={(e) => setForm({ ...form, cardNumber: e.target.value })}
-            />
-            <button
-              type="button"
-              onClick={onFind}
-              className="px-3 py-2 rounded-lg border text-sm font-medium hover:bg-muted transition-colors whitespace-nowrap shrink-0"
-            >
-              Find
-            </button>
-          </div>
-        )}
-        {findConfirmed && (
-          <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">
-            <span className="font-medium">✓</span>
-            <span className="truncate">{findConfirmed}</span>
-          </div>
-        )}
-        {findError && (
-          <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
-            {findError}
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          className="border rounded-lg px-3 py-2 text-sm bg-background"
-          placeholder="Market"
-          value={form.market}
-          inputMode="decimal"
-          onChange={(e) => {
-            const market = e.target.value;
-            const pct = Number(form.buyPct);
-            const mkt = Number(market);
-            const newCost = form.buyPct && pct > 0 && mkt > 0 ? String(((mkt * pct) / 100).toFixed(2)) : form.cost;
-            setForm({ ...form, market, cost: newCost });
-          }}
-        />
-        <div className="relative">
-          <input
-            className="border rounded-lg px-3 py-2 text-sm bg-background w-full pr-7"
-            placeholder="Buy %"
-            value={form.buyPct}
-            inputMode="decimal"
-            onChange={(e) => {
-              const buyPct = e.target.value;
-              const pct = Number(buyPct);
-              const mkt = Number(form.market);
-              const newCost = buyPct && pct > 0 && mkt > 0 ? String(((mkt * pct) / 100).toFixed(2)) : form.cost;
-              setForm({ ...form, buyPct, cost: newCost });
-            }}
-          />
-          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs opacity-30 pointer-events-none">%</span>
-        </div>
-        <input
-          className="border rounded-lg px-3 py-2 text-sm bg-background col-span-2"
-          placeholder={form.buyPct && form.market ? `Cost (auto: ${form.cost || "—"})` : "Cost"}
-          value={form.cost}
-          inputMode="decimal"
-          onChange={(e) => setForm({ ...form, cost: e.target.value, buyPct: "" })}
-        />
-        <input
-          className="border rounded-lg px-3 py-2 text-sm bg-background col-span-2"
-          placeholder="Sticker price (shown to guests)"
-          value={form.stickerPrice}
-          inputMode="decimal"
-          onChange={(e) => setForm({ ...form, stickerPrice: e.target.value })}
-        />
-      </div>
-
-      <textarea
-        className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-        placeholder="Notes"
-        rows={2}
-        value={form.notes}
-        onChange={(e) => setForm({ ...form, notes: e.target.value })}
-      />
-
-      {/* Image — show found image prominently, fallback to URL input + upload */}
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-      {form.imageUrl ? (
-        <div className="flex items-start gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={form.imageUrl} alt="preview" className="h-32 w-auto rounded-lg border object-contain flex-shrink-0" />
-          <div className="flex-1 space-y-1.5">
-            <input
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-              placeholder="Image URL"
-              value={form.imageUrl ?? ""}
-              onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="text-[12px] px-3 py-1 rounded-md border border-border text-[color:var(--text-secondary)] hover:bg-muted transition-colors disabled:opacity-40"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingImage}
-              >
-                {uploadingImage ? "Uploading…" : "Replace photo"}
-              </button>
-              <button
-                type="button"
-                className="text-[12px] px-3 py-1 rounded-md border border-red-300 text-red-500 hover:bg-red-50 transition-colors"
-                onClick={() => setForm({ ...form, imageUrl: "" })}
-              >
-                Remove image
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          <input
-            className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-            placeholder="Image URL (or use Find / Scan to auto-fill)"
-            value={form.imageUrl ?? ""}
-            onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-          />
-          <button
-            type="button"
-            className="text-[12px] px-3 py-1 rounded-md border border-border text-[color:var(--text-secondary)] hover:bg-muted transition-colors disabled:opacity-40"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadingImage}
-          >
-            {uploadingImage ? "Uploading…" : "Upload photo"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function nullLast(a: number | null, b: number | null, asc: boolean): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return 1;
-  if (b == null) return -1;
-  return asc ? a - b : b - a;
-}
+import type { Category, Owner, Status, SortKey, ConsignerOption, Item, ItemForm, StagedItem, Psa10Entry } from "./types";
+import {
+  toNum, fmt, effectiveCost, getMovement,
+  EBAY_DAILY_BUDGET, EBAY_BUDGET_WARN_PCT, getSlabTierMs, isSlabTierStale, blankForm, itemToForm, nullLast,
+} from "./utils";
+import { PricingDetailModal, RawPricingModal } from "./components/PricingModals";
+import { MobileDetailModal, MobileFilterSheet } from "./components/MobileSheets";
+import { EditItemModal, MassEditModal, BulkDeleteModal, SellModal, BulkCostModal } from "./components/InventoryModals";
+import InventoryListView from "./components/InventoryListView";
+import InventoryGridView from "./components/InventoryGridView";
+import GradingSection from "./components/GradingSection";
+import AddItemPanel from "./components/AddItemPanel";
 
 export default function InventoryClient({
   items,
@@ -776,7 +65,6 @@ export default function InventoryClient({
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   // PSA 10 eBay price lookup state per grading item
-  type Psa10Entry = { medianPrice: number | null; count: number; loading: boolean; fetched: boolean; rateLimited?: boolean };
   const [psa10Data, setPsa10Data] = useState<Record<string, Psa10Entry>>({});
 
   // Slab pricing refresh state per inventory slab
@@ -1649,139 +937,22 @@ export default function InventoryClient({
       />
 
       {/* Add form — collapsible (hidden on mobile unless open) */}
-      <div className={`border rounded-xl overflow-hidden ${!addOpen ? "hidden md:block" : ""}`}>
-        <div className="flex items-center justify-between px-3 py-2.5">
-          <button
-            className="flex items-center gap-2 font-medium text-sm"
-            onClick={() => setAddOpen((o) => !o)}
-          >
-            <span>{addOpen ? "▾" : "▸"}</span>
-            Add item
-          </button>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setScanOpen(true)}
-              className="text-sm px-2.5 py-1 border rounded-lg hover:bg-muted transition-colors"
-              title="Scan a card"
-            >
-              <Camera size={14} className="inline mr-1" />Scan
-            </button>
-            <CSVImport consigners={consigners} />
-          </div>
-        </div>
-        {addOpen && (
-          <div className="border-t p-3 space-y-3">
-            <ItemFormFields
-              form={addForm}
-              setForm={(f) => { setAddForm(f); setFindConfirmed(null); }}
-              consigners={consigners}
-              onFind={handleAddFormFind}
-              findConfirmed={findConfirmed}
-            />
-            <button
-              className="px-4 py-2 rounded-lg border font-medium disabled:opacity-40"
-              onClick={onAddToList}
-              disabled={!addForm.name.trim()}
-            >
-              Add to List
-            </button>
-
-            {/* Staging list */}
-            {stagedItems.length > 0 && (
-              <div className="border-t pt-3 space-y-2">
-                <div className="text-xs font-medium opacity-60 uppercase tracking-wide">
-                  Pending — {stagedItems.length} item{stagedItems.length !== 1 ? "s" : ""}
-                </div>
-                {stagedItems.map((item) => (
-                  <div key={item._id} className="flex items-start gap-2 border rounded-lg p-2">
-                    {/* Thumbnail */}
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.imageUrl} alt="" className="h-14 w-auto rounded object-contain flex-shrink-0" />
-                    ) : (
-                      <div className="h-14 w-10 rounded bg-muted flex-shrink-0" />
-                    )}
-
-                    {/* Details */}
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <div className="text-sm font-medium truncate">{item.name}</div>
-                      {(item.setName || item.cardNumber) && (
-                        <div className="text-xs opacity-60 truncate">
-                          {[item.setName, item.cardNumber ? `#${item.cardNumber}` : ""].filter(Boolean).join(" · ")}
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-1">
-                        <select
-                          className="text-xs border rounded px-1 py-0.5 bg-background"
-                          value={item.condition}
-                          onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, condition: e.target.value as Condition } : s))}
-                        >
-                          <option value="Near Mint">NM</option>
-                          <option value="Lightly Played">LP</option>
-                          <option value="Moderately Played">MP</option>
-                          <option value="Heavily Played">HP</option>
-                          <option value="Damaged">D</option>
-                        </select>
-                        <select
-                          className="text-xs border rounded px-1 py-0.5 bg-background"
-                          value={item.owner}
-                          onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, owner: e.target.value as Owner } : s))}
-                        >
-                          <option value="shared">Shared</option>
-                          <option value="alex">Alex</option>
-                          <option value="mila">Mila</option>
-                        </select>
-                        <select
-                          className="text-xs border rounded px-1 py-0.5 bg-background"
-                          value={item.category}
-                          onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, category: e.target.value as Category } : s))}
-                        >
-                          <option value="single">Single</option>
-                          <option value="slab">Slab</option>
-                          <option value="sealed">Sealed</option>
-                        </select>
-                      </div>
-                      <div className="flex gap-1">
-                        <input
-                          className="text-xs border rounded px-1.5 py-0.5 bg-background w-20"
-                          placeholder="Cost"
-                          value={item.cost}
-                          inputMode="decimal"
-                          onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, cost: e.target.value } : s))}
-                        />
-                        <input
-                          className="text-xs border rounded px-1.5 py-0.5 bg-background w-20"
-                          placeholder="Market"
-                          value={item.market}
-                          inputMode="decimal"
-                          onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, market: e.target.value } : s))}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Remove */}
-                    <button
-                      className="text-red-400 hover:text-red-600 text-xl leading-none flex-shrink-0 pt-0.5"
-                      title="Remove"
-                      onClick={() => setStagedItems((prev) => prev.filter((s) => s._id !== item._id))}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-
-                <button
-                  className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                  onClick={onSaveAll}
-                  disabled={busy}
-                >
-                  {busy ? "Saving…" : `Save All to Inventory (${stagedItems.length})`}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <AddItemPanel
+        addOpen={addOpen}
+        setAddOpen={setAddOpen}
+        setScanOpen={setScanOpen}
+        consigners={consigners}
+        addForm={addForm}
+        setAddForm={setAddForm}
+        setFindConfirmed={setFindConfirmed}
+        findConfirmed={findConfirmed}
+        handleAddFormFind={handleAddFormFind}
+        onAddToList={onAddToList}
+        stagedItems={stagedItems}
+        setStagedItems={setStagedItems}
+        onSaveAll={onSaveAll}
+        busy={busy}
+      />
 
       {/* Search / filter / sort — collapsible */}
       {/* Search & Filter — collapsible (hidden on mobile unless open) */}
@@ -2032,824 +1203,82 @@ export default function InventoryClient({
 
         {/* LIST VIEW */}
         {inventoryOpen && viewMode === "list" && filteredDisplayedItems.length > 0 && (
-          <div className="divide-y">
-            {/* Column headers */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-background border-b text-[11px] font-semibold uppercase tracking-wider opacity-40 select-none sticky top-0 z-10">
-              <div className="w-4 flex-shrink-0" />
-              <div className="w-[60px] flex-shrink-0" />
-              <button className="flex-1 text-left flex items-center gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "name-asc" ? "name-desc" : "name-asc")}>
-                Name {sort === "name-asc" ? "↑" : sort === "name-desc" ? "↓" : ""}
-              </button>
-              <button className="w-36 text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "fmv-asc" ? "fmv-desc" : "fmv-asc")}>
-                Suggested {sort === "fmv-asc" ? "↑" : sort === "fmv-desc" ? "↓" : ""}
-              </button>
-              <div className="w-[88px] text-right flex-shrink-0">My Ask</div>
-              <button className="w-[100px] text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "cost-asc" ? "cost-desc" : "cost-asc")}>
-                Cost {sort === "cost-asc" ? "↑" : sort === "cost-desc" ? "↓" : ""}
-              </button>
-              <button className="w-[100px] text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "margin-asc" ? "margin-desc" : "margin-asc")}>
-                Margin {sort === "margin-asc" ? "↑" : sort === "margin-desc" ? "↓" : ""}
-              </button>
-              <button className="w-[72px] text-right flex items-center justify-end gap-1 hover:opacity-100 transition-opacity" onClick={() => setSort(sort === "movement-asc" ? "movement-desc" : "movement-asc")}>
-                Move {sort === "movement-asc" ? "↑" : sort === "movement-desc" ? "↓" : ""}
-              </button>
-              <div className="w-[60px] flex-shrink-0" />
-            </div>
-            {/* Slabs section */}
-            <>
-              <button
-                className="section-header-slab w-full px-3 py-2 border-b border-purple-500/10 flex items-center gap-2 hover:bg-purple-500/10 transition-colors duration-150 text-left cursor-pointer"
-                onClick={() => setSlabsCollapsed((v) => !v)}
-              >
-                <ChevronDown size={13} className={`text-purple-400/60 flex-shrink-0 transition-transform duration-200 pointer-events-none ${slabsCollapsed ? "-rotate-90" : ""}`} />
-                <Trophy size={13} className="text-purple-400 flex-shrink-0 pointer-events-none" />
-                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-purple-400 inv-label pointer-events-none">Slabs</span>
-                <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(167_139_250/0.2)] pointer-events-none">{displayedSlabs.length}</span>
-              </button>
-              {!slabsCollapsed && (displayedSlabs.length === 0 ? (
-                <div className="px-3 py-8 text-center space-y-2">
-                  <div className="flex justify-center opacity-25"><Trophy size={28} /></div>
-                  {items.some((i) => i.category === "slab" && i.status !== "grading") ? (
-                    <div className="text-xs opacity-40">No slabs match your filters</div>
-                  ) : (
-                    <>
-                      <div className="text-xs opacity-40">No slabs yet</div>
-                      <button
-                        className="text-xs px-3 py-1.5 rounded-lg border font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20 transition-colors"
-                        onClick={() => openAddPreset("slab")}
-                      >
-                        + Add Slab
-                      </button>
-                    </>
-                  )}
-                </div>
-              ) : displayedSlabs.map((it) => {
-                const isSelected = selectedIds.has(it.id);
-                const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
-                const parsed = it.grade ? parseGrade(it.grade) : null;
-                const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
-                const sp = slabKey ? mergedSlabPrices[slabKey] : null;
-                const fmv = slabFMVData[it.id]?.fmv ?? it.market;
-                const isRefreshing = slabRefreshing[it.id];
-                const isRateLimited = slabRateLimited[it.id];
-                const isStale = isSlabTierStale(sp, fmv);
-                // suggested = eBay cache; ask = user's saved price; margin against effective price
-                const suggested = slabFMVData[it.id]?.fmv ?? null;
-                const askPrice = it.market;
-                const isCustomAsk = askPrice != null && askPrice !== suggested;
-                const effectivePrice = askPrice ?? suggested;
-                const ec = effectiveCost(it);
-                const marginAmtEff = effectivePrice != null && ec != null && ec > 0 ? effectivePrice - ec : null;
-                const marginPctEff = effectivePrice != null && ec != null && ec > 0 ? ((effectivePrice - ec) / ec) * 100 : null;
-                const ebayQ = buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number);
-                const ebayEnc = encodeURIComponent(ebayQ);
-                return (
-                  <div
-                    key={it.id}
-                    className={`relative inv-row inv-row-slab flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""} ${consigner ? "border-l-2 border-l-amber-500/60" : ""}`}
-                    onClick={() => toggleSelect(it.id)}
-                  >
-                    {/* Mobile tap target — opens detail sheet instead of selecting */}
-                    <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
-                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
-                    <div className="flex-shrink-0 w-[60px]">
-                      {it.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.image_url} alt={it.name} className={`card-thumb object-cover ${(() => { const n = it.grade ? parseFloat(it.grade.replace(/[^0-9.]/g, "")) : 0; return n >= 9 ? "card-thumb-gold" : ""; })()}`} />
-                      ) : (
-                        <div className="card-thumb-placeholder flex items-center justify-center"><span className="text-[10px] opacity-30">?</span></div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="inv-card-name">{it.name}</div>
-                      {(it.set_name || it.card_number) && (
-                        <div className="inv-card-meta">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
-                      )}
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
-                          {consigner ? (
-                            <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">{consigner.name}</span>
-                          ) : it.owner !== "shared" ? (
-                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
-                          ) : null}
-                        </div>
-                        {/* Mobile-only price — shown inline with grade badge */}
-                        <div className={`md:hidden flex items-center gap-1 flex-shrink-0${isRefreshing ? " price-refreshing" : ""}`}>
-                          <span className="text-sm font-semibold inv-price">{fmv != null ? fmt(fmv) : "—"}</span>
-                          <MovementBadge pct={getMovement(fmv ?? it.market, it.acquired_market_price)} />
-                        </div>
-                      </div>
-                    </div>
-                    {/* Suggested price (eBay FMV) — desktop only */}
-                    <div className="hidden md:block flex-shrink-0 w-36 text-right">
-                      {isRefreshing ? (
-                        <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block price-refreshing">↻</span></div>
-                      ) : isRateLimited ? (
-                        <button className="text-xs text-orange-500 underline" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>Rate limited</button>
-                      ) : !sp ? (
-                        <button className="text-xs px-2 py-1 rounded-lg border font-medium border-purple-300 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20 whitespace-nowrap" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>Get Price</button>
-                      ) : (
-                        <div>
-                          <div className="flex items-center justify-end gap-1">
-                            <button className={`inv-price-display ${isStale ? "opacity-40 hover:opacity-75" : ""} ${fmv != null && fmv >= 200 ? "price-high-value" : ""}`} onClick={(e) => { e.stopPropagation(); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}>
-                              {fmv != null ? fmt(fmv) : "—"}{isStale ? <Clock size={11} className="inline ml-0.5 opacity-60" /> : null}
-                            </button>
-                            <button className={`transition-opacity text-[14px] ${isRefreshing ? "opacity-50 spin" : "opacity-30 hover:opacity-70"}`} title="Refresh price from eBay" onClick={(e) => { e.stopPropagation(); handleRefreshSlabPrice(it); }}>↺</button>
-                          </div>
-                          <div className="inv-price-source">{isStale ? "eBay · stale" : `eBay${sp.sold_count > 0 ? ` · ${sp.sold_count} sold${sp.sold_count < 3 ? " ⚠" : ""}` : ""}`}</div>
-                          <div className="flex justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${ebayEnc}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">Sold ↗</a>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${ebayEnc}&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">List ↗</a>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {/* My Ask */}
-                    <div className="hidden md:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      {isCustomAsk && <div className="ask-custom-dot" title="Custom price set" />}
-                      {inlineAskId === it.id ? (
-                        <input
-                          autoFocus
-                          className={isCustomAsk ? "ask-custom" : "ask-auto"}
-                          value={inlineAskVal}
-                          inputMode="decimal"
-                          onChange={(e) => setInlineAskVal(e.target.value)}
-                          onBlur={() => handleSaveInlineAsk(it.id)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineAsk(it.id); if (e.key === "Escape") { setInlineAskId(null); setInlineAskVal(""); } }}
-                        />
-                      ) : (
-                        <button
-                          className={isCustomAsk ? "ask-custom" : "ask-auto"}
-                          onClick={() => { setInlineAskId(it.id); setInlineAskVal(askPrice?.toFixed(2) ?? suggested?.toFixed(2) ?? ""); }}
-                        >
-                          {askPrice != null ? fmt(askPrice) : suggested != null ? fmt(suggested) : "—"}
-                        </button>
-                      )}
-                    </div>
-                    {/* Cost */}
-                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right">
-                      {inlineCostId === it.id ? (
-                        <input
-                          autoFocus
-                          className="w-20 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
-                          value={inlineCostVal}
-                          inputMode="decimal"
-                          onChange={(e) => setInlineCostVal(e.target.value)}
-                          onBlur={() => handleSaveInlineCost(it.id)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : ec != null ? (
-                        <span className="inv-price text-sm opacity-70" title={it.cost_basis != null ? `Trade chain cost basis` : undefined}>{fmt(ec)}{it.cost_basis != null && <span className="text-[9px] opacity-40 ml-0.5">cb</span>}</span>
-                      ) : (
-                        <button className="cost-ghost-btn" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
-                      )}
-                    </div>
-                    {/* Margin — against ask price */}
-                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
-                      {marginAmtEff != null && marginPctEff != null ? (
-                        <span className={marginPctEff >= 0 ? "margin-positive" : "margin-negative"}>
-                          {marginPctEff >= 0 ? "+" : ""}{fmt(marginAmtEff)} <span className="opacity-70">({marginPctEff >= 0 ? "+" : ""}{marginPctEff.toFixed(0)}%)</span>
-                        </span>
-                      ) : <span className="opacity-30">—</span>}
-                      {it.acquisition_type && (
-                        <div className="mt-0.5 flex items-center justify-end gap-1">
-                          <span
-                            className={`text-[9px] px-1 py-0.5 rounded font-bold font-mono ${it.acquisition_type === "trade" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "bg-blue-500/15 text-blue-600 dark:text-blue-400"}`}
-                            title={it.acquisition_type === "trade" ? `Trade chain depth ${it.chain_depth}${it.original_cash_invested != null ? `, orig. cash: $${it.original_cash_invested.toFixed(2)}` : ""}` : `Bought at ${it.buy_percentage != null ? it.buy_percentage + "%" : "custom price"}`}
-                          >
-                            {it.acquisition_type === "trade" ? `T${it.chain_depth > 0 ? it.chain_depth : ""}` : "B"}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    {/* Movement — desktop only */}
-                    <div className="hidden md:flex flex-shrink-0 w-[72px] justify-end items-center">
-                      <MovementBadge pct={getMovement(fmv ?? it.market, it.acquired_market_price)} />
-                    </div>
-                    <div className="hidden md:flex flex-shrink-0 w-[60px] justify-end">
-                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
-                    </div>
-                  </div>
-                );
-              }))}
-            </>
-            {/* Raw Cards section */}
-            <>
-              <button
-                className="section-header-raw w-full px-3 py-2 border-b border-blue-500/10 flex items-center gap-2 hover:bg-blue-500/10 transition-colors duration-150 text-left cursor-pointer"
-                onClick={() => setRawCollapsed((v) => !v)}
-              >
-                <ChevronDown size={13} className={`text-blue-400/60 flex-shrink-0 transition-transform duration-200 pointer-events-none ${rawCollapsed ? "-rotate-90" : ""}`} />
-                <CreditCard size={13} className="text-blue-400 flex-shrink-0 pointer-events-none" />
-                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-blue-400 inv-label pointer-events-none">Raw Cards</span>
-                <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(96_165_250/0.2)] pointer-events-none">{displayedRawCards.length}</span>
-              </button>
-              {!rawCollapsed && (displayedRawCards.length === 0 ? (
-                <div className="px-3 py-8 text-center space-y-2">
-                  <div className="flex justify-center opacity-25"><CreditCard size={28} /></div>
-                  {items.some((i) => i.category === "single" && i.status !== "grading") ? (
-                    <div className="text-xs opacity-40">No singles match your filters</div>
-                  ) : (
-                    <>
-                      <div className="text-xs opacity-40">No singles yet</div>
-                      <button
-                        className="text-xs px-3 py-1.5 rounded-lg border font-medium border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
-                        onClick={() => openAddPreset("single")}
-                      >
-                        + Add Single
-                      </button>
-                    </>
-                  )}
-                </div>
-              ) : displayedRawCards.map((it) => {
-                const isSelected = selectedIds.has(it.id);
-                const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
-                const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
-                const rcp = mergedRawCardPrices[rawKey];
-                const condPrice = rcp
-                  ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition)
-                  : null;
-                // suggested = TCGPlayer cache; ask = user's saved price; margin against effective price
-                const suggested = condPrice;
-                const askPrice = it.market;
-                const isCustomAsk = askPrice != null && askPrice !== suggested;
-                const effectivePrice = askPrice ?? suggested;
-                const ecRaw = effectiveCost(it);
-                const marginAmt = effectivePrice != null && ecRaw != null && ecRaw > 0 ? effectivePrice - ecRaw : null;
-                const marginPct = effectivePrice != null && ecRaw != null && ecRaw > 0 ? ((effectivePrice - ecRaw) / ecRaw) * 100 : null;
-                const isRawRefreshing = rawCardRefreshing[it.id];
-                const rawEbayQ = buildRawEbayQuery(it.name, it.set_name, it.card_number);
-                const rawEbayEnc = encodeURIComponent(rawEbayQ);
-                const cleanNameRaw = it.name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
-                const tcgQ = encodeURIComponent([cleanNameRaw, it.set_name].filter(Boolean).join(" "));
-                return (
-                  <div
-                    key={it.id}
-                    className={`relative inv-row inv-row-raw flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""} ${consigner ? "border-l-2 border-l-amber-500/60" : ""}`}
-                    onClick={() => toggleSelect(it.id)}
-                  >
-                    {/* Mobile tap target — opens detail sheet instead of selecting */}
-                    <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
-                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
-                    <div className="flex-shrink-0 w-[60px]">
-                      {it.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.image_url} alt={it.name} className="card-thumb object-cover" />
-                      ) : (
-                        <div className="card-thumb-placeholder flex items-center justify-center"><span className="text-[10px] opacity-30">?</span></div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="inv-card-name">{it.name}</div>
-                      {(it.set_name || it.card_number) && (
-                        <div className="inv-card-meta">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
-                      )}
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {it.category === "single" && it.condition && (
-                            <span className={`condition-badge ${{ "Near Mint": "cond-nm", "Lightly Played": "cond-lp", "Moderately Played": "cond-mp", "Heavily Played": "cond-hp", "Damaged": "cond-dmg" }[it.condition] ?? "cond-nm"}`}>
-                              {{ "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "Dmg" }[it.condition] ?? it.condition}
-                            </span>
-                          )}
-                          {it.category !== "single" && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${categoryColors[it.category]}`}>{it.category}</span>}
-                          {consigner ? (
-                            <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">{consigner.name}</span>
-                          ) : it.owner !== "shared" ? (
-                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
-                          ) : null}
-                        </div>
-                        {/* Mobile-only price */}
-                        <div className={`md:hidden flex items-center gap-1 flex-shrink-0${isRawRefreshing ? " price-refreshing" : ""}`}>
-                          <span className="text-sm font-semibold inv-price">{condPrice != null ? fmt(condPrice) : it.market != null ? fmt(it.market) : "—"}</span>
-                          <MovementBadge pct={getMovement(condPrice ?? it.market, it.acquired_market_price)} />
-                        </div>
-                      </div>
-                    </div>
-                    {/* Suggested price (TCGPlayer) — desktop only */}
-                    <div className="hidden md:block flex-shrink-0 w-36 text-right">
-                      {isRawRefreshing ? (
-                        <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block">↻</span></div>
-                      ) : !rcp ? (
-                        <button
-                          className="text-xs px-2 py-1 rounded-lg border font-medium border-blue-400/40 text-blue-400 hover:bg-blue-500/10 whitespace-nowrap transition-colors"
-                          onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}
-                        >Get Price</button>
-                      ) : (
-                        <div>
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              className={`inv-price-display ${suggested != null && suggested >= 200 ? "price-high-value" : ""} ${priceFlash[it.id] === "up" ? "price-flash-up" : priceFlash[it.id] === "down" ? "price-flash-down" : ""}`}
-                              onClick={(e) => { e.stopPropagation(); openRawCardModal(it); }}
-                            >{fmt(suggested)}</button>
-                            <button className={`transition-opacity text-[14px] ${isRawRefreshing ? "opacity-50 spin" : "opacity-30 hover:opacity-70"}`} title="Refresh price from TCGPlayer" onClick={(e) => { e.stopPropagation(); handleRefreshRawCardPrice(it); }}>↺</button>
-                          </div>
-                          <div className="inv-price-source">TCGPlayer</div>
-                          <div className="flex justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${rawEbayEnc}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">Sold ↗</a>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${rawEbayEnc}&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">List ↗</a>
-                            <a href={`https://www.tcgplayer.com/search/pokemon/product?q=${tcgQ}&view=grid`} target="_blank" rel="noopener noreferrer" className="row-link-btn">TCG ↗</a>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {/* My Ask */}
-                    <div className="hidden md:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      {isCustomAsk && <div className="ask-custom-dot" title="Custom price set" />}
-                      {inlineAskId === it.id ? (
-                        <input
-                          autoFocus
-                          className={isCustomAsk ? "ask-custom" : "ask-auto"}
-                          value={inlineAskVal}
-                          inputMode="decimal"
-                          onChange={(e) => setInlineAskVal(e.target.value)}
-                          onBlur={() => handleSaveInlineAsk(it.id)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineAsk(it.id); if (e.key === "Escape") { setInlineAskId(null); setInlineAskVal(""); } }}
-                        />
-                      ) : (
-                        <button
-                          className={isCustomAsk ? "ask-custom" : "ask-auto"}
-                          onClick={() => { setInlineAskId(it.id); setInlineAskVal(askPrice?.toFixed(2) ?? suggested?.toFixed(2) ?? ""); }}
-                        >
-                          {askPrice != null ? fmt(askPrice) : suggested != null ? fmt(suggested) : "—"}
-                        </button>
-                      )}
-                    </div>
-                    {/* Cost */}
-                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right">
-                      {inlineCostId === it.id ? (
-                        <input
-                          autoFocus
-                          className="w-20 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
-                          value={inlineCostVal}
-                          inputMode="decimal"
-                          onChange={(e) => setInlineCostVal(e.target.value)}
-                          onBlur={() => handleSaveInlineCost(it.id)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : ecRaw != null ? (
-                        <span className="inv-price text-sm opacity-70" title={it.cost_basis != null ? `Trade chain cost basis` : undefined}>{fmt(ecRaw)}{it.cost_basis != null && <span className="text-[9px] opacity-40 ml-0.5">cb</span>}</span>
-                      ) : (
-                        <button className="cost-ghost-btn" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
-                      )}
-                    </div>
-                    {/* Margin — against ask/effective price */}
-                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
-                      {marginAmt != null && marginPct != null ? (
-                        <span className={marginPct >= 0 ? "margin-positive" : "margin-negative"}>
-                          {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
-                        </span>
-                      ) : <span className="opacity-30">—</span>}
-                      {it.acquisition_type && (
-                        <div className="mt-0.5 flex items-center justify-end gap-1">
-                          <span
-                            className={`text-[9px] px-1 py-0.5 rounded font-bold font-mono ${it.acquisition_type === "trade" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "bg-blue-500/15 text-blue-600 dark:text-blue-400"}`}
-                            title={it.acquisition_type === "trade" ? `Trade chain depth ${it.chain_depth}${it.original_cash_invested != null ? `, orig. cash: $${it.original_cash_invested.toFixed(2)}` : ""}` : `Bought at ${it.buy_percentage != null ? it.buy_percentage + "%" : "custom price"}`}
-                          >
-                            {it.acquisition_type === "trade" ? `T${it.chain_depth > 0 ? it.chain_depth : ""}` : "B"}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    {/* Movement — desktop only */}
-                    <div className="hidden md:flex flex-shrink-0 w-[72px] justify-end items-center">
-                      <MovementBadge pct={getMovement(effectivePrice, it.acquired_market_price)} />
-                    </div>
-                    <div className="hidden md:flex flex-shrink-0 w-[60px] justify-end">
-                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
-                    </div>
-                  </div>
-                );
-              }))}
-            </>
-
-            {/* Sealed section */}
-            <>
-              <button
-                className="w-full px-3 py-2 border-b border-teal-500/10 flex items-center gap-2 hover:bg-teal-500/10 transition-colors duration-150 text-left cursor-pointer"
-                onClick={() => setSealedCollapsed((v) => !v)}
-              >
-                <ChevronDown size={13} className={`text-teal-400/60 flex-shrink-0 transition-transform duration-200 pointer-events-none ${sealedCollapsed ? "-rotate-90" : ""}`} />
-                <Folder size={13} className="text-teal-400 flex-shrink-0 pointer-events-none" />
-                <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-teal-400 inv-label pointer-events-none">Sealed</span>
-                <span className="text-[10px] bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full font-bold tabular-nums shadow-[0_0_6px_1px_rgb(45_212_191/0.2)] pointer-events-none">{displayedSealed.length}</span>
-              </button>
-              {!sealedCollapsed && (displayedSealed.length === 0 ? (
-                <div className="px-3 py-8 text-center space-y-2">
-                  <div className="flex justify-center opacity-25"><Folder size={28} /></div>
-                  {items.some((i) => i.category === "sealed" && i.status !== "grading") ? (
-                    <div className="text-xs opacity-40">No sealed products match your filters</div>
-                  ) : (
-                    <>
-                      <div className="text-xs opacity-40">No sealed products yet</div>
-                      <button
-                        className="text-xs px-3 py-1.5 rounded-lg border font-medium border-teal-300 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/20 transition-colors"
-                        onClick={() => openAddPreset("sealed")}
-                      >
-                        + Add Sealed Product
-                      </button>
-                    </>
-                  )}
-                </div>
-              ) : displayedSealed.map((it) => {
-                const isSelected = selectedIds.has(it.id);
-                const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
-                const price = it.market;
-                const askPrice = it.market;
-                const isSealedRefreshing = sealedRefreshing[it.id];
-                const ebayQ = encodeURIComponent([it.name, it.set_name].filter(Boolean).join(" "));
-                const ecSealed = effectiveCost(it);
-                const marginAmt = askPrice != null && ecSealed != null && ecSealed > 0 ? askPrice - ecSealed : null;
-                const marginPct = askPrice != null && ecSealed != null && ecSealed > 0 ? ((askPrice - ecSealed) / ecSealed) * 100 : null;
-                return (
-                  <div
-                    key={it.id}
-                    className={`relative inv-row flex items-center gap-2 px-3 py-2.5 cursor-pointer ${isSelected ? "bg-green-500/8 dark:bg-green-500/10" : ""} ${consigner ? "border-l-2 border-l-amber-500/60" : ""}`}
-                    onClick={() => toggleSelect(it.id)}
-                  >
-                    <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
-                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-green-600 flex-shrink-0" />
-                    <div className="flex-shrink-0 w-[60px]">
-                      {it.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.image_url} alt={it.name} className="card-thumb object-cover" />
-                      ) : (
-                        <div className="card-thumb-placeholder flex items-center justify-center"><span className="text-[10px] opacity-30">PKG</span></div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="inv-card-name">{it.name}</div>
-                      {it.set_name && <div className="inv-card-meta">{it.set_name}</div>}
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-500/15 text-teal-400 font-medium">{sealedTypeLabel(it.product_type)}</span>
-                          {it.quantity > 1 && <span className="text-[10px] opacity-50">×{it.quantity}</span>}
-                          {it.language !== "english" && <span className="text-[10px] opacity-40 border rounded px-1 py-0.5 capitalize">{it.language}</span>}
-                          {consigner ? (
-                            <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">{consigner.name}</span>
-                          ) : it.owner !== "shared" ? (
-                            <span className="text-[11px] opacity-40 border rounded px-1 py-0.5">{it.owner}</span>
-                          ) : null}
-                        </div>
-                        {/* Mobile-only price */}
-                        <div className={`md:hidden flex items-center gap-1 flex-shrink-0${isSealedRefreshing ? " price-refreshing" : ""}`}>
-                          <span className="text-sm font-semibold inv-price">{price != null ? fmt(price) : "—"}</span>
-                        </div>
-                      </div>
-                    </div>
-                    {/* Suggested price — desktop only */}
-                    <div className="hidden md:block flex-shrink-0 w-36 text-right">
-                      {isSealedRefreshing ? (
-                        <div className="flex justify-end"><span className="text-base spin opacity-50 inline-block">↻</span></div>
-                      ) : price == null ? (
-                        <button
-                          className="text-xs px-2 py-1 rounded-lg border font-medium border-teal-400/40 text-teal-400 hover:bg-teal-500/10 whitespace-nowrap transition-colors"
-                          onClick={(e) => { e.stopPropagation(); handleRefreshSealedPrice(it); }}
-                        >Get Price</button>
-                      ) : (
-                        <div>
-                          <div className="flex items-center justify-end gap-1">
-                            <span className="inv-price-display">{fmt(price)}</span>
-                            <button className={`transition-opacity text-[14px] ${isSealedRefreshing ? "opacity-50 spin" : "opacity-30 hover:opacity-70"}`} title="Refresh price" onClick={(e) => { e.stopPropagation(); handleRefreshSealedPrice(it); }}>↺</button>
-                          </div>
-                          <div className="inv-price-source">eBay / PPT</div>
-                          <div className="flex justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${ebayQ}&LH_Complete=1&LH_Sold=1&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">Sold ↗</a>
-                            <a href={`https://www.ebay.com/sch/i.html?_nkw=${ebayQ}&_sacat=183454`} target="_blank" rel="noopener noreferrer" className="row-link-btn">List ↗</a>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {/* My Ask */}
-                    <div className="hidden md:flex flex-shrink-0 w-[88px] justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      {inlineAskId === it.id ? (
-                        <input
-                          autoFocus
-                          className="ask-auto"
-                          value={inlineAskVal}
-                          inputMode="decimal"
-                          onChange={(e) => setInlineAskVal(e.target.value)}
-                          onBlur={() => handleSaveInlineAsk(it.id)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineAsk(it.id); if (e.key === "Escape") { setInlineAskId(null); setInlineAskVal(""); } }}
-                        />
-                      ) : (
-                        <button
-                          className="ask-auto"
-                          onClick={() => { setInlineAskId(it.id); setInlineAskVal(askPrice?.toFixed(2) ?? ""); }}
-                        >
-                          {askPrice != null ? fmt(askPrice) : "—"}
-                        </button>
-                      )}
-                    </div>
-                    {/* Cost */}
-                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right">
-                      {inlineCostId === it.id ? (
-                        <input
-                          autoFocus
-                          className="w-20 border rounded px-1 py-0.5 text-xs text-right bg-background inv-price"
-                          value={inlineCostVal}
-                          inputMode="decimal"
-                          onChange={(e) => setInlineCostVal(e.target.value)}
-                          onBlur={() => handleSaveInlineCost(it.id)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : ecSealed != null ? (
-                        <span className="inv-price text-sm opacity-70" title={it.cost_basis != null ? `Trade chain cost basis` : undefined}>{fmt(ecSealed)}{it.cost_basis != null && <span className="text-[9px] opacity-40 ml-0.5">cb</span>}</span>
-                      ) : (
-                        <button className="cost-ghost-btn" onClick={(e) => { e.stopPropagation(); setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
-                      )}
-                    </div>
-                    {/* Margin */}
-                    <div className="hidden md:block flex-shrink-0 w-[100px] text-right text-xs font-medium inv-price">
-                      {marginAmt != null && marginPct != null ? (
-                        <span className={marginPct >= 0 ? "margin-positive" : "margin-negative"}>
-                          {marginPct >= 0 ? "+" : ""}{fmt(marginAmt)} <span className="opacity-70">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
-                        </span>
-                      ) : <span className="opacity-30">—</span>}
-                    </div>
-                    {/* Movement */}
-                    <div className="hidden md:flex flex-shrink-0 w-[72px] justify-end items-center">
-                      <MovementBadge pct={getMovement(price, it.acquired_market_price)} />
-                    </div>
-                    <div className="hidden md:flex flex-shrink-0 w-[60px] justify-end">
-                      <button className="text-xs px-2 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors duration-150" onClick={(e) => { e.stopPropagation(); openEdit(it); }} disabled={busy}>Edit</button>
-                    </div>
-                  </div>
-                );
-              }))}
-            </>
-          </div>
+          <InventoryListView
+            items={items}
+            displayedSlabs={displayedSlabs}
+            displayedRawCards={displayedRawCards}
+            displayedSealed={displayedSealed}
+            sort={sort}
+            setSort={setSort}
+            selectedIds={selectedIds}
+            toggleSelect={toggleSelect}
+            consignerMap={consignerMap}
+            mergedSlabPrices={mergedSlabPrices}
+            mergedRawCardPrices={mergedRawCardPrices}
+            slabFMVData={slabFMVData}
+            slabRefreshing={slabRefreshing}
+            slabRateLimited={slabRateLimited}
+            rawCardRefreshing={rawCardRefreshing}
+            sealedRefreshing={sealedRefreshing}
+            priceFlash={priceFlash}
+            slabsCollapsed={slabsCollapsed}
+            setSlabsCollapsed={setSlabsCollapsed}
+            rawCollapsed={rawCollapsed}
+            setRawCollapsed={setRawCollapsed}
+            sealedCollapsed={sealedCollapsed}
+            setSealedCollapsed={setSealedCollapsed}
+            inlineAskId={inlineAskId}
+            inlineAskVal={inlineAskVal}
+            setInlineAskId={setInlineAskId}
+            setInlineAskVal={setInlineAskVal}
+            inlineCostId={inlineCostId}
+            inlineCostVal={inlineCostVal}
+            setInlineCostId={setInlineCostId}
+            setInlineCostVal={setInlineCostVal}
+            handleSaveInlineAsk={handleSaveInlineAsk}
+            handleSaveInlineCost={handleSaveInlineCost}
+            handleRefreshSlabPrice={handleRefreshSlabPrice}
+            handleRefreshRawCardPrice={handleRefreshRawCardPrice}
+            handleRefreshSealedPrice={handleRefreshSealedPrice}
+            openRawCardModal={openRawCardModal}
+            setPricingDetailItem={setPricingDetailItem}
+            setSoldExpanded={setSoldExpanded}
+            setMobileDetailItem={setMobileDetailItem}
+            openEdit={openEdit}
+            openAddPreset={openAddPreset}
+            busy={busy}
+          />
         )}
 
         {/* GRID VIEW — visual browsing only */}
         {inventoryOpen && viewMode === "grid" && (
-          <div className="p-3 space-y-4">
-            {/* Slabs grid */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400">Slabs</span>
-                <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-medium">{displayedSlabs.length}</span>
-              </div>
-              {displayedSlabs.length === 0 ? (
-                <div className="py-6 text-center text-xs opacity-40">
-                  {items.some((i) => i.category === "slab" && i.status !== "grading") ? "No slabs match your filters" : "No slabs yet"}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-                  {displayedSlabs.map((it) => {
-                    const isSelected = selectedIds.has(it.id);
-                    const parsed = it.grade ? parseGrade(it.grade) : null;
-                    const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
-                    const sp = slabKey ? mergedSlabPrices[slabKey] : null;
-                    const fmvGrid = slabFMVData[it.id]?.fmv ?? it.market;
-                    const ecSlabGrid = effectiveCost(it);
-                    const marketColor = fmvGrid != null && ecSlabGrid != null
-                      ? fmvGrid >= ecSlabGrid ? "text-green-600" : "text-red-500"
-                      : "opacity-60";
-                    const movePct = getMovement(fmvGrid, it.acquired_market_price);
-                    const slabLabel = slabGradeLabel(it.grade);
-                    const companyKey = slabLabel?.companyKey ?? "other";
-                    return (
-                      <div
-                        key={it.id}
-                        className={`relative grid-tile slab-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
-                        data-company={companyKey}
-                        onClick={() => toggleSelect(it.id)}
-                      >
-                        <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
-                        {/* Slab case frame with grade label */}
-                        <div className="slab-case m-1.5">
-                          <div className={`slab-label slab-label-${companyKey}`}>
-                            <span className="slab-label-text">{slabLabel?.labelText ?? "GRADED"}</span>
-                            <span className="slab-label-num">{slabLabel?.gradeNum ?? "—"}</span>
-                          </div>
-                          <div className="slab-card-area">
-                            <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
-                          </div>
-                          <div className="slab-bottom">
-                            {it.card_number && <span className="slab-cert">{it.card_number}</span>}
-                          </div>
-                        </div>
-                        <div className="px-2 pb-1.5 flex flex-col gap-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
-                            <div className="flex items-center gap-1">
-                              <MovementDot pct={movePct} />
-                            </div>
-                          </div>
-                          <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
-                          <div className="hidden md:block text-xs">
-                            <span className="opacity-50">{ecSlabGrid != null ? fmt(ecSlabGrid) : "—"} → </span>
-                            <span className={`font-medium ${marketColor}`}>{fmt(fmvGrid)}</span>
-                          </div>
-                          <div className="md:hidden text-xs font-semibold">
-                            <span className={marketColor}>{fmt(fmvGrid)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            {/* Sealed grid */}
-            {displayedSealed.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400">Sealed</span>
-                  <span className="text-xs bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 px-1.5 py-0.5 rounded-full font-medium">{displayedSealed.length}</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-                  {displayedSealed.map((it) => {
-                    const isSelected = selectedIds.has(it.id);
-                    const price = it.market;
-                    const ecSealedGrid = effectiveCost(it);
-                    const marketColor = price != null && ecSealedGrid != null
-                      ? price >= ecSealedGrid ? "text-green-600" : "text-red-500"
-                      : "opacity-60";
-                    return (
-                      <div
-                        key={it.id}
-                        className={`relative grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
-                        onClick={() => toggleSelect(it.id)}
-                      >
-                        <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
-                        <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={null} onUpload={(file) => handleUploadImage(it, file)} />
-                        <div className="px-2 py-1.5 flex flex-col gap-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
-                            <span className="text-[9px] px-1 py-0.5 rounded bg-teal-500/15 text-teal-400 font-medium truncate">{sealedTypeLabel(it.product_type)}</span>
-                          </div>
-                          <div className="text-xs font-semibold leading-tight line-clamp-2">{it.name}</div>
-                          <div className="hidden md:block text-xs">
-                            <span className="opacity-50">{ecSealedGrid != null ? fmt(ecSealedGrid) : "—"} → </span>
-                            <span className={`font-medium ${marketColor}`}>{fmt(price)}</span>
-                          </div>
-                          <div className="md:hidden text-xs font-semibold">
-                            <span className={marketColor}>{fmt(price)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Raw Cards grid */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">Singles</span>
-                <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-medium">{displayedRawCards.length}</span>
-              </div>
-              {displayedRawCards.length === 0 ? (
-                <div className="py-6 text-center text-xs opacity-40">
-                  {items.some((i) => i.category === "single" && i.status !== "grading") ? "No singles match your filters" : "No singles yet"}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-                  {displayedRawCards.map((it) => {
-                    const isSelected = selectedIds.has(it.id);
-                    const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
-                    const rcp = mergedRawCardPrices[rawKey];
-                    const condPrice = rcp
-                      ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition)
-                      : null;
-                    const displayPrice = condPrice ?? it.market;
-                    const ecRawGrid = effectiveCost(it);
-                    const marketColor = displayPrice != null && ecRawGrid != null
-                      ? displayPrice >= ecRawGrid ? "text-green-600" : "text-red-500"
-                      : "opacity-60";
-                    const movePct = getMovement(displayPrice, it.acquired_market_price);
-                    return (
-                      <div
-                        key={it.id}
-                        className={`relative grid-tile overflow-hidden flex flex-col cursor-pointer ${isSelected ? "ring-2 ring-green-500" : ""}`}
-                        onClick={() => toggleSelect(it.id)}
-                      >
-                        <button className="md:hidden absolute inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMobileDetailItem(it); }} />
-                        <CardImage src={it.image_url} name={it.name} setName={it.set_name} cardNumber={it.card_number} onUpload={(file) => handleUploadImage(it, file)} />
-                        <div className="px-2 py-1.5 flex flex-col gap-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(it.id)} onClick={(e) => e.stopPropagation()} className="w-3.5 h-3.5 accent-green-600 flex-shrink-0" />
-                            <MovementDot pct={movePct} />
-                          </div>
-                          <div className="text-xs font-semibold leading-tight truncate">{it.name}</div>
-                          <div className="hidden md:block text-xs">
-                            <span className="opacity-50">{ecRawGrid != null ? fmt(ecRawGrid) : "—"} → </span>
-                            <span className={`font-medium ${marketColor}`}>{fmt(displayPrice)}</span>
-                          </div>
-                          <div className="md:hidden text-xs font-semibold">
-                            <span className={marketColor}>{fmt(displayPrice)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+          <InventoryGridView
+            items={items}
+            displayedSlabs={displayedSlabs}
+            displayedSealed={displayedSealed}
+            displayedRawCards={displayedRawCards}
+            selectedIds={selectedIds}
+            toggleSelect={toggleSelect}
+            setMobileDetailItem={setMobileDetailItem}
+            mergedSlabPrices={mergedSlabPrices}
+            mergedRawCardPrices={mergedRawCardPrices}
+            slabFMVData={slabFMVData}
+            handleUploadImage={handleUploadImage}
+          />
         )}
       </div>
 
       {/* Grading section */}
       {gradingItems.length > 0 && (
-        <div className="border rounded-xl overflow-hidden">
-          <div className="px-3 py-2.5 border-b flex items-center gap-2">
-            <span className="font-medium text-sm">Grading</span>
-            <span className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400 px-2 py-0.5 rounded-full font-medium">
-              {gradingItems.length}
-            </span>
-            <span className="text-[11px] opacity-30 ml-auto">Grading fee: {fmt(gradingCost)}/card</span>
-          </div>
-          <div className="divide-y divide-border/50">
-            {gradingItems.map((it) => {
-              const psa = psa10Data[it.id];
-              const costBasis = effectiveCost(it) ?? it.market ?? 0;
-              const psa10Val = psa?.medianPrice ?? null;
-              const profit = psa10Val != null ? psa10Val - costBasis - gradingCost : null;
-              const roi = profit != null && (costBasis + gradingCost) > 0
-                ? (profit / (costBasis + gradingCost)) * 100
-                : null;
-              return (
-                <div key={it.id} className="flex items-center gap-3 px-3 py-2.5">
-                  {/* Thumbnail */}
-                  <div className="flex-shrink-0 w-[56px]">
-                    {it.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={it.image_url} alt={it.name} className="card-thumb object-cover" />
-                    ) : (
-                      <div className="card-thumb-placeholder flex items-center justify-center">
-                        <span className="text-[10px] opacity-30">?</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-sm truncate leading-snug">{it.name}</div>
-                    {(it.set_name || it.card_number) && (
-                      <div className="text-xs opacity-50 truncate">
-                        {[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}
-                      </div>
-                    )}
-
-                    {/* Price details */}
-                    <div className="mt-1 text-xs">
-                      {/* Line 1: Raw · PSA 10 · Grading */}
-                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 opacity-60">
-                        {costBasis > 0 && <span>Cost: {fmt(costBasis)}{it.cost_basis != null ? <span className="opacity-60"> (cb)</span> : null}</span>}
-                        {it.market != null && it.market !== costBasis && <span>· Raw: {fmt(it.market)}</span>}
-                        {psa?.loading && <span className="animate-pulse">· Fetching PSA 10…</span>}
-                        {psa?.fetched && psa10Val != null && (
-                          <span className="text-yellow-700 dark:text-yellow-400 font-medium">· PSA 10: {fmt(psa10Val)} ({psa.count} sales)</span>
-                        )}
-                        {psa?.fetched && psa10Val == null && (
-                          <span>{psa.rateLimited ? "· eBay rate limited" : "· No PSA 10 data"}</span>
-                        )}
-                      </div>
-                      {/* Line 2: Profit / ROI */}
-                      {profit != null && (
-                        <div className={`font-semibold mt-0.5 ${profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                          Potential profit: {profit >= 0 ? "+" : ""}{fmt(profit)}
-                          {roi != null && <span className="font-normal opacity-70"> ({roi >= 0 ? "+" : ""}{roi.toFixed(0)}% ROI)</span>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {psa?.fetched && (
-                      <button
-                        className="text-[11px] opacity-30 hover:opacity-70 transition-opacity"
-                        onClick={() => fetchPsa10(it.id, it.name, it.set_name)}
-                        title="Refresh PSA 10 price"
-                      >↺</button>
-                    )}
-                    <button
-                      className="text-xs px-2.5 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors"
-                      onClick={() => onQuickStatus(it.id, "inventory")}
-                      disabled={busy}
-                    >
-                      Return
-                    </button>
-                    <button
-                      className="text-xs px-2.5 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors"
-                      onClick={() => openEdit(it)}
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <GradingSection
+          gradingItems={gradingItems}
+          gradingCost={gradingCost}
+          psa10Data={psa10Data}
+          fetchPsa10={fetchPsa10}
+          onQuickStatus={onQuickStatus}
+          openEdit={openEdit}
+          busy={busy}
+        />
       )}
 
       {/* Fixed bottom selection bar — thumbnails left, actions right */}
@@ -2903,785 +1332,111 @@ export default function InventoryClient({
 
       {/* Edit modal */}
       {editingItem && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
-          <div className="modal-panel w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="modal-title">Edit item</div>
-              <button className="modal-close-btn" onClick={closeEdit}>✕</button>
-            </div>
-            <ItemFormFields form={editForm} setForm={setEditForm} consigners={consigners} />
-            <button
-              type="button"
-              className="w-full modal-btn-outline"
-              onClick={() => setEditImagePickerOpen(true)}
-              disabled={busy}
-            >
-              Find Image
-            </button>
-            {editForm.category === "single" && editingItem?.status !== "grading" && (
-              <button
-                type="button"
-                className="w-full modal-btn-warning"
-                onClick={handleGradeItem}
-                disabled={busy}
-              >
-                Send to Grading
-              </button>
-            )}
-            {deleteConfirm ? (
-              <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{background:"rgba(244,63,94,0.08)", border:"1px solid rgba(244,63,94,0.25)"}}>
-                <span className="text-sm flex-1" style={{color:"var(--accent-red)"}}>Delete this item?</span>
-                <button
-                  className="modal-btn-destructive"
-                  style={{padding:"6px 14px", fontSize:"13px"}}
-                  onClick={handleDeleteItem}
-                  disabled={busy}
-                >
-                  Delete
-                </button>
-                <button
-                  className="modal-btn-ghost"
-                  style={{padding:"6px 14px", fontSize:"13px"}}
-                  onClick={() => setDeleteConfirm(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="w-full modal-btn-danger"
-                onClick={() => setDeleteConfirm(true)}
-                disabled={busy}
-              >
-                Delete item
-              </button>
-            )}
-            <div className="flex gap-2">
-              <button className="flex-1 modal-btn-primary" onClick={onSaveEdit} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
-              <button className="modal-btn-ghost" onClick={closeEdit} disabled={busy}>Cancel</button>
-            </div>
-          </div>
-        </div>
+        <EditItemModal
+          editingItem={editingItem}
+          editForm={editForm}
+          setEditForm={setEditForm}
+          consigners={consigners}
+          busy={busy}
+          closeEdit={closeEdit}
+          setEditImagePickerOpen={setEditImagePickerOpen}
+          handleGradeItem={handleGradeItem}
+          deleteConfirm={deleteConfirm}
+          setDeleteConfirm={setDeleteConfirm}
+          handleDeleteItem={handleDeleteItem}
+          onSaveEdit={onSaveEdit}
+        />
       )}
 
       {/* Mass edit modal */}
       {massEditOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) setMassEditOpen(false); }}>
-          <div className="modal-panel w-full max-w-sm p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="modal-title">Edit {selectedIds.size} items</div>
-              <button className="modal-close-btn" onClick={() => setMassEditOpen(false)}>✕</button>
-            </div>
-            <div className="text-xs" style={{color:"var(--text-muted)"}}>Leave a field as &quot;— no change —&quot; to keep existing values.</div>
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs opacity-60 mb-1">Owner</div>
-                <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={massOwner} onChange={(e) => setMassOwner(e.target.value)}>
-                  <option value="">— no change —</option>
-                  <option value="shared">Shared</option>
-                  <option value="alex">Alex</option>
-                  <option value="mila">Mila</option>
-                  {consigners.length > 0 && (
-                    <optgroup label="Consigners">
-                      {consigners.map((c) => (
-                        <option key={c.id} value={`consigner:${c.id}`}>{c.name} ({Math.round(c.rate * 100)}%)</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
-              <div>
-                <div className="text-xs opacity-60 mb-1">Status</div>
-                <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={massStatus} onChange={(e) => setMassStatus(e.target.value)}>
-                  <option value="">— no change —</option>
-                  <option value="inventory">Inventory</option>
-                          <option value="grading">Grading</option>
-                </select>
-              </div>
-              <div>
-                <div className="text-xs opacity-60 mb-1">Category</div>
-                <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={massCategory} onChange={(e) => setMassCategory(e.target.value)}>
-                  <option value="">— no change —</option>
-                  <option value="single">Single</option>
-                  <option value="slab">Slab</option>
-                  <option value="sealed">Sealed</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                className="flex-1 modal-btn-primary"
-                onClick={onMassEdit}
-                disabled={busy || (!massOwner && !massStatus && !massCategory)}
-              >
-                {busy ? "Saving…" : `Apply to ${selectedIds.size} items`}
-              </button>
-              <button className="modal-btn-ghost" onClick={() => setMassEditOpen(false)} disabled={busy}>Cancel</button>
-            </div>
-          </div>
-        </div>
+        <MassEditModal
+          selectedIds={selectedIds}
+          setMassEditOpen={setMassEditOpen}
+          massOwner={massOwner}
+          setMassOwner={setMassOwner}
+          massStatus={massStatus}
+          setMassStatus={setMassStatus}
+          massCategory={massCategory}
+          setMassCategory={setMassCategory}
+          consigners={consigners}
+          busy={busy}
+          onMassEdit={onMassEdit}
+        />
       )}
 
       {/* Bulk delete confirmation */}
       {deleteOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) setDeleteOpen(false); }}>
-          <div className="modal-panel w-full max-w-sm p-5 space-y-4">
-            <div className="modal-title">Delete {selectedIds.size} item{selectedIds.size !== 1 ? "s" : ""}?</div>
-            <div className="text-sm" style={{color:"var(--text-muted)"}}>This cannot be undone.</div>
-            <div className="flex gap-2">
-              <button className="flex-1 modal-btn-destructive" onClick={onBulkDelete} disabled={busy}>
-                {busy ? "Deleting…" : `Delete ${selectedIds.size} item${selectedIds.size !== 1 ? "s" : ""}`}
-              </button>
-              <button className="modal-btn-ghost" onClick={() => setDeleteOpen(false)} disabled={busy}>Cancel</button>
-            </div>
-          </div>
-        </div>
+        <BulkDeleteModal
+          selectedIds={selectedIds}
+          setDeleteOpen={setDeleteOpen}
+          busy={busy}
+          onBulkDelete={onBulkDelete}
+        />
       )}
 
       {/* Sell modal */}
       {sellOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) setSellOpen(false); }}>
-          <div className="modal-panel w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="modal-title">Sell {selectedItems.length} item{selectedItems.length !== 1 ? "s" : ""}</div>
-              <button className="modal-close-btn" onClick={() => setSellOpen(false)}>✕</button>
-            </div>
-
-            {/* Per-card price rows */}
-            <div className="rounded-xl overflow-hidden" style={{border:"1px solid var(--border-subtle)"}}>
-              {selectedItems.map((it, i) => {
-                const consigner = it.consigner_id ? consignerMap.get(it.consigner_id) : null;
-                const isManual = manualPrices[it.id] !== undefined;
-                const cardPrice = getCardPrice(it);
-                const inputVal = isManual ? manualPrices[it.id] : (salePriceNum > 0 ? cardPrice.toFixed(2) : "");
-                const payout = consigner ? cardPrice * consigner.rate : null;
-                return (
-                  <div key={it.id} className={`px-3 py-2.5 ${i > 0 ? "border-t" : ""}`} style={{borderColor:"var(--border-subtle)"}}>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate font-medium text-xs">{it.name}</div>
-                        <div className="text-xs opacity-50">{it.category} · Market: {fmt(it.market)}</div>
-                      </div>
-                      {/* Price input */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        {isManual ? (
-                          <button
-                            type="button"
-                            className="text-xs opacity-40 hover:opacity-80 transition-opacity leading-none"
-                            onClick={() => resetCardPrice(it.id)}
-                            title="Reset to auto"
-                          >↺</button>
-                        ) : (
-                          <div className="w-4" />
-                        )}
-                        <div className={`flex items-center rounded-md border ${isManual ? "border-primary" : ""}`} style={isManual ? {} : {borderColor:"var(--border-subtle)"}}>
-                          <span className="pl-2 text-xs opacity-50 select-none">$</span>
-                          <input
-                            className={`w-16 pr-2 py-1 text-xs text-right bg-transparent outline-none ${isManual ? "" : "opacity-50"}`}
-                            value={inputVal}
-                            placeholder="0.00"
-                            inputMode="decimal"
-                            onChange={(e) => updateCardPrice(it.id, e.target.value)}
-                          />
-                        </div>
-                        {!isManual && (
-                          <span className="text-xs opacity-30 w-8 text-left">auto</span>
-                        )}
-                      </div>
-                    </div>
-                    {consigner && cardPrice > 0 && (
-                      <div className="text-xs opacity-50 mt-0.5">
-                        {consigner.name} gets {fmt(payout ?? 0)} · you keep {fmt(cardPrice - (payout ?? 0))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Market warning */}
-            {salePriceNum > 0 && totalMarket > 0 && (
-              salePriceNum < totalMarket * 0.7 ? (
-                <div className="text-xs text-amber-600 dark:text-amber-400 opacity-80">
-                  Total is {Math.round((1 - salePriceNum / totalMarket) * 100)}% below market value
-                </div>
-              ) : salePriceNum > totalMarket * 1.5 ? (
-                <div className="text-xs text-amber-600 dark:text-amber-400 opacity-80">
-                  Total is {Math.round((salePriceNum / totalMarket - 1) * 100)}% above market value
-                </div>
-              ) : null
-            )}
-
-            {/* Total input */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium">Total sale price ($)</label>
-                {totalMarket > 0 && (
-                  <button
-                    type="button"
-                    className="text-xs text-primary font-medium hover:underline"
-                    onClick={() => { setSalePrice(totalMarket.toFixed(2)); setManualPrices({}); }}
-                  >
-                    Use market {fmt(totalMarket)}
-                  </button>
-                )}
-              </div>
-              <input
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-                placeholder="0.00"
-                inputMode="decimal"
-                value={salePrice}
-                onChange={(e) => setSalePrice(e.target.value)}
-                autoFocus
-              />
-              {Object.keys(manualPrices).length > 0 ? (
-                <div className="text-xs opacity-50 mt-1">Manual prices locked · auto cards fill the rest</div>
-              ) : (
-                <div className="text-xs opacity-50 mt-1">Split proportionally by market value</div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <button className="flex-1 modal-btn-confirm" onClick={onConfirmSale} disabled={busy || salePriceNum <= 0}>
-                {busy ? "Saving…" : "Confirm Sale"}
-              </button>
-              <button className="modal-btn-ghost" onClick={() => setSellOpen(false)} disabled={busy}>Cancel</button>
-            </div>
-          </div>
-        </div>
+        <SellModal
+          selectedItems={selectedItems}
+          consignerMap={consignerMap}
+          manualPrices={manualPrices}
+          getCardPrice={getCardPrice}
+          salePrice={salePrice}
+          salePriceNum={salePriceNum}
+          totalMarket={totalMarket}
+          setSellOpen={setSellOpen}
+          resetCardPrice={resetCardPrice}
+          updateCardPrice={updateCardPrice}
+          setSalePrice={setSalePrice}
+          setManualPrices={setManualPrices}
+          busy={busy}
+          onConfirmSale={onConfirmSale}
+        />
       )}
 
       {/* Bulk cost modal */}
       {bulkCostOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4" onClick={(e) => { if (e.target === e.currentTarget) setBulkCostOpen(false); }}>
-          <div className="modal-panel w-full max-w-sm p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="modal-title">Set Cost — {selectedIds.size} card{selectedIds.size !== 1 ? "s" : ""}</div>
-              <button className="modal-close-btn" onClick={() => setBulkCostOpen(false)}>✕</button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs opacity-60 mb-1 block">
-                  {bulkCostSplit ? "Total amount paid (split evenly)" : "Cost per card"}
-                </label>
-                <input
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-                  placeholder="0.00"
-                  inputMode="decimal"
-                  value={bulkCostVal}
-                  onChange={(e) => setBulkCostVal(e.target.value)}
-                  autoFocus
-                />
-                {bulkCostSplit && toNum(bulkCostVal) != null && (
-                  <div className="text-xs opacity-50 mt-1">
-                    = {fmt(Math.round((toNum(bulkCostVal)! / selectedIds.size) * 100) / 100)} per card
-                  </div>
-                )}
-              </div>
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={bulkCostSplit}
-                  onChange={(e) => setBulkCostSplit(e.target.checked)}
-                  className="accent-blue-600"
-                />
-                Split total evenly across {selectedIds.size} cards
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                className="flex-1 modal-btn-primary"
-                onClick={onBulkSetCost}
-                disabled={busy || !bulkCostVal || toNum(bulkCostVal) === null}
-              >
-                {busy ? "Saving…" : `Apply to ${selectedIds.size} cards`}
-              </button>
-              <button className="modal-btn-ghost" onClick={() => setBulkCostOpen(false)} disabled={busy}>Cancel</button>
-            </div>
-          </div>
-        </div>
+        <BulkCostModal
+          selectedIds={selectedIds}
+          setBulkCostOpen={setBulkCostOpen}
+          bulkCostVal={bulkCostVal}
+          setBulkCostVal={setBulkCostVal}
+          bulkCostSplit={bulkCostSplit}
+          setBulkCostSplit={setBulkCostSplit}
+          busy={busy}
+          onBulkSetCost={onBulkSetCost}
+        />
       )}
 
       {/* ── Pricing Detail Modal ───────────────────────────────────────────── */}
-      {pricingDetailItem && (() => {
-        const { item: pdi, slabKey } = pricingDetailItem;
-        // Derive sp live from merged prices so background updates are reflected immediately
-        const pdSp = mergedSlabPrices[slabKey];
-        const isModalRefreshing = slabRefreshing[pdi.id];
-        const fmvData = slabFMVData[pdi.id] ?? null;
-        const fmvVal = fmvData?.fmv ?? null;
-
-        // Helpers
-        function fmtModalDate(d: string) {
-          if (!d) return "—";
-          const dt = new Date(d);
-          if (isNaN(dt.getTime())) return "—";
-          return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-        }
-
-        function applyOutlierFilter(items: SlabSale[]): SlabSale[] {
-          if (items.length < 4) return items;
-          const sorted = items.map((s) => s.price).sort((a, b) => a - b);
-          const q1 = pct(sorted, 0.25);
-          const q3 = pct(sorted, 0.75);
-          const iqr = q3 - q1;
-          const lower = q1 - 1.5 * iqr;
-          const upper = q3 + 1.5 * iqr;
-          const filtered = items.filter((s) => s.price >= lower && s.price <= upper);
-          return filtered.length > 0 ? filtered : items;
-        }
-
-        function pct(sorted: number[], p: number): number {
-          if (sorted.length === 1) return sorted[0];
-          const idx = (sorted.length - 1) * p;
-          const lo = Math.floor(idx);
-          const frac = idx - lo;
-          return frac === 0 ? sorted[lo] : sorted[lo] * (1 - frac) + sorted[lo + 1] * frac;
-        }
-
-        function timeLeft(endDateStr: string): string {
-          if (!endDateStr) return "";
-          const ms = new Date(endDateStr).getTime() - Date.now();
-          if (ms <= 0) return "Ended";
-          if (ms < 60 * 60 * 1000) return "Ending soon";
-          const totalHours = Math.floor(ms / (60 * 60 * 1000));
-          const mins = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
-          if (totalHours < 24) return `${totalHours}h ${mins}m left`;
-          const days = Math.floor(totalHours / 24);
-          const hrs = totalHours % 24;
-          return `${days}d ${hrs}h left`;
-        }
-
-        // Build filtered, sorted lists.
-        // Sold: exclude only pure Best-Offer-only sales (unknown negotiated price).
-        // Fixed+BestOffer listings (buyingOptions has both) are valid sold prices.
-        const validSold = (pdSp?.sold_items ?? []).filter(
-          (s) => !(s.buyingOptions.length === 1 && s.buyingOptions[0] === "BEST_OFFER") && s.price > 1
-        );
-        const soldLists = applyOutlierFilter(validSold)
-          .sort((a, b) => new Date(b.soldDate).getTime() - new Date(a.soldDate).getTime());
-
-        // Active: include all listings >$1 — asking price is valid signal regardless of offer options.
-        const validActive = (pdSp?.active_items ?? []).filter((s) => s.price > 1);
-        const activeLists = applyOutlierFilter(validActive).sort((a, b) => a.price - b.price);
-
-        const soldHasAuction = soldLists.some((s) => (s.buyingOptions ?? []).includes("AUCTION"));
-        const soldHasBestOffer = soldLists.some((s) => (s.buyingOptions ?? []).includes("BEST_OFFER") && !(s.buyingOptions ?? []).includes("AUCTION"));
-        const soldTypesVary = soldHasAuction || soldHasBestOffer;
-        const soldPrices = soldLists.map((s) => s.price);
-        const activePrices = activeLists.map((s) => s.price);
-        const soldMin = soldPrices.length ? Math.min(...soldPrices) : null;
-        const soldMax = soldPrices.length ? Math.max(...soldPrices) : null;
-        const activeMin = activePrices.length ? Math.min(...activePrices) : null;
-        const activeMax = activePrices.length ? Math.max(...activePrices) : null;
-        const soldCompCount = pdSp?.sold_count ?? soldLists.length;
-
-        return (
-          <div
-            className="fixed inset-0 z-[70] modal-backdrop sm:flex sm:items-center sm:justify-center"
-            onClick={() => setPricingDetailItem(null)}
-          >
-            <div
-              className="absolute inset-0 flex flex-col bg-background slab-pricing-panel sm:relative sm:inset-auto sm:w-full sm:max-w-lg sm:max-h-[85vh] sm:rounded-2xl sm:overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="px-4 pt-4 pb-3 border-b flex items-start justify-between gap-3 flex-shrink-0">
-                <div className="flex gap-3 min-w-0 flex-1">
-                  {/* Card thumbnail */}
-                  {pdi.image_url && (
-                    <div className="w-[60px] flex-shrink-0 rounded overflow-hidden bg-muted/40 self-start">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={pdi.image_url} alt={pdi.name} className="w-full h-auto object-cover" />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-sm leading-tight truncate">{pdi.name}</div>
-                    {(pdi.set_name || pdi.card_number) && (
-                      <div className="text-xs opacity-50 mt-0.5">{[pdi.set_name, pdi.card_number ? `#${pdi.card_number}` : ""].filter(Boolean).join(" · ")}</div>
-                    )}
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      {pdi.grade && <span className={`text-xs px-1.5 py-0.5 rounded-full ${gradeStyle(pdi.grade)}`}>{pdi.grade}</span>}
-                      {fmvVal != null && (
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-base font-bold">{fmt(fmvVal)}</span>
-                          <span className="text-[10px] opacity-40 font-normal">{fmvData?.mode ?? "—"}</span>
-                          <MovementBadge pct={getMovement(fmvVal, pdi.acquired_market_price)} />
-                        </div>
-                      )}
-                      {fmvVal == null && <span className="text-sm opacity-40">No price data</span>}
-                    </div>
-                    {(fmvData?.soldAnchor != null || fmvData?.listedAnchor != null) && (
-                      <div className="text-[11px] opacity-50 mt-0.5">
-                        {fmvData.soldAnchor != null && `Sold: ${fmt(fmvData.soldAnchor)} (${fmvData.soldCount})`}
-                        {fmvData.soldAnchor != null && fmvData.listedAnchor != null && " · "}
-                        {fmvData.listedAnchor != null && `Listed: ${fmt(fmvData.listedAnchor)} (${fmvData.activeCount} active)`}
-                      </div>
-                    )}
-                    {pdi.acquired_market_price != null && (
-                      <div className="text-[11px] opacity-40 mt-0.5">
-                        Acquired at {fmt(pdi.acquired_market_price)}{pdi.acquired_date ? ` · ${fmtModalDate(pdi.acquired_date)}` : ""}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <button className="modal-close-btn flex-shrink-0" onClick={() => setPricingDetailItem(null)}>✕</button>
-              </div>
-
-              {/* Scrollable body */}
-              <div className="overflow-y-auto flex-1 divide-y">
-                {/* Recent Sales */}
-                <div className="px-4 py-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">
-                      RECENT SALES · {soldCompCount} comps
-                    </div>
-                    {soldMin != null && soldMax != null && soldMin !== soldMax && (
-                      <div className="text-xs opacity-40 tabular-nums">{fmt(soldMin)} – {fmt(soldMax)}</div>
-                    )}
-                  </div>
-                  {soldLists.length === 0 ? (
-                    <div className="text-sm opacity-40 text-center py-3">
-                      {isModalRefreshing
-                        ? "Fetching…"
-                        : pdSp?.sold_items != null
-                          ? "Sold data unavailable — Marketplace Insights API access required"
-                          : "No sold data — hit ↺ Refresh to load"
-                      }
-                    </div>
-                  ) : (
-                    <div>
-                      {soldLists.slice(0, soldExpanded ? soldLists.length : 5).map((s, i) => (
-                        <a
-                          key={i}
-                          href={s.itemUrl || undefined}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`flex items-center justify-between gap-2 px-1.5 py-1.5 border-t border-border/30 ${i % 2 === 1 ? "bg-muted/20" : ""} transition-colors group ${s.itemUrl ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}`}
-                          onClick={s.itemUrl ? undefined : (e) => e.preventDefault()}
-                        >
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {soldTypesVary && (s.buyingOptions ?? []).includes("AUCTION") && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium flex-shrink-0">Auction</span>
-                            )}
-                            {soldTypesVary && (s.buyingOptions ?? []).includes("BEST_OFFER") && !(s.buyingOptions ?? []).includes("AUCTION") && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex-shrink-0">Offer</span>
-                            )}
-                            <span className="text-xs opacity-50 truncate">{s.title}</span>
-                          </div>
-                          <div className="flex flex-col items-end flex-shrink-0">
-                            <span className="text-sm font-semibold tabular-nums">{fmt(s.price)}</span>
-                            <span className="text-[10px] opacity-40">{fmtModalDate(s.soldDate)}</span>
-                          </div>
-                        </a>
-                      ))}
-                      {soldLists.length > 5 && (
-                        <button
-                          className="w-full text-xs text-center py-1.5 opacity-40 hover:opacity-70 transition-opacity border-t border-border/30"
-                          onClick={() => setSoldExpanded((v) => !v)}
-                        >
-                          {soldExpanded ? "Show less" : `${soldLists.length - 5} more`}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Active Listings */}
-                <div className="px-4 py-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">
-                      ACTIVE LISTINGS · {activeLists.length} listed
-                    </div>
-                    {activeMin != null && activeMax != null && activeMin !== activeMax && (
-                      <div className="text-xs opacity-40 tabular-nums">{fmt(activeMin)} – {fmt(activeMax)}</div>
-                    )}
-                  </div>
-                  {activeLists.length === 0 ? (
-                    <div className="text-sm opacity-40 text-center py-3">{isModalRefreshing ? "Fetching…" : "No active listings — hit ↺ Refresh to load"}</div>
-                  ) : (
-                    <div>
-                      {activeLists.slice(0, activeExpanded ? activeLists.length : 5).map((s, i) => {
-                        const isAuction = (s.buyingOptions ?? []).includes("AUCTION");
-                        const isLowest = i === 0 && activeLists.length > 1;
-                        return (
-                          <a
-                            key={i}
-                            href={s.itemUrl || undefined}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`flex items-center justify-between gap-2 px-1.5 py-1.5 border-t border-border/30 ${i % 2 === 1 ? "bg-muted/20" : ""} ${isLowest ? "border-l-2 border-l-emerald-500 pl-2" : ""} transition-colors group ${s.itemUrl ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}`}
-                            onClick={s.itemUrl ? undefined : (e) => e.preventDefault()}
-                          >
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              {isAuction && (
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">Auction</span>
-                                  {s.soldDate && <span className="text-[10px] opacity-50">{timeLeft(s.soldDate)}</span>}
-                                  {s.bidCount != null && <span className="text-[10px] opacity-50">{s.bidCount}b</span>}
-                                </div>
-                              )}
-                              <span className="text-xs opacity-50 truncate">{s.title}</span>
-                            </div>
-                            <span className={`text-sm font-semibold tabular-nums flex-shrink-0 ${isLowest ? "text-emerald-600" : ""}`}>{fmt(s.price)}</span>
-                          </a>
-                        );
-                      })}
-                      {activeLists.length > 5 && (
-                        <button
-                          className="w-full text-xs text-center py-1.5 opacity-40 hover:opacity-70 transition-opacity border-t border-border/30"
-                          onClick={() => setActiveExpanded((v) => !v)}
-                        >
-                          {activeExpanded ? "Show less" : `${activeLists.length - 5} more`}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="px-4 py-3 border-t flex items-center justify-between gap-2 flex-shrink-0 bg-background">
-                <div className="text-xs opacity-40">
-                  {pdSp?.last_updated ? `Updated ${fmtModalDate(pdSp.last_updated)}` : ""}
-                  {isSlabTierStale(pdSp, fmvVal) && <span className="text-orange-400 ml-1">· stale</span>}
-                </div>
-                <button
-                  className="modal-btn-outline"
-                  style={{padding:"6px 14px", fontSize:"12px"}}
-                  disabled={isModalRefreshing}
-                  onClick={() => handleRefreshSlabPrice(pdi)}
-                >
-                  {isModalRefreshing ? "Fetching…" : "↺ Refresh"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {pricingDetailItem && (
+        <PricingDetailModal
+          pricingDetailItem={pricingDetailItem}
+          mergedSlabPrices={mergedSlabPrices}
+          slabRefreshing={slabRefreshing}
+          slabFMVData={slabFMVData}
+          soldExpanded={soldExpanded}
+          setSoldExpanded={setSoldExpanded}
+          activeExpanded={activeExpanded}
+          setActiveExpanded={setActiveExpanded}
+          setPricingDetailItem={setPricingDetailItem}
+          handleRefreshSlabPrice={handleRefreshSlabPrice}
+        />
+      )}
 
       {/* ── Raw Card Pricing Modal ────────────────────────────────────────── */}
-      {rawCardDetailItem && (() => {
-        const it = rawCardDetailItem;
-        const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
-        const rcp = mergedRawCardPrices[rawKey];
-        const isRefreshing = rawCardRefreshing[it.id];
-
-        const CONDITIONS: { label: string; key: "nm" | "lp" | "mp" | "hp" | "dmg" }[] = [
-          { label: "Near Mint",          key: "nm"  },
-          { label: "Lightly Played",     key: "lp"  },
-          { label: "Moderately Played",  key: "mp"  },
-          { label: "Heavily Played",     key: "hp"  },
-          { label: "Damaged",            key: "dmg" },
-        ];
-
-        const priceByKey: Record<string, number | null> = rcp
-          ? { nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }
-          : { nm: null, lp: null, mp: null, hp: null, dmg: null };
-
-        const itemCondKey = CONDITIONS.find((c) => c.label === it.condition)?.key ?? "nm";
-
-        function fmtModalDate(d: string) {
-          if (!d) return "—";
-          const dt = new Date(d);
-          if (isNaN(dt.getTime())) return "—";
-          return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-        }
-
-        return (
-          <div
-            className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center modal-backdrop p-4"
-            onClick={() => setRawCardDetailItem(null)}
-          >
-            <div
-              className="modal-panel w-full max-w-sm"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="px-4 pt-4 pb-3 border-b flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold text-sm leading-tight truncate">{it.name}</div>
-                  {(it.set_name || it.card_number) && (
-                    <div className="text-xs opacity-50 mt-0.5">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
-                  )}
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {it.condition && (
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800">{it.condition}</span>
-                    )}
-                    {rcp && priceByKey[itemCondKey] != null && (
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-base font-bold">{fmt(priceByKey[itemCondKey])}</span>
-                        <span className="text-[10px] opacity-40 font-normal">Market Value</span>
-                        <MovementBadge pct={getMovement(priceByKey[itemCondKey] as number, it.acquired_market_price)} />
-                      </div>
-                    )}
-                    {(!rcp || priceByKey[itemCondKey] == null) && (
-                      <span className="text-sm opacity-40">{isRefreshing ? "Fetching…" : "No price data"}</span>
-                    )}
-                  </div>
-                  {it.acquired_market_price != null && (
-                    <div className="text-[11px] opacity-40 mt-1">
-                      Acquired at {fmt(it.acquired_market_price)}{it.acquired_date ? ` · ${fmtModalDate(it.acquired_date)}` : ""}
-                    </div>
-                  )}
-                </div>
-                <button className="modal-close-btn flex-shrink-0" onClick={() => setRawCardDetailItem(null)}>✕</button>
-              </div>
-
-              {/* Condition price table */}
-              <div className="px-4 py-3">
-                <div className="text-xs font-semibold opacity-50 uppercase tracking-wider mb-2">Condition Prices · TCGPlayer</div>
-                {!rcp ? (
-                  <div className="text-sm opacity-40 text-center py-3">
-                    {isRefreshing ? "Fetching…" : "No price data — hit ↺ Refresh to load"}
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {CONDITIONS.map(({ label, key }) => {
-                      const price = priceByKey[key];
-                      const isItemCondition = key === itemCondKey;
-                      return (
-                        <div
-                          key={key}
-                          className={`flex items-center justify-between px-2 py-1.5 rounded-lg ${isItemCondition ? "bg-blue-50 dark:bg-blue-950/30 ring-1 ring-blue-200 dark:ring-blue-800" : ""}`}
-                        >
-                          <span className={`text-sm ${isItemCondition ? "font-semibold text-blue-700 dark:text-blue-300" : "opacity-70"}`}>
-                            {label}
-                            {isItemCondition && <span className="ml-1.5 text-[10px] opacity-60">← this card</span>}
-                          </span>
-                          <span className={`text-sm tabular-nums ${isItemCondition ? "font-bold text-blue-700 dark:text-blue-300" : "opacity-70"}`}>
-                            {price != null ? fmt(price) : "—"}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Price history chart */}
-              {(() => {
-                const allHistory: { date: string; price: number }[] = rcp?.price_history ?? [];
-                const DURATIONS: { label: string; key: "7d" | "30d" | "90d" | "180d"; days: number }[] = [
-                  { label: "7d",  key: "7d",  days: 7   },
-                  { label: "30d", key: "30d", days: 30  },
-                  { label: "90d", key: "90d", days: 90  },
-                  { label: "180d",key: "180d",days: 180 },
-                ];
-                const cutoffDate = new Date();
-                const selectedDays = DURATIONS.find((d) => d.key === historyDuration)?.days ?? 90;
-                cutoffDate.setDate(cutoffDate.getDate() - selectedDays);
-                const cutoffStr = cutoffDate.toISOString().slice(0, 10);
-                const filtered = allHistory.filter((p) => p.date >= cutoffStr);
-
-                // Percentage change: first → last point
-                const pctChange = filtered.length >= 2
-                  ? ((filtered[filtered.length - 1].price - filtered[0].price) / filtered[0].price) * 100
-                  : null;
-                const lineColor = pctChange == null ? "#a855f7" : pctChange >= 0 ? "#22c55e" : "#ef4444";
-
-                // X-axis tick formatter — show M/D
-                function fmtTick(dateStr: string) {
-                  const p = dateStr.split("-");
-                  return `${Number(p[1])}/${Number(p[2])}`;
-                }
-
-                return (
-                  <div className="px-4 py-3 border-t">
-                    <div className="flex items-center justify-between mb-2 gap-2">
-                      <div className="text-xs font-semibold opacity-50 uppercase tracking-wider">Price History · NM</div>
-                      <div className="flex items-center gap-1">
-                        {pctChange != null && (
-                          <span className={`text-xs font-semibold tabular-nums mr-1 ${pctChange >= 0 ? "text-green-500" : "text-red-500"}`}>
-                            {pctChange >= 0 ? "+" : ""}{pctChange.toFixed(1)}%
-                          </span>
-                        )}
-                        {DURATIONS.map((d) => (
-                          <button
-                            key={d.key}
-                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${
-                              historyDuration === d.key
-                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                                : "opacity-40 hover:opacity-70"
-                            }`}
-                            onClick={() => setHistoryDuration(d.key)}
-                          >{d.label}</button>
-                        ))}
-                      </div>
-                    </div>
-                    {allHistory.length === 0 ? (
-                      <div className="text-xs opacity-30 text-center py-4">
-                        {isRefreshing ? "Fetching…" : "No history — hit ↺ Refresh to load"}
-                      </div>
-                    ) : filtered.length < 3 ? (
-                      <div className="text-xs opacity-30 text-center py-4">Not enough history for this period</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height={110}>
-                        <LineChart data={filtered} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.15)" vertical={false} />
-                          <XAxis
-                            dataKey="date"
-                            tickFormatter={fmtTick}
-                            tick={{ fontSize: 9, opacity: 0.45 }}
-                            tickLine={false}
-                            axisLine={false}
-                            interval="preserveStartEnd"
-                            minTickGap={40}
-                          />
-                          <YAxis
-                            tick={{ fontSize: 9, opacity: 0.45 }}
-                            tickLine={false}
-                            axisLine={false}
-                            tickFormatter={(v: number) => `$${v % 1 === 0 ? v : v.toFixed(2)}`}
-                            domain={["auto", "auto"]}
-                            width={48}
-                          />
-                          <Tooltip
-                            contentStyle={{ fontSize: 11, borderRadius: 6, border: "none", background: "var(--background)", boxShadow: "0 2px 8px rgba(0,0,0,0.18)" }}
-                            formatter={(v: number | undefined) => [v != null ? `$${v.toFixed(2)}` : "—", "NM Price"]}
-                            labelFormatter={(label: unknown) => {
-                              const s = String(label ?? "");
-                              const p = s.split("-");
-                              return `${Number(p[1])}/${Number(p[2])}/${p[0]}`;
-                            }}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="price"
-                            stroke={lineColor}
-                            strokeWidth={1.5}
-                            dot={false}
-                            activeDot={{ r: 3, fill: lineColor }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Footer */}
-              <div className="px-4 py-3 border-t flex items-center justify-between gap-2">
-                <div className="text-xs opacity-40">
-                  {rcp?.last_updated ? `Updated ${fmtModalDate(rcp.last_updated)}` : ""}
-                  {rcp?.printing && rcp.printing !== "Normal" && (
-                    <span className="ml-1 opacity-60">· {rcp.printing}</span>
-                  )}
-                </div>
-                <button
-                  className="modal-btn-outline"
-                  style={{padding:"6px 14px", fontSize:"12px"}}
-                  disabled={isRefreshing}
-                  onClick={() => handleRefreshRawCardPrice(it)}
-                >
-                  {isRefreshing ? "Fetching…" : "↺ Refresh"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {rawCardDetailItem && (
+        <RawPricingModal
+          rawCardDetailItem={rawCardDetailItem}
+          setRawCardDetailItem={setRawCardDetailItem}
+          mergedRawCardPrices={mergedRawCardPrices}
+          rawCardRefreshing={rawCardRefreshing}
+          historyDuration={historyDuration}
+          setHistoryDuration={setHistoryDuration}
+          handleRefreshRawCardPrice={handleRefreshRawCardPrice}
+        />
+      )}
 
       {/* ── Mobile FAB ── */}
       <div className="md:hidden fixed bottom-20 right-4 z-30 flex flex-col items-end gap-2">
@@ -3716,275 +1471,50 @@ export default function InventoryClient({
       </div>
 
       {/* ── Mobile Detail Modal ── */}
-      {mobileDetailItem && (() => {
-        const it = mobileDetailItem;
-        const parsed = it.grade ? parseGrade(it.grade) : null;
-        const slabKey = parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
-        const sp = slabKey ? mergedSlabPrices[slabKey] : null;
-        const fmv = it.category === "slab" ? (slabFMVData[it.id]?.fmv ?? it.market) : it.market;
-        const rawKey = makeRawCardPriceKey(it.name, it.set_name, it.card_number);
-        const rcp = it.category === "single" ? mergedRawCardPrices[rawKey] : null;
-        const condPrice = rcp ? priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, it.condition) : null;
-        const displayPrice = it.category === "slab" ? fmv : it.category === "sealed" ? it.market : (condPrice ?? it.market);
-        const priceSource = it.category === "slab" ? "eBay" : it.category === "sealed" ? (it.market != null ? "eBay/PPT" : null) : (rcp ? "TCGPlayer" : null);
-        const ecDetail = effectiveCost(it);
-        const margin = displayPrice != null && ecDetail != null && ecDetail > 0 ? displayPrice - ecDetail : null;
-        const marginPct = margin != null && ecDetail != null && ecDetail > 0 ? (margin / ecDetail) * 100 : null;
-        const ebayQ = it.category === "slab"
-          ? buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number)
-          : it.category === "sealed"
-            ? [it.name, it.set_name].filter(Boolean).join(" ")
-            : buildRawEbayQuery(it.name, it.set_name, it.card_number);
-        const ebayEnc = encodeURIComponent(ebayQ);
-        const cleanName = it.name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
-        const tcgQ = encodeURIComponent([cleanName, it.set_name].filter(Boolean).join(" "));
-        const isRefreshingSlab = slabRefreshing[it.id];
-        const isRefreshingRaw = rawCardRefreshing[it.id];
-        return (
-          <div
-            className="md:hidden fixed inset-0 z-[60] flex items-center justify-center modal-backdrop px-5"
-            onClick={(e) => { if (e.target === e.currentTarget) setMobileDetailItem(null); }}
-          >
-            {/* Modal card */}
-            <div className="modal-panel w-full max-w-sm max-h-[80vh] overflow-y-auto">
-
-              {/* Close button */}
-              <button
-                onClick={() => setMobileDetailItem(null)}
-                className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-muted/60 text-muted-foreground hover:text-foreground transition-colors text-sm"
-              >✕</button>
-
-              {/* Card image — centered, generous */}
-              <div className="flex justify-center pt-5 pb-3 px-6">
-                {it.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={it.image_url} alt={it.name} className="w-32 h-auto rounded-xl object-contain shadow-md" />
-                ) : (
-                  <div className="w-32 h-44 rounded-xl bg-muted flex items-center justify-center text-2xl opacity-20">?</div>
-                )}
-              </div>
-
-              {/* Name + meta */}
-              <div className="px-4 pb-3 text-center">
-                <div className="font-bold text-base leading-snug">{it.name}</div>
-                {(it.set_name || it.card_number) && (
-                  <div className="text-[13px] opacity-50 mt-0.5">{[it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ")}</div>
-                )}
-                <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
-                  {it.grade && <span className={gradeStyle(it.grade)}>{it.grade}</span>}
-                  {it.category === "sealed" && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-500/15 text-teal-400 font-medium">{sealedTypeLabel(it.product_type)}</span>
-                  )}
-                  {it.category === "single" && it.condition && (
-                    <span className={`condition-badge ${{ "Near Mint": "cond-nm", "Lightly Played": "cond-lp", "Moderately Played": "cond-mp", "Heavily Played": "cond-hp", "Damaged": "cond-dmg" }[it.condition] ?? "cond-nm"}`}>
-                      {{ "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "Dmg" }[it.condition] ?? it.condition}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="border-t border-border/50 mx-4" />
-
-              {/* Price section */}
-              <div className="px-4 py-3 space-y-2">
-                {/* FMV / Market */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] uppercase tracking-wide opacity-40 font-semibold">{it.category === "slab" ? "FMV" : "Market"}</span>
-                    {priceSource && <span className="text-[10px] opacity-30 ml-1.5">{priceSource}{it.category === "slab" && sp?.sold_count != null ? ` · ${sp.sold_count} sold` : ""}</span>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold inv-price">{displayPrice != null ? fmt(displayPrice) : "—"}</span>
-                    <button
-                      className="text-sm opacity-30 hover:opacity-70 transition-opacity"
-                      title="Refresh price"
-                      onClick={() => it.category === "slab" ? handleRefreshSlabPrice(it) : it.category === "sealed" ? handleRefreshSealedPrice(it) : handleRefreshRawCardPrice(it)}
-                    >
-                      {(isRefreshingSlab || isRefreshingRaw || sealedRefreshing[it.id]) ? <span className="inline-block spin">↻</span> : "↺"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Cost */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] uppercase tracking-wide opacity-40 font-semibold">Cost</span>
-                  {inlineCostId === it.id ? (
-                    <input
-                      autoFocus
-                      className="w-24 border rounded-lg px-2 py-1 text-sm text-right bg-background inv-price"
-                      value={inlineCostVal}
-                      inputMode="decimal"
-                      onChange={(e) => setInlineCostVal(e.target.value)}
-                      onBlur={() => handleSaveInlineCost(it.id)}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
-                    />
-                  ) : ecDetail != null ? (
-                    <div className="flex flex-col items-end">
-                      <button
-                        className="text-sm font-semibold inv-price opacity-70"
-                        onClick={() => { setInlineCostId(it.id); setInlineCostVal(String(it.cost ?? "")); }}
-                      >{fmt(ecDetail)}</button>
-                      {it.cost_basis != null && (
-                        <span className="text-[10px] opacity-40">trade chain</span>
-                      )}
-                    </div>
-                  ) : (
-                    <button
-                      className="text-sm text-violet-400 hover:text-violet-300"
-                      onClick={() => { setInlineCostId(it.id); setInlineCostVal(""); }}
-                    >+ add cost</button>
-                  )}
-                </div>
-
-                {/* Margin */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] uppercase tracking-wide opacity-40 font-semibold">Margin</span>
-                  {margin != null && marginPct != null ? (
-                    <span className={`text-sm font-semibold inv-price ${margin >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-                      {margin >= 0 ? "+" : ""}{fmt(margin)} <span className="opacity-60 text-xs">({marginPct >= 0 ? "+" : ""}{marginPct.toFixed(0)}%)</span>
-                    </span>
-                  ) : <span className="text-sm opacity-30">—</span>}
-                </div>
-              </div>
-
-              <div className="border-t border-border/50 mx-4" />
-
-              {/* Links — full-width rows */}
-              <div className="px-4 py-3 space-y-1">
-                <a
-                  href={`https://www.ebay.com/sch/i.html?_nkw=${ebayEnc}&LH_Complete=1&LH_Sold=1&_sacat=183454`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full px-3 py-3 rounded-xl hover:bg-muted/50 transition-colors text-sm font-medium min-h-[44px]"
-                >
-                  <span>eBay Sold</span>
-                  <span className="opacity-40 text-base">→</span>
-                </a>
-                <a
-                  href={`https://www.ebay.com/sch/i.html?_nkw=${ebayEnc}&_sacat=183454`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full px-3 py-3 rounded-xl hover:bg-muted/50 transition-colors text-sm font-medium min-h-[44px]"
-                >
-                  <span>eBay Listed</span>
-                  <span className="opacity-40 text-base">→</span>
-                </a>
-                {it.category !== "slab" && (
-                  <a
-                    href={`https://www.tcgplayer.com/search/pokemon/product?q=${tcgQ}&view=grid`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="flex items-center justify-between w-full px-3 py-3 rounded-xl hover:bg-muted/50 transition-colors text-sm font-medium min-h-[44px]"
-                  >
-                    <span>TCGPlayer</span>
-                    <span className="opacity-40 text-base">→</span>
-                  </a>
-                )}
-              </div>
-
-              <div className="border-t border-border/50 mx-4" />
-
-              {/* Actions */}
-              <div className="px-4 py-3 pb-5 space-y-2">
-                {it.category === "slab" && slabKey && (
-                  <button
-                    className="w-full py-3 rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-400 text-sm font-semibold min-h-[44px] transition-colors hover:bg-purple-500/20"
-                    onClick={() => { setMobileDetailItem(null); setPricingDetailItem({ item: it, slabKey: slabKey! }); setSoldExpanded(false); }}
-                  >View Comps</button>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    className="flex-1 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold min-h-[44px] transition-colors"
-                    onClick={() => { setMobileDetailItem(null); openEdit(it); }}
-                  >Edit</button>
-                  <button
-                    className="flex-1 py-3 rounded-xl border border-border text-sm font-medium min-h-[44px] hover:bg-muted transition-colors"
-                    onClick={() => { setMobileDetailItem(null); toggleSelect(it.id); }}
-                  >Select</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {mobileDetailItem && (
+        <MobileDetailModal
+          mobileDetailItem={mobileDetailItem}
+          setMobileDetailItem={setMobileDetailItem}
+          mergedSlabPrices={mergedSlabPrices}
+          mergedRawCardPrices={mergedRawCardPrices}
+          slabFMVData={slabFMVData}
+          slabRefreshing={slabRefreshing}
+          rawCardRefreshing={rawCardRefreshing}
+          sealedRefreshing={sealedRefreshing}
+          inlineCostId={inlineCostId}
+          inlineCostVal={inlineCostVal}
+          setInlineCostId={setInlineCostId}
+          setInlineCostVal={setInlineCostVal}
+          handleSaveInlineCost={handleSaveInlineCost}
+          handleRefreshSlabPrice={handleRefreshSlabPrice}
+          handleRefreshSealedPrice={handleRefreshSealedPrice}
+          handleRefreshRawCardPrice={handleRefreshRawCardPrice}
+          setPricingDetailItem={setPricingDetailItem}
+          setSoldExpanded={setSoldExpanded}
+          openEdit={openEdit}
+          toggleSelect={toggleSelect}
+        />
+      )}
 
       {/* ── Mobile Filter Bottom Sheet ── */}
       {mobileFilterOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end modal-backdrop"
-          onClick={(e) => { if (e.target === e.currentTarget) setMobileFilterOpen(false); }}
-        >
-          {/* Sheet */}
-          <div className="modal-panel rounded-t-2xl px-4 pt-3 pb-10 space-y-3 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            {/* Drag handle */}
-            <div className="w-10 h-1 rounded-full bg-border mx-auto mb-2" />
-            {/* Title row */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold">Search &amp; Filter</span>
-              <button
-                onClick={() => setMobileFilterOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-muted/60 text-muted-foreground text-sm"
-              >✕</button>
-            </div>
-            {/* Search input */}
-            <input
-              className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
-              placeholder="Search by name…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {/* Filter dropdowns */}
-            <div className="grid grid-cols-2 gap-2">
-              <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value as Category | "all")}>
-                <option value="all">All types</option>
-                <option value="single">Singles</option>
-                <option value="slab">Slabs</option>
-                <option value="sealed">Sealed</option>
-              </select>
-              <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as Status | "all")}>
-                <option value="all">All statuses</option>
-                <option value="inventory">Inventory</option>
-              </select>
-              <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={filterOwner} onChange={(e) => setFilterOwner(e.target.value as Owner | "all")}>
-                <option value="all">All owners</option>
-                <option value="alex">Alex</option>
-                <option value="mila">Mila</option>
-                <option value="shared">Shared</option>
-              </select>
-              {consigners.length > 0 && (
-                <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={filterConsigner} onChange={(e) => setFilterConsigner(e.target.value)}>
-                  <option value="all">All consigners</option>
-                  <option value="none">Own inventory</option>
-                  {consigners.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              )}
-              <select className="border rounded-lg px-3 py-2.5 text-sm bg-background" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
-                <option value="date-desc">Newest first</option>
-                <option value="date-asc">Oldest first</option>
-                <option value="name-asc">Name A→Z</option>
-                <option value="name-desc">Name Z→A</option>
-                <option value="market-desc">Market ↓</option>
-                <option value="market-asc">Market ↑</option>
-                <option value="cost-desc">Cost ↓</option>
-                <option value="cost-asc">Cost ↑</option>
-              </select>
-            </div>
-            {/* Footer */}
-            <div className="flex items-center justify-between pt-1">
-              {isFiltered ? (
-                <button
-                  className="text-xs underline opacity-60"
-                  onClick={() => { setSearch(""); setFilterCategory("all"); setFilterStatus("all"); setFilterOwner("all"); setFilterConsigner("all"); }}
-                >
-                  Clear filters
-                </button>
-              ) : <span />}
-              <button
-                className="px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold min-h-[44px]"
-                onClick={() => setMobileFilterOpen(false)}
-              >Done</button>
-            </div>
-          </div>
-        </div>
+        <MobileFilterSheet
+          setMobileFilterOpen={setMobileFilterOpen}
+          search={search}
+          setSearch={setSearch}
+          filterCategory={filterCategory}
+          setFilterCategory={setFilterCategory}
+          filterStatus={filterStatus}
+          setFilterStatus={setFilterStatus}
+          filterOwner={filterOwner}
+          setFilterOwner={setFilterOwner}
+          filterConsigner={filterConsigner}
+          setFilterConsigner={setFilterConsigner}
+          sort={sort}
+          setSort={setSort}
+          consigners={consigners}
+          isFiltered={isFiltered}
+        />
       )}
     </div>
   );
