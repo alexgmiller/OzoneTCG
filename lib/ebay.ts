@@ -44,7 +44,8 @@ export async function getEbayToken(): Promise<string> {
 
 // ── Grade parsing (re-exported from ebay-client.ts for server-side callers) ───
 
-export type { SlabSale } from "./ebay-client";
+import type { SlabSale } from "./ebay-client";
+export type { SlabSale };
 export type { ParsedGrade } from "./ebay-client";
 export { parseGrade, makeSlabPriceKey } from "./ebay-client";
 

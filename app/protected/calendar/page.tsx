@@ -1,8 +1,11 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import CalendarClient from "./CalendarClient";
 import { getCalendarMonthData } from "./actions";
 
 async function CalendarPageInner() {
+  // "Today" must be computed at request time, not at prerender time
+  await connection();
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1; // 1-indexed
