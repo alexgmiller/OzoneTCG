@@ -257,7 +257,7 @@ export type CardImageStats = {
   notFoundCached: number;
 };
 
-export async function getCardImageStats() {
+export async function getCardImageStats(): Promise<CardImageStats> {
   const admin = createAdminClient();
   const [totalRes, notFoundRes] = await Promise.all([
     admin.from("card_image_cache").select("lookup_key", { count: "exact", head: true }).neq("source", "not_found"),
@@ -267,7 +267,7 @@ export async function getCardImageStats() {
     total: totalRes.count ?? 0,
     verified: 0, unverified: 0, flagged: 0,
     byCategory: { single: 0, slab: 0, sealed: 0 },
-    byLanguage: { English: 0, Japanese: 0, Other: 0 },
+    byLanguage: { English: 0, Japanese: 0, Chinese: 0, other: 0 },
     notFoundCached: notFoundRes.count ?? 0,
   };
 }
