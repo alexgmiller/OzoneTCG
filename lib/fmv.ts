@@ -15,7 +15,7 @@ export type FMVResult = {
 };
 
 /** Linear-interpolation percentile on a pre-sorted array. */
-function pctile(sorted: number[], p: number): number {
+export function pctile(sorted: number[], p: number): number {
   if (sorted.length === 1) return sorted[0];
   const idx = (sorted.length - 1) * p;
   const lo = Math.floor(idx);
@@ -24,7 +24,7 @@ function pctile(sorted: number[], p: number): number {
 }
 
 /** Remove IQR outliers from a price list. Returns the cleaned, sorted subset. */
-function iqrFilter(prices: number[]): number[] {
+export function iqrFilter(prices: number[]): number[] {
   const sorted = [...prices].sort((a, b) => a - b);
   if (sorted.length < 4) return sorted;
   const q1 = pctile(sorted, 0.25);
