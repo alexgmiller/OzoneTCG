@@ -2,9 +2,17 @@
 
 import { useState, useMemo, useRef } from "react";
 import { importItems, refreshItemPrices } from "./actions";
+import {
+  detectIdx,
+  inferCategory,
+  inferCondition,
+  inferGrade,
+  parseCSVText,
+  parsePrice,
+  roundMarketPrice,
+} from "@/lib/csvImport";
+import type { Category, Condition } from "@/lib/csvImport";
 
-type Category = "single" | "slab" | "sealed";
-type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
 type ConsignerOption = { id: string; name: string; rate: number };
 
 type ColMap = {
@@ -18,79 +26,6 @@ type ColMap = {
   grade: number;
   quantity: number;
 };
-
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === "," && !inQuotes) {
-      result.push(current.trim());
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current.trim());
-  return result;
-}
-
-function detectIdx(headers: string[], candidates: string[]): number {
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const lower = headers.map(norm);
-  for (const c of candidates) {
-    const key = norm(c);
-    const idx = lower.findIndex((h) => h === key || h.includes(key));
-    if (idx !== -1) return idx;
-  }
-  return -1;
-}
-
-function inferGrade(val: string): string | null {
-  if (!val || val.toLowerCase().includes("ungraded")) return null;
-  const match = val.match(/(PSA|BGS|CGC|SGC)\s+(\d+(?:\.\d+)?)/i);
-  if (match) return `${match[1].toUpperCase()} ${parseFloat(match[2])}`;
-  return val.trim() || null;
-}
-
-function roundMarketPrice(price: number): number {
-  if (price < 3) return 3;
-  if (price < 100) return Math.ceil(price);
-  if (price < 500) return Math.ceil(price / 5) * 5;
-  return Math.ceil(price / 10) * 10;
-}
-
-function inferCategory(val: string, nameHint = "", conditionHint = "", gradeHint = ""): Category {
-  const all = (val + " " + nameHint + " " + conditionHint + " " + gradeHint).toLowerCase();
-  if (
-    all.includes("slab") || all.includes("psa") || all.includes("bgs") ||
-    all.includes("cgc") || all.includes("sgc") || all.includes("graded")
-  ) return "slab";
-  if (
-    all.includes("sealed") || all.includes("pack") || all.includes("box") ||
-    all.includes("booster") || all.includes("etb") || all.includes("tin")
-  ) return "sealed";
-  return "single";
-}
-
-function inferCondition(val: string): Condition {
-  const v = val.toLowerCase();
-  if (v.includes("nm") || v.includes("near mint") || v.includes("mint")) return "Near Mint";
-  if (v.includes("lp") || v.includes("light")) return "Lightly Played";
-  if (v.includes("mp") || v.includes("mod")) return "Moderately Played";
-  if (v.includes("hp") || v.includes("heavy")) return "Heavily Played";
-  if (v.includes("dmg") || v.includes("damage")) return "Damaged";
-  return "Near Mint";
-}
-
-function parsePrice(val: string): number | null {
-  if (!val) return null;
-  const n = parseFloat(val.replace(/[^0-9.]/g, ""));
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
 
 export default function CSVImport({ consigners }: { consigners: ConsignerOption[] }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -112,14 +47,8 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
     setImportedCount(null);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = (ev.target?.result as string)
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n")
-        .trim();
-      const lines = text.split("\n");
-      if (lines.length < 2) return;
-      const hdrs = parseCSVLine(lines[0]);
-      const dataRows = lines.slice(1).map(parseCSVLine).filter((r) => r.some((c) => c.trim()));
+      const { headers: hdrs, rows: dataRows } = parseCSVText(ev.target?.result as string);
+      if (hdrs.length === 0) return;
       setHeaders(hdrs);
       setRows(dataRows);
       setColMap({

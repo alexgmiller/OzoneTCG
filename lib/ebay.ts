@@ -44,6 +44,10 @@ export async function getEbayToken(): Promise<string> {
 
 // ── Grade parsing (re-exported from ebay-client.ts for server-side callers) ───
 
+// `export type ... from` re-exports without binding the name locally, so the
+// type is imported separately for use inside this module.
+import type { SlabSale } from "./ebay-client";
+
 export type { SlabSale } from "./ebay-client";
 export type { ParsedGrade } from "./ebay-client";
 export { parseGrade, makeSlabPriceKey } from "./ebay-client";
