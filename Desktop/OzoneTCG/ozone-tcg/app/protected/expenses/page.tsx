@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import ExpensesServer from "./ExpensesServer";
+import ExpensesLoading from "./loading";
 
 export default function ExpensesPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-sm opacity-70">Loading expenses…</div>}>
+    <Suspense fallback={<ExpensesLoading />}>
       <ExpensesServer />
     </Suspense>
   );
