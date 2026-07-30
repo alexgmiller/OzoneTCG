@@ -9,6 +9,14 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["lib/**/*.test.ts", "app/**/*.test.ts", "components/**/*.test.{ts,tsx}"],
+    // `tests/**` must stay listed: tests live both colocated with their module
+    // and in the top-level tests/ directory, and omitting either silently stops
+    // running them rather than failing.
+    include: [
+      "tests/**/*.test.{ts,tsx}",
+      "lib/**/*.test.ts",
+      "app/**/*.test.ts",
+      "components/**/*.test.{ts,tsx}",
+    ],
   },
 });

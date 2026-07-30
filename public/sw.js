@@ -1,137 +1,153 @@
-'use strict';
+// OzoneTCG Service Worker — card image cache
+// Cache-first strategy for card images; all other requests pass through untouched.
 
-// ── Config ────────────────────────────────────────────────────────────────────
-
-const CACHE_NAME = 'ozone-card-images-v1';
+const CACHE_NAME = "ozone-card-images-v1";
 const MAX_ENTRIES = 1000;
-const EVICT_COUNT = 100;       // delete oldest N when cap is reached
-const PRECACHE_CONCURRENCY = 5;
-const SUPABASE_HOST = 'ukcwenkakivcflnonihu.supabase.co';
-const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|avif|svg)(\?[^#]*)?$/i;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── URL matcher ───────────────────────────────────────────────────────────────
 
 function isCacheableImage(url) {
   try {
     const u = new URL(url);
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
-    // Supabase Storage objects
-    if (u.hostname === SUPABASE_HOST && u.pathname.includes('/storage/v1/object/')) return true;
-    // Standard image file extensions
-    if (IMAGE_EXT_RE.test(u.pathname)) return true;
-    return false;
+    // Never intercept Next.js internal routes
+    if (u.origin === self.location.origin) {
+      if (u.pathname.startsWith("/_next/") || u.pathname.startsWith("/api/")) return false;
+      return /\.(png|jpe?g|webp|gif|avif)$/i.test(u.pathname);
+    }
+    // Cross-origin: Supabase storage, TCGdex, pokemontcg.io CDN
+    return (
+      u.hostname.endsWith("supabase.co") ||
+      u.hostname === "api.tcgdex.net" ||
+      u.hostname.endsWith("pokemontcg.io") ||
+      /\.(png|jpe?g|webp)$/i.test(u.pathname)
+    );
   } catch {
     return false;
   }
 }
 
-// FIFO eviction: cache.keys() is insertion-ordered per spec.
-// Delete the oldest EVICT_COUNT entries when cap is exceeded.
-async function maybeEvict(cache) {
+// ── Order tracking ────────────────────────────────────────────────────────────
+// Module-level array — resets when the SW restarts, which is fine. On restart
+// we rebuild from the live cache on first access.
+
+let cacheOrder = /** @type {string[]} */ ([]);
+let orderInitialized = false;
+
+async function initOrder() {
+  if (orderInitialized) return;
+  const cache = await caches.open(CACHE_NAME);
   const keys = await cache.keys();
-  if (keys.length <= MAX_ENTRIES) return;
-  const toEvict = keys.slice(0, EVICT_COUNT);
-  await Promise.all(toEvict.map((req) => cache.delete(req)));
+  cacheOrder = keys.map((r) => r.url);
+  orderInitialized = true;
 }
 
-// ── Lifecycle ─────────────────────────────────────────────────────────────────
+async function evictIfNeeded(cache) {
+  while (cacheOrder.length > MAX_ENTRIES) {
+    const oldest = cacheOrder.shift();
+    if (oldest) await cache.delete(oldest);
+  }
+}
 
-self.addEventListener('install', () => {
-  // Activate immediately — don't wait for existing tabs to close.
-  self.skipWaiting();
-});
+async function addToCache(cache, url, response) {
+  await cache.put(url, response);
+  if (!cacheOrder.includes(url)) {
+    cacheOrder.push(url);
+    await evictIfNeeded(cache);
+  }
+}
 
-self.addEventListener('activate', (event) => {
-  // Claim all open clients so the SW controls them right away.
-  event.waitUntil(self.clients.claim());
-});
+// ── Fetch intercept ───────────────────────────────────────────────────────────
 
-// ── Fetch: cache-first for images ─────────────────────────────────────────────
-
-self.addEventListener('fetch', (event) => {
-  // Only handle GET requests to cacheable image URLs.
-  if (event.request.method !== 'GET') return;
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
   if (!isCacheableImage(event.request.url)) return;
 
   event.respondWith(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      // Cache hit — return immediately.
+    (async () => {
+      await initOrder();
+      const cache = await caches.open(CACHE_NAME);
+
+      // Cache-first
       const cached = await cache.match(event.request);
       if (cached) return cached;
 
-      // Cache miss — fetch from network, cache in background, return response.
-      const response = await fetch(event.request);
-      if (response.ok) {
-        // Background cache population — do not await so the response is
-        // returned to the page without delay.
-        cache.put(event.request, response.clone())
-          .then(() => maybeEvict(cache))
-          .catch(() => {});
+      // Network fallback — store clone for next time
+      try {
+        const response = await fetch(event.request);
+        if (response.ok) {
+          await addToCache(cache, event.request.url, response.clone());
+        }
+        return response;
+      } catch {
+        return new Response(null, { status: 503, statusText: "Service Unavailable" });
       }
-      return response;
-    })
+    })()
   );
+});
+
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
+
+self.addEventListener("install", () => {
+  // Skip waiting so the new SW activates immediately on update
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  // Take control of all open clients right away
+  event.waitUntil(self.clients.claim());
 });
 
 // ── Message handler ───────────────────────────────────────────────────────────
 
-async function precacheImages(urls, source) {
-  const cache = await caches.open(CACHE_NAME);
-  let cached = 0;
-  let failed = 0;
+self.addEventListener("message", (event) => {
+  const { type, urls } = event.data ?? {};
 
-  for (let i = 0; i < urls.length; i += PRECACHE_CONCURRENCY) {
-    const batch = urls.slice(i, i + PRECACHE_CONCURRENCY);
-    const results = await Promise.allSettled(
-      batch.map(async (url) => {
-        if (!isCacheableImage(url)) return;
-        // Skip already-cached entries to avoid wasting bandwidth.
-        if (await cache.match(url)) return;
-        // mode: no-cors is appropriate for cross-origin image assets.
-        const resp = await fetch(url, { mode: 'no-cors' });
-        await cache.put(url, resp);
-        cached++;
-      })
-    );
-    for (const r of results) {
-      if (r.status === 'rejected') failed++;
-    }
+  if (type === "precache-images" && Array.isArray(urls)) {
+    event.waitUntil(precacheImages(urls));
   }
 
-  await maybeEvict(cache);
-
-  if (source) {
-    try {
-      source.postMessage({ type: 'precache-complete', cached, failed });
-    } catch {}
-  }
-}
-
-self.addEventListener('message', (event) => {
-  const data = event.data || {};
-  const source = event.source;
-
-  if (data.type === 'precache-images') {
-    const urls = Array.isArray(data.urls) ? data.urls : [];
-    if (urls.length > 0) {
-      event.waitUntil(precacheImages(urls, source));
-    }
-  } else if (data.type === 'clear-image-cache') {
+  if (type === "clear-image-cache") {
     event.waitUntil(
       caches.delete(CACHE_NAME).then(() => {
-        if (source) {
-          try { source.postMessage({ type: 'cache-cleared' }); } catch {}
-        }
-      })
-    );
-  } else if (data.type === 'query-cache-size') {
-    event.waitUntil(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        const keys = await cache.keys();
-        if (source) {
-          try { source.postMessage({ type: 'cache-size', size: keys.length }); } catch {}
-        }
+        cacheOrder = [];
+        orderInitialized = false;
       })
     );
   }
 });
+
+// ── Background pre-cache ──────────────────────────────────────────────────────
+
+const BATCH = 5;
+
+async function precacheImages(urls) {
+  await initOrder();
+  const cache = await caches.open(CACHE_NAME);
+
+  // Only fetch URLs that aren't already cached and look like images
+  const toFetch = [];
+  for (const url of urls) {
+    if (!url || !isCacheableImage(url)) continue;
+    const existing = await cache.match(url);
+    if (!existing) toFetch.push(url);
+  }
+
+  for (let i = 0; i < toFetch.length; i += BATCH) {
+    await Promise.allSettled(
+      toFetch.slice(i, i + BATCH).map(async (url) => {
+        try {
+          // Use no-cors for cross-origin images to avoid CORS pre-flight failures
+          const u = new URL(url);
+          const sameOrigin = u.origin === self.location.origin;
+          const response = await fetch(url, sameOrigin ? undefined : { mode: "no-cors" });
+          // ok is false for opaque (no-cors) responses, so also check type
+          if (response.ok || response.type === "opaque") {
+            await addToCache(cache, url, response);
+          }
+        } catch {
+          // Skip unreachable images — they'll cache naturally on first view
+        }
+      })
+    );
+  }
+}

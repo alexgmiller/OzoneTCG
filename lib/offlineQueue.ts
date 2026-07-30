@@ -1,34 +1,25 @@
-// IndexedDB-backed offline queue for show transactions.
-// Each PendingAction.id IS the client_id passed to the server action for deduplication.
-
-export type ActionKind = "buy" | "sell" | "trade" | "expense";
-
-export interface PendingAction {
-  id: string;          // UUID = client_id used for server-side dedup
-  kind: ActionKind;
-  group_id: string | null;  // actions in the same deal group share a group_id
-  group_seq: number;        // ordering within the group (0-based)
-  payload: Record<string, unknown>;
-  queued_at: number;   // Date.now()
-  attempts: number;
-  last_error: string | null;
-  status: "pending" | "syncing" | "failed";
-}
-
 const DB_NAME = "ozone_offline";
-const STORE = "pending_actions";
 const DB_VERSION = 1;
+const STORE = "pending_actions";
 
-function openDB(): Promise<IDBDatabase> {
+export type PendingAction = {
+  id: string;
+  timestamp: number;
+  actionType: "buy" | "sell" | "trade" | "deal-buy" | "deal-trade" | "expense";
+  payload: Record<string, unknown>;
+  status: "pending" | "syncing" | "failed";
+  retryCount: number;
+  errorMessage?: string;
+};
+
+function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result;
+    req.onupgradeneeded = () => {
+      const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) {
         const store = db.createObjectStore(STORE, { keyPath: "id" });
-        store.createIndex("status", "status");
-        store.createIndex("group_id", "group_id");
-        store.createIndex("queued_at", "queued_at");
+        store.createIndex("timestamp", "timestamp");
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -36,124 +27,113 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-function tx(
-  db: IDBDatabase,
-  mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => IDBRequest | void
-): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const t = db.transaction(STORE, mode);
-    const store = t.objectStore(STORE);
-    const req = fn(store);
-    t.oncomplete = () => resolve(req ? (req as IDBRequest).result : undefined);
-    t.onerror = () => reject(t.error);
-    t.onabort = () => reject(t.error);
-  });
-}
-
-export async function queueAction(action: Omit<PendingAction, "attempts" | "last_error" | "status">): Promise<void> {
-  const db = await openDB();
-  const record: PendingAction = { ...action, attempts: 0, last_error: null, status: "pending" };
-  await tx(db, "readwrite", (s) => s.put(record));
-  db.close();
-}
-
-export async function queueActionGroup(
-  actions: Omit<PendingAction, "attempts" | "last_error" | "status">[]
-): Promise<void> {
-  const db = await openDB();
+export async function queueAction(
+  actionType: PendingAction["actionType"],
+  payload: Record<string, unknown>
+): Promise<string> {
+  const db = await openDb();
+  const action: PendingAction = {
+    id: crypto.randomUUID(),
+    timestamp: Date.now(),
+    actionType,
+    payload,
+    status: "pending",
+    retryCount: 0,
+  };
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(STORE, "readwrite");
-    const store = t.objectStore(STORE);
-    for (const a of actions) {
-      store.put({ ...a, attempts: 0, last_error: null, status: "pending" });
-    }
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(action);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
-  db.close();
+  return action.id;
 }
 
 export async function getPendingActions(): Promise<PendingAction[]> {
-  const db = await openDB();
-  const result = await new Promise<PendingAction[]>((resolve, reject) => {
-    const t = db.transaction(STORE, "readonly");
-    const req = t.objectStore(STORE).index("queued_at").getAll();
-    req.onsuccess = () => resolve((req.result as PendingAction[]).filter((a) => a.status !== "failed"));
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () =>
+      resolve(
+        (req.result as PendingAction[]).sort((a, b) => a.timestamp - b.timestamp)
+      );
     req.onerror = () => reject(req.error);
   });
-  db.close();
-  return result;
 }
 
 export async function getPendingCount(): Promise<number> {
-  const actions = await getPendingActions();
-  return actions.length;
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const req = tx.objectStore(STORE).count();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
 }
 
 export async function markSynced(id: string): Promise<void> {
-  const db = await openDB();
+  const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(STORE, "readwrite");
-    const store = t.objectStore(STORE);
-    const req = store.get(id);
-    req.onsuccess = () => {
-      if (req.result) store.delete(id);
-    };
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
-  db.close();
 }
 
-export async function markFailed(id: string, error: string): Promise<void> {
-  const db = await openDB();
+export async function markFailed(id: string, errorMessage: string): Promise<void> {
+  const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(STORE, "readwrite");
-    const store = t.objectStore(STORE);
-    const req = store.get(id);
-    req.onsuccess = () => {
-      if (req.result) {
-        const record: PendingAction = req.result;
-        store.put({
-          ...record,
-          attempts: record.attempts + 1,
-          last_error: error,
-          status: "failed",
-        });
-      }
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const action = getReq.result as PendingAction | undefined;
+      if (!action) { resolve(); return; }
+      store.put({
+        ...action,
+        status: "failed",
+        retryCount: action.retryCount + 1,
+        errorMessage,
+      });
     };
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
-  db.close();
-}
-
-export async function resetForRetry(id: string): Promise<void> {
-  const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(STORE, "readwrite");
-    const store = t.objectStore(STORE);
-    const req = store.get(id);
-    req.onsuccess = () => {
-      if (req.result) {
-        store.put({ ...req.result, status: "pending", last_error: null });
-      }
-    };
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-  });
-  db.close();
-}
-
-export async function deleteAction(id: string): Promise<void> {
-  const db = await openDB();
-  await tx(db, "readwrite", (s) => s.delete(id));
-  db.close();
 }
 
 export async function clearAll(): Promise<void> {
-  const db = await openDB();
-  await tx(db, "readwrite", (s) => s.clear());
-  db.close();
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** Label suitable for display — extracted from the action payload */
+export function pendingActionLabel(action: PendingAction): string {
+  const p = action.payload as Record<string, unknown>;
+  switch (action.actionType) {
+    case "buy":
+    case "deal-buy":
+      return (p.name as string) ?? "Buy";
+    case "sell":
+      return (p.item_name as string) ?? "Sell";
+    case "trade":
+    case "deal-trade": {
+      const out = p.goingOut as Array<{ name: string }> | undefined;
+      const inn = p.comingIn as Array<{ name: string }> | undefined;
+      const outNames = out?.map((g) => g.name).join(", ");
+      const inNames = inn?.map((c) => c.name).join(", ");
+      if (outNames && inNames) return `${outNames} → ${inNames}`;
+      return outNames ?? inNames ?? "Trade";
+    }
+    case "expense":
+      return (p.description as string) ?? "Expense";
+    default:
+      return "Action";
+  }
 }

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend, Space_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
-import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 import "./globals.css";
@@ -52,8 +52,8 @@ export default function RootLayout({
         >
           <ToastProvider>
             <ConfirmProvider>
-              {children}
               <ServiceWorkerRegistrar />
+              {children}
             </ConfirmProvider>
           </ToastProvider>
         </ThemeProvider>
