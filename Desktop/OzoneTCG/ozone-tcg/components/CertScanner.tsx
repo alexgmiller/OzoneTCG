@@ -5,7 +5,7 @@ import {
   X, ScanLine, RefreshCw,
   Package, ShoppingCart, Trash2,
   ChevronDown, ChevronUp, History,
-  CheckCircle, AlertCircle, Loader2,
+  AlertCircle, Loader2,
   ExternalLink,
 } from "lucide-react";
 import { createItem } from "@/app/protected/inventory/actions";
@@ -13,7 +13,7 @@ import { recordCertBuy, type CertBuyItem } from "@/app/protected/transactions/ac
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 import type { SlabSale, PricingResult, SoldPricingResult } from "@/lib/ebay";
 import { computeBlendedFMV, type PricingStrategyOverride } from "@/lib/fmv";
-import { useConfirm } from "@/components/ui";
+import { useConfirm, useToast } from "@/components/ui";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -201,6 +201,7 @@ function OfferCalc({
 
 export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrategy?: PricingStrategyOverride }) {
   const confirm = useConfirm();
+  const toast = useToast();
 
   // ── phase / company
   const [phase, setPhase] = useState<ScanPhase>("idle");
@@ -258,7 +259,6 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // ── feedback
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // ── buy modal
@@ -672,8 +672,8 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
   // ── Toast helper ──────────────────────────────────────────────────────────
 
   function showToast(msg: string, ok = true) {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
+    if (ok) toast.success(msg);
+    else toast.error(msg);
   }
 
   // ── Add to inventory ──────────────────────────────────────────────────────
@@ -818,16 +818,6 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-3 pb-24 overflow-x-hidden">
-
-      {/* ── Toast ── */}
-      {toast && (
-        <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium ${
-          toast.ok ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
-        }`}>
-          {toast.ok ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
-          {toast.msg}
-        </div>
-      )}
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between pt-2">

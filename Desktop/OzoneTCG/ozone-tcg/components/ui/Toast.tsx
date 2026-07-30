@@ -51,7 +51,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ push }}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex flex-col items-center gap-2">
+      {/*
+        Clears the mobile tab bar (h-14, fixed bottom-0 in NavLinks) so toasts
+        aren't hidden behind it. The bar is md:hidden, so desktop sits lower.
+      */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-20 md:bottom-6 z-50 flex flex-col items-center gap-2">
         {toasts.map((t) => (
           <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
         ))}
