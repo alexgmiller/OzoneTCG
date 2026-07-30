@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { computePayoutTotals } from "@/lib/payout";
 import { revalidatePath } from "next/cache";
 
 export async function settlePeriod(notes?: string) {
@@ -67,23 +68,13 @@ export async function settlePeriod(notes?: string) {
   const sales = salesData ?? [];
   const consignerSales = consignerData ?? [];
 
-  const alexPaid =
-    expenses.filter((e) => e.paid_by === "alex").reduce((s, e) => s + (e.cost ?? 0), 0) +
-    items.filter((i) => i.owner === "alex").reduce((s, i) => s + (i.cost ?? 0), 0);
-
-  const milaPaid =
-    expenses.filter((e) => e.paid_by === "mila").reduce((s, e) => s + (e.cost ?? 0), 0) +
-    items.filter((i) => i.owner === "mila").reduce((s, i) => s + (i.cost ?? 0), 0);
-
-  const sharedSalesTotal = sales.reduce((s, i) => s + (i.sold_price ?? 0), 0);
-  const consignerCut = consignerSales.reduce(
-    (s, i) => s + ((i.sold_price ?? 0) - (i.consigner_payout ?? 0)),
-    0
-  );
-  const sharedSales = sharedSalesTotal + consignerCut;
-
   // net > 0 = Alex pays Mila; net < 0 = Mila pays Alex
-  const netPayout = (0.5 * sharedSales + 0.5 * milaPaid) - 0.5 * alexPaid;
+  const { alexPaid, milaPaid, sharedSales, netPayout } = computePayoutTotals(
+    expenses,
+    items,
+    sales,
+    consignerSales
+  );
 
   // Determine period_start: earliest date in this set, or lastEnd, or now
   const allDates = [

@@ -41,7 +41,7 @@ export type ScrapedSale = {
 };
 
 /** Build a clean eBay keyword query for completed slab sales. */
-function buildQuery(
+export function buildQuery(
   company: string,
   grade: string,
   name: string,
@@ -66,7 +66,7 @@ function buildQuery(
  * "Togepi & Cleffa & Igglybuff GX" → ["togepi", "igglybuff"]
  * "Charizard VMAX" → ["charizard"]
  */
-function extractRelevanceKeywords(name: string): string[] {
+export function extractRelevanceKeywords(name: string): string[] {
   const clean = name
     .replace(/\s*\([A-Z]{2,3}\)\s*/gi, " ")
     .replace(/&/g, " ")
@@ -149,7 +149,7 @@ async function fetchAndParse(
   return parseCompletedHtml(html, q, name, company, grade, soldSearchUrl);
 }
 
-function parseCompletedHtml(
+export function parseCompletedHtml(
   html: string,
   q: string,
   name: string,
