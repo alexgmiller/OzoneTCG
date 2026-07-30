@@ -5,7 +5,7 @@ export default async function AdminImagesPage() {
   const stats = await getCardImageStats().catch(() => null);
 
   return (
-    <div className="py-4 space-y-4 max-w-5xl mx-auto">
+    <div className="w-full py-4 space-y-4 max-w-5xl mx-auto">
       <div>
         <h1 className="text-xl font-bold">Image Manager</h1>
         <p className="text-xs opacity-40 mt-0.5">

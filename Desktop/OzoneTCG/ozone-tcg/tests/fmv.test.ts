@@ -104,4 +104,50 @@ describe("computeBlendedFMV", () => {
     expect(result.mode).toBe("none");
     expect(result.fmv).toBeNull();
   });
+
+  it("weights on the most recent sale, not the oldest", () => {
+    // One stale sale among fresh ones must not push the blend into the
+    // 30-day bucket and over-trust current listings.
+    const result = computeBlendedFMV(
+      [sold(100, 90), sold(100, 2), sold(100, 60)],
+      [{ price: 200 }, { price: 200 }, { price: 200 }],
+    );
+    expect(result.fmv).toBe(150); // 0.5x100 + 0.5x200
+  });
+
+  it("falls back to even weighting when every sold date is unparseable", () => {
+    const result = computeBlendedFMV(
+      [
+        { price: 100, soldDate: "not-a-date" },
+        { price: 100, soldDate: "" },
+      ],
+      [{ price: 200 }, { price: 200 }, { price: 200 }],
+    );
+    expect(result.mode).toBe("blended");
+    expect(result.fmv).toBe(150);
+  });
+
+  it("still returns an anchor when IQR filtering would drop everything", () => {
+    // Identical prices collapse the IQR bounds; the filter must fall back to
+    // the unfiltered set rather than reporting no data.
+    const result = computeBlendedFMV(
+      [sold(50, 1), sold(50, 1), sold(50, 1), sold(50, 1)],
+      [],
+    );
+    expect(result.soldAnchor).toBe(50);
+    expect(result.soldCount).toBe(4);
+  });
+
+  it("rounds a fractional median to a whole dollar", () => {
+    const result = computeBlendedFMV([sold(10, 1), sold(11, 1)], []);
+    expect(Number.isInteger(result.fmv)).toBe(true);
+  });
+
+  it("anchors active-only pricing on Q1, not the median", () => {
+    const result = computeBlendedFMV([], [
+      { price: 10 }, { price: 20 }, { price: 30 }, { price: 40 },
+    ]);
+    // Q1 of [10,20,30,40] interpolates to 17.5 -> 18
+    expect(result.listedAnchor).toBe(18);
+  });
 });

@@ -6,14 +6,21 @@ import { useTheme } from "next-themes";
 import {
   User, Building2, ShieldCheck, TrendingUp, Monitor, Database,
   Bell, Trash2, KeyRound, Download, LogOut, CheckCircle2, AlertCircle,
-  ChevronRight, Eye, EyeOff, HardDrive,
+  ChevronRight, Eye, EyeOff, HardDrive, TriangleAlert, MapPin, Pencil,
 } from "lucide-react";
 import {
   saveSettings, sendPasswordResetEmail, deleteAccount,
-  exportInventoryCSV, exportTransactionsCSV,
-  type UserSettings,
+  exportInventoryCSV, exportTransactionsCSV, updateBusinessStructure,
+  updateHomeAddress, updateSavedLocationLabel, deleteSavedLocation,
+  type UserSettings, type WorkspaceData, type SavedLocation,
 } from "./actions";
+import {
+  BUSINESS_STRUCTURE_LABELS, BUSINESS_STRUCTURE_DESCRIPTIONS,
+  taxFeaturesEnabled, partnershipFeatures,
+  type BusinessStructure,
+} from "@/lib/businessFeatures";
 import { verifyGuestPin, saveGuestPin } from "@/app/protected/guest/actions";
+import { useToast } from "@/components/ui";
 import { getPendingCount, clearAll as clearQueueAll } from "@/lib/offlineQueue";
 import { replayPendingActions } from "@/lib/offlineSync";
 
@@ -153,21 +160,501 @@ function NumInput({
   );
 }
 
+// ─── Offline Sync Section ────────────────────────────────────────────────────
+
+function OfflineSyncSection() {
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    import("@/lib/offlineQueue").then(({ getPendingCount }) => {
+      getPendingCount().then((n) => { if (mounted) setPendingCount(n); });
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  async function handleSyncNow() {
+    setSyncing(true);
+    try {
+      const { getPendingActions } = await import("@/lib/offlineQueue");
+      const { replayPendingActions } = await import("@/lib/offlineSync");
+      // replayPendingActions resolves its own action executor internally.
+      await replayPendingActions();
+      const remaining = await getPendingActions();
+      setPendingCount(remaining.length);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleClearAll() {
+    if (!clearConfirm) { setClearConfirm(true); return; }
+    const { clearAll } = await import("@/lib/offlineQueue");
+    await clearAll();
+    setPendingCount(0);
+    setClearConfirm(false);
+  }
+
+  return (
+    <Section icon={Database} title="Offline Sync">
+      <SettingRow label="Queued transactions" description="Transactions saved offline, waiting to sync">
+        <span className="text-sm tabular-nums font-medium">{pendingCount}</span>
+      </SettingRow>
+      {pendingCount > 0 && (
+        <SettingRow label="Actions">
+          <div className="flex gap-2">
+            <button
+              onClick={handleSyncNow}
+              disabled={syncing}
+              className="text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40"
+              style={{ borderColor: "rgba(245,158,11,0.4)", color: "#fbbf24" }}
+            >
+              {syncing ? "Syncing…" : "Sync Now"}
+            </button>
+            <button
+              onClick={handleClearAll}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${clearConfirm ? "border-red-500/60 text-red-400" : "border-red-500/30 text-red-400 hover:bg-red-500/10"}`}
+            >
+              {clearConfirm ? "Confirm Clear?" : "Clear Queue"}
+            </button>
+          </div>
+        </SettingRow>
+      )}
+    </Section>
+  );
+}
+
+// ─── Image Cache Section ──────────────────────────────────────────────────────
+
+const IMAGE_CACHE_NAME = "ozone-card-images-v1";
+
+function ImageCacheSection() {
+  const [cacheSize, setCacheSize] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!("caches" in window)) return;
+    caches.open(IMAGE_CACHE_NAME)
+      .then((c) => c.keys())
+      .then((keys) => setCacheSize(keys.length))
+      .catch(() => {});
+  }, []);
+
+  async function handleClearCache() {
+    if (!clearConfirm) { setClearConfirm(true); return; }
+    setClearing(true);
+    try {
+      // Tell the SW to clear so it stays in sync.
+      if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: "clear-image-cache" });
+      }
+      // Also clear directly from this context.
+      await caches.delete(IMAGE_CACHE_NAME);
+      setCacheSize(0);
+      setClearConfirm(false);
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  // If the Cache API isn't supported, don't render the section.
+  if (typeof window !== "undefined" && !("caches" in window)) return null;
+
+  return (
+    <Section icon={HardDrive} title="Image Cache">
+      <SettingRow
+        label="Cached card images"
+        description="Card images stored locally for offline use at shows"
+      >
+        <span className="text-sm tabular-nums font-medium">
+          {cacheSize === null ? "…" : cacheSize.toLocaleString()}
+        </span>
+      </SettingRow>
+      {(cacheSize ?? 0) > 0 && (
+        <SettingRow label="Actions">
+          <button
+            onClick={handleClearCache}
+            disabled={clearing}
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 ${
+              clearConfirm
+                ? "border-red-500/60 text-red-400"
+                : "border-red-500/30 text-red-400 hover:bg-red-500/10"
+            }`}
+          >
+            {clearing ? "Clearing…" : clearConfirm ? "Confirm Clear?" : "Clear Image Cache"}
+          </button>
+        </SettingRow>
+      )}
+    </Section>
+  );
+}
+
+// ─── Business Structure Section ───────────────────────────────────────────────
+
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
+  "HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+  "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC",
+];
+
+function BusinessStructureSection({ initial }: { initial: WorkspaceData }) {
+  const [structure, setStructure] = useState<BusinessStructure>(initial.business_structure);
+  const [bizName, setBizName] = useState(initial.business_name ?? "");
+  const [ein, setEin] = useState(initial.business_ein ?? "");
+  const [state, setBizState] = useState(initial.business_state ?? "");
+  const [sCorpElection, setSCorpElection] = useState(initial.s_corp_election);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const isDirty =
+    structure !== initial.business_structure ||
+    bizName !== (initial.business_name ?? "") ||
+    ein !== (initial.business_ein ?? "") ||
+    state !== (initial.business_state ?? "") ||
+    sCorpElection !== initial.s_corp_election;
+
+  const showEntityFields = structure === "sole_prop" || structure === "single_llc";
+  const showSCorp = structure === "single_llc";
+  const showPartnershipNotice = structure === "multi_llc";
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await updateBusinessStructure({
+        business_structure: structure,
+        business_name: bizName.trim() || null,
+        business_ein: ein.trim() || null,
+        business_state: state || null,
+        s_corp_election: sCorpElection,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Section icon={Building2} title="Business Structure">
+      {/* Radio options */}
+      <div className="divide-y divide-border/50">
+        {(["hobby", "sole_prop", "single_llc", "multi_llc"] as const).map((opt) => (
+          <button
+            key={opt}
+            onClick={() => setStructure(opt)}
+            className="w-full text-left px-4 py-3 flex items-start gap-3 transition-colors duration-150 hover:bg-muted/30"
+          >
+            {/* Radio indicator */}
+            <div
+              className="mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors duration-150"
+              style={
+                structure === opt
+                  ? { borderColor: "#8b5cf6", backgroundColor: "#8b5cf6" }
+                  : { borderColor: "rgba(255,255,255,0.25)" }
+              }
+            >
+              {structure === opt && (
+                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium">{BUSINESS_STRUCTURE_LABELS[opt]}</div>
+              <div className="text-xs opacity-50 mt-0.5">{BUSINESS_STRUCTURE_DESCRIPTIONS[opt]}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Conditional entity fields */}
+      {showEntityFields && (
+        <>
+          <SettingRow label="Business / entity name" description="Legal name (optional)">
+            <input
+              type="text"
+              placeholder="Ozone TCG LLC"
+              value={bizName}
+              onChange={(e) => setBizName(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm bg-background w-44"
+            />
+          </SettingRow>
+          <SettingRow label="Federal EIN" description="Employer Identification Number (optional)">
+            <input
+              type="text"
+              placeholder="XX-XXXXXXX"
+              value={ein}
+              onChange={(e) => setEin(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm bg-background w-36 font-mono"
+              maxLength={10}
+            />
+          </SettingRow>
+          <SettingRow label="State of formation" description="2-letter state code">
+            <select
+              value={state}
+              onChange={(e) => setBizState(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm bg-background w-28"
+            >
+              <option value="">—</option>
+              {US_STATES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </SettingRow>
+        </>
+      )}
+
+      {/* S-corp checkbox (single_llc only) */}
+      {showSCorp && (
+        <div className="px-4 py-3">
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={sCorpElection}
+              onChange={(e) => setSCorpElection(e.target.checked)}
+              className="mt-0.5 rounded"
+            />
+            <div>
+              <div className="text-sm font-medium">My LLC elected S-corp taxation</div>
+              <div className="text-xs opacity-50 mt-0.5">
+                Filed Form 2553 with the IRS. Affects reasonable compensation tracking in a future release.
+              </div>
+            </div>
+          </label>
+        </div>
+      )}
+
+      {/* Multi-member coming soon panel */}
+      {showPartnershipNotice && (
+        <div className="px-4 py-3 m-3 rounded-xl border text-sm space-y-1"
+          style={{ background: "rgba(139,92,246,0.06)", borderColor: "rgba(139,92,246,0.20)" }}
+        >
+          <div className="font-medium text-violet-300">Partnership management — coming soon</div>
+          <p className="text-xs opacity-60 leading-relaxed">
+            For now, track partner contributions using the <strong>Paid by</strong> field on expenses.
+            K-1 allocation, Form 1065 prep, and per-partner reporting are in phase 2.
+            Contact support for early access.
+          </p>
+        </div>
+      )}
+
+      {/* Save row */}
+      <div className="px-4 py-3 flex items-center justify-between border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        {saved ? (
+          <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+            <CheckCircle2 size={13} />
+            Saved
+          </span>
+        ) : (
+          <span className="text-xs opacity-30">
+            {taxFeaturesEnabled(structure) ? "Tax features enabled" : "Tax features hidden"}
+          </span>
+        )}
+        <button
+          onClick={handleSave}
+          disabled={!isDirty || saving}
+          className="text-xs px-4 py-1.5 rounded-lg font-semibold transition-colors duration-150 disabled:opacity-40"
+          style={{
+            background: isDirty && !saving ? "rgba(139,92,246,0.85)" : undefined,
+            color: isDirty && !saving ? "white" : undefined,
+            border: "1px solid rgba(139,92,246,0.4)",
+          }}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
+// ─── Home Address Section ─────────────────────────────────────────────────────
+
+function HomeAddressSection({ initial }: { initial: string | null }) {
+  const [address, setAddress] = useState(initial ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const isDirty = address.trim() !== (initial ?? "").trim();
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await updateHomeAddress(address);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Section icon={MapPin} title="Home Address">
+      <div className="px-4 py-3 space-y-2">
+        <input
+          type="text"
+          value={address}
+          onChange={(e) => { setAddress(e.target.value); setSaved(false); }}
+          placeholder="123 Main St, Sacramento, CA"
+          className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
+        />
+        <p className="text-xs opacity-40 leading-relaxed">
+          Saved for quick reference when entering mileage. Only stored on your account — not shared.
+        </p>
+        <div className="flex items-center justify-between">
+          {saved ? (
+            <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+              <CheckCircle2 size={12} /> Saved
+            </span>
+          ) : <span />}
+          <button
+            onClick={handleSave}
+            disabled={!isDirty || saving}
+            className="text-xs px-4 py-1.5 rounded-lg font-semibold transition-colors duration-150 disabled:opacity-40"
+            style={{
+              background: isDirty && !saving ? "rgba(139,92,246,0.85)" : undefined,
+              color: isDirty && !saving ? "white" : undefined,
+              border: "1px solid rgba(139,92,246,0.4)",
+            }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// ─── Saved Locations Section ──────────────────────────────────────────────────
+
+function SavedLocationsSection({ initial }: { initial: SavedLocation[] }) {
+  const [locations, setLocations] = useState<SavedLocation[]>(initial);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [saving, setSaving] = useState<string | null>(null);
+
+  function fmtDate(iso: string) {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  async function handleSaveLabel(id: string) {
+    if (!editLabel.trim()) return;
+    setSaving(id);
+    try {
+      await updateSavedLocationLabel(id, editLabel);
+      setLocations((prev) => prev.map((l) => l.id === id ? { ...l, label: editLabel.trim() } : l));
+      setEditingId(null);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setSaving(id);
+    try {
+      await deleteSavedLocation(id);
+      setLocations((prev) => prev.filter((l) => l.id !== id));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (locations.length === 0) {
+    return (
+      <Section icon={MapPin} title="Saved Locations">
+        <div className="px-4 py-3 text-xs opacity-40">
+          Addresses you enter in mileage expenses are saved here automatically.
+        </div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section icon={MapPin} title="Saved Locations">
+      <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+        {locations.map((loc) => (
+          <div key={loc.id} className="px-4 py-3 space-y-1.5">
+            {editingId === loc.id ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={editLabel}
+                  onChange={(e) => setEditLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSaveLabel(loc.id); if (e.key === "Escape") setEditingId(null); }}
+                  className="flex-1 border rounded-lg px-2.5 py-1.5 text-sm bg-background"
+                  placeholder="Label"
+                />
+                <button
+                  onClick={() => handleSaveLabel(loc.id)}
+                  disabled={saving === loc.id}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 disabled:opacity-40 transition-colors"
+                >
+                  {saving === loc.id ? "…" : "Save"}
+                </button>
+                <button
+                  onClick={() => setEditingId(null)}
+                  className="text-xs opacity-40 hover:opacity-70 transition-opacity"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{loc.label}</div>
+                  <div className="text-xs opacity-40 truncate mt-0.5">{loc.address}</div>
+                  <div className="text-[11px] opacity-30 mt-0.5">
+                    Used {loc.use_count}× · Last {fmtDate(loc.last_used)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => { setEditingId(loc.id); setEditLabel(loc.label); }}
+                    className="p-1.5 opacity-40 hover:opacity-80 transition-opacity rounded-lg hover:bg-white/5"
+                    title="Rename"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(loc.id)}
+                    disabled={saving === loc.id}
+                    className="p-1.5 text-rose-400/60 hover:text-rose-400 transition-colors rounded-lg hover:bg-rose-500/10 disabled:opacity-30"
+                    title="Delete"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SettingsClient({
   email,
   settings: initialSettings,
+  workspaceData,
   pinConfigured: initialPinConfigured,
   apiStatus,
+  savedLocations = [],
 }: {
   email: string;
   settings: UserSettings;
+  workspaceData: WorkspaceData;
   pinConfigured: boolean;
   apiStatus: ApiStatus;
+  savedLocations?: SavedLocation[];
 }) {
   const router = useRouter();
   const { theme: currentTheme, setTheme } = useTheme();
+  const toast = useToast();
   const [settings, setSettings] = useState<UserSettings>(initialSettings);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -343,8 +830,9 @@ export default function SettingsClient({
       const csv = await exportInventoryCSV();
       const date = new Date().toISOString().slice(0, 10);
       downloadCSV(csv, `inventory-${date}.csv`);
+      toast.success("Inventory exported");
     } catch {
-      alert("Export failed — try again");
+      toast.error("Export failed — try again");
     } finally {
       setExportingInv(false);
     }
@@ -356,8 +844,9 @@ export default function SettingsClient({
       const csv = await exportTransactionsCSV();
       const date = new Date().toISOString().slice(0, 10);
       downloadCSV(csv, `transactions-${date}.csv`);
+      toast.success("Transactions exported");
     } catch {
-      alert("Export failed — try again");
+      toast.error("Export failed — try again");
     } finally {
       setExportingTx(false);
     }
@@ -389,7 +878,7 @@ export default function SettingsClient({
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-2xl mx-auto py-6 space-y-6">
+    <div className="w-full max-w-2xl mx-auto py-6 space-y-6">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -756,6 +1245,32 @@ export default function SettingsClient({
         </SettingRow>
       </Section>
 
+      {/* ── BUSINESS STRUCTURE CONFIRMATION BANNER ───────────────────────── */}
+      {!workspaceData.business_structure_confirmed && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border"
+          style={{ background: "rgba(245,158,11,0.07)", borderColor: "rgba(245,158,11,0.30)" }}
+        >
+          <TriangleAlert size={15} className="shrink-0 mt-0.5 text-amber-400" />
+          <p className="text-xs leading-relaxed opacity-80">
+            We&apos;ve set your business type to <strong>Sole Proprietor</strong> by default.
+            Please confirm or update this in the Business Structure section below.
+          </p>
+        </div>
+      )}
+
+      {/* ── BUSINESS STRUCTURE ───────────────────────────────────────────── */}
+      <BusinessStructureSection initial={workspaceData} />
+
+      {/* ── HOME ADDRESS ─────────────────────────────────────────────────── */}
+      <HomeAddressSection initial={workspaceData.home_address} />
+
+      {/* ── SAVED LOCATIONS ──────────────────────────────────────────────── */}
+      <SavedLocationsSection initial={savedLocations} />
+
+      {/* ── OFFLINE SYNC ─────────────────────────────────────────────────── */}
+      <OfflineSyncSection />
+      <ImageCacheSection />
+
       {/* ── ACCOUNT ──────────────────────────────────────────────────────── */}
       <Section icon={ShieldCheck} title="Account">
         <SettingRow label="Password" description="Send a reset link to your email">
@@ -772,7 +1287,7 @@ export default function SettingsClient({
                   await sendPasswordResetEmail();
                   setResetSent(true);
                 } catch {
-                  alert("Failed to send reset email");
+                  toast.error("Failed to send reset email");
                 } finally {
                   setResetLoading(false);
                 }

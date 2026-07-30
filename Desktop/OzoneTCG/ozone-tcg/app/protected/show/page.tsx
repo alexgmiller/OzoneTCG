@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import ShowClient from "./ShowClient";
 import { getShowHistory, getActiveShowSession } from "./actions";
+import ShowLoading from "./loading";
 
 async function ShowPageInner() {
   const [history, activeSession] = await Promise.all([
@@ -12,7 +13,7 @@ async function ShowPageInner() {
 
 export default function ShowPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center opacity-40 text-sm">Loading Show Mode…</div>}>
+    <Suspense fallback={<ShowLoading />}>
       <ShowPageInner />
     </Suspense>
   );

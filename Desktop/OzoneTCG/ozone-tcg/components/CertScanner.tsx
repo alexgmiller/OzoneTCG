@@ -5,7 +5,7 @@ import {
   X, ScanLine, RefreshCw,
   Package, ShoppingCart, Trash2,
   ChevronDown, ChevronUp, History,
-  CheckCircle, AlertCircle, Loader2,
+  AlertCircle, Loader2,
   ExternalLink,
 } from "lucide-react";
 import { createItem } from "@/app/protected/inventory/actions";
@@ -13,6 +13,7 @@ import { recordCertBuy, type CertBuyItem } from "@/app/protected/transactions/ac
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 import type { SlabSale, PricingResult, SoldPricingResult } from "@/lib/ebay";
 import { computeBlendedFMV, type PricingStrategyOverride } from "@/lib/fmv";
+import { useConfirm, useToast } from "@/components/ui";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -199,6 +200,9 @@ function OfferCalc({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrategy?: PricingStrategyOverride }) {
+  const confirm = useConfirm();
+  const toast = useToast();
+
   // ── phase / company
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [company, setCompany] = useState<GradingCompany>("PSA");
@@ -255,7 +259,6 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // ── feedback
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // ── buy modal
@@ -669,8 +672,8 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
   // ── Toast helper ──────────────────────────────────────────────────────────
 
   function showToast(msg: string, ok = true) {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
+    if (ok) toast.success(msg);
+    else toast.error(msg);
   }
 
   // ── Add to inventory ──────────────────────────────────────────────────────
@@ -815,16 +818,6 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-3 pb-24 overflow-x-hidden">
-
-      {/* ── Toast ── */}
-      {toast && (
-        <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium ${
-          toast.ok ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
-        }`}>
-          {toast.ok ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
-          {toast.msg}
-        </div>
-      )}
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between pt-2">
@@ -1369,14 +1362,19 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
               <div className="modal-title">Recent Scans</div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    if (confirm("Clear scan history?")) {
-                      setHistory([]);
-                      localStorage.removeItem(HISTORY_KEY);
-                      setHistoryOpen(false);
-                    }
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: "Clear scan history?",
+                      description: "Recent scans on this device will be removed.",
+                      confirmLabel: "Clear",
+                      destructive: true,
+                    });
+                    if (!ok) return;
+                    setHistory([]);
+                    localStorage.removeItem(HISTORY_KEY);
+                    setHistoryOpen(false);
                   }}
-                  className="text-xs opacity-30 hover:opacity-60 transition-opacity"
+                  className="text-xs opacity-30 hover:opacity-60 transition-opacity duration-150"
                 >
                   Clear
                 </button>

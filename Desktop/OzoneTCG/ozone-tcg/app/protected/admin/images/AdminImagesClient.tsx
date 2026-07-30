@@ -3,10 +3,11 @@
 import { useState, useRef, useCallback } from "react";
 import {
   Upload, Search, Trash2,
-  ChevronLeft, ChevronRight, AlertCircle, Loader2,
+  ChevronLeft, ChevronRight, Loader2,
   ExternalLink, Wrench,
 } from "lucide-react";
 import type { CardImageRow } from "@/lib/cardImages";
+import { useConfirm, useToast } from "@/components/ui";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,22 +34,15 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 export default function AdminImagesClient() {
   const [tab, setTab] = useState<Tab>("browse");
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const toast = useToast();
 
   function showToast(msg: string, ok = true) {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3500);
+    if (ok) toast.success(msg);
+    else toast.error(msg);
   }
 
   return (
     <div className="space-y-4">
-      {toast && (
-        <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium ${toast.ok ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}`}>
-          {toast.ok ? <Search size={15} /> : <AlertCircle size={15} />}
-          {toast.msg}
-        </div>
-      )}
-
       {/* Tab bar */}
       <div className="flex gap-1 p-1 bg-muted/40 rounded-xl w-fit">
         {([
@@ -84,6 +78,7 @@ function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
   const [page, setPage]     = useState(1);
   const [data, setData]     = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const confirm = useConfirm();
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
@@ -101,7 +96,13 @@ function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
   }, [source, showToast]);
 
   async function handleDelete(lookupKey: string) {
-    if (!confirm("Delete this cache entry?")) return;
+    const ok = await confirm({
+      title: "Delete this cache entry?",
+      description: "The image will be re-fetched next time this card is looked up.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiFetch("/api/admin/card-images?action=delete", {
         method: "POST",

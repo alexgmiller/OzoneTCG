@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import ShowsServer from "./ShowsServer";
+import ShowsLoading from "./loading";
 
 export default function ShowsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center opacity-40 text-sm">Loading shows…</div>}>
+    <Suspense fallback={<ShowsLoading />}>
       <ShowsServer />
     </Suspense>
   );

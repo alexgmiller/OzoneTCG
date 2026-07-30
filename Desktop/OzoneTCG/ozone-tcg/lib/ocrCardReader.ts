@@ -107,7 +107,7 @@ const NAME_BLOCKLIST = new Set([
  *  4. ≤25 % "noise" characters (non-alphanumeric / non-space)
  *  5. Contains at least one 3-char alphabetic run
  */
-function extractCardName(lines: string[]): string {
+export function extractCardName(lines: string[]): string {
   for (const line of lines) {
     const clean = line.trim();
     if (clean.length < 2 || clean.length > 30) continue;
@@ -126,7 +126,7 @@ function extractCardName(lines: string[]): string {
   return "";
 }
 
-function extractCardNumber(text: string): string {
+export function extractCardNumber(text: string): string {
   const matches = [...text.matchAll(CARD_NUMBER_RE)];
   if (!matches.length) return "";
   // Prefer standard "123/456" over promo codes when both present
@@ -138,7 +138,7 @@ function extractCardNumber(text: string): string {
  * Extract a set hint from the line that contains the card number.
  * Cards typically print the set abbreviation alongside the collector number.
  */
-function extractSetText(lines: string[], cardNumber: string): string {
+export function extractSetText(lines: string[], cardNumber: string): string {
   if (!cardNumber) return "";
   for (const line of lines) {
     if (!line.includes(cardNumber)) continue;
@@ -164,7 +164,7 @@ function extractSetText(lines: string[], cardNumber: string): string {
  *   setText found   → +0.10
  *   total field score × 0.6 + tesseract confidence × 0.4
  */
-function calcConfidence(
+export function calcConfidence(
   name: string,
   cardNumber: string,
   setText: string,

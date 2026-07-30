@@ -56,6 +56,7 @@ import {
 } from "./components/ShowModals";
 import ActivityFeed from "./components/ActivityFeed";
 import ShowBanner from "./components/ShowBanner";
+import ShowLoading from "./loading";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -1270,7 +1271,9 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   // ── Phase: loading ────────────────────────────────────────────────────────
 
   if (phase === "loading") {
-    return <div className="p-8 text-center opacity-40 text-sm">Loading…</div>;
+    // Same component the route-level Suspense fallback uses, so handing off
+    // from the server fallback to the client's own loading state is seamless.
+    return <ShowLoading />;
   }
 
   // ── Phase: start ──────────────────────────────────────────────────────────

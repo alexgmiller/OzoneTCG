@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Lexend, Space_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import { ToastProvider } from "@/components/ui/Toast";
+import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -48,8 +50,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <ServiceWorkerRegistrar />
-          {children}
+          <ToastProvider>
+            <ConfirmProvider>
+              <ServiceWorkerRegistrar />
+              {children}
+            </ConfirmProvider>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>
