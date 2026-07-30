@@ -13,6 +13,7 @@ import { useShowHotkeys } from "@/lib/useShowHotkeys";
 import { getPendingCount, getPendingActions, clearAll, type PendingAction } from "@/lib/offlineQueue";
 import { startAutoSync } from "@/lib/offlineSync";
 import { useConfirm } from "@/components/ui";
+import ShowLoading from "./loading";
 import {
   offlineRecordShowBuy,
   offlineRecordShowSell,
@@ -1581,24 +1582,9 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   // ── Phase: loading ────────────────────────────────────────────────────────
 
   if (phase === "loading") {
-    return (
-      <div className="animate-pulse space-y-3 p-4 -mx-4 sm:-mx-8">
-        <div className="flex items-center gap-3 px-4 pt-2 pb-1.5 border-b">
-          <div className="h-5 w-5 bg-muted rounded" />
-          <div className="h-4 bg-muted rounded w-40" />
-          <div className="ml-auto flex gap-2">
-            <div className="h-7 bg-muted rounded-lg w-20" />
-            <div className="h-7 bg-muted rounded-lg w-14" />
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-2 px-4">
-          {[0, 1, 2].map((i) => <div key={i} className="h-14 bg-muted rounded-xl" />)}
-        </div>
-        <div className="flex gap-1.5 px-4">
-          {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-9 bg-muted rounded-lg flex-1" />)}
-        </div>
-      </div>
-    );
+    // Same component the route-level Suspense fallback uses, so handing off
+    // from the server fallback to the client's own loading state is seamless.
+    return <ShowLoading />;
   }
 
   // ── Phase: start ──────────────────────────────────────────────────────────
