@@ -44,11 +44,8 @@ export async function getEbayToken(): Promise<string> {
 
 // ── Grade parsing (re-exported from ebay-client.ts for server-side callers) ───
 
-// `export type ... from` re-exports without binding the name locally, so the
-// type is imported separately for use inside this module.
 import type { SlabSale } from "./ebay-client";
-
-export type { SlabSale } from "./ebay-client";
+export type { SlabSale };
 export type { ParsedGrade } from "./ebay-client";
 export { parseGrade, makeSlabPriceKey } from "./ebay-client";
 
@@ -513,6 +510,20 @@ const EBAY_INSIGHTS_URL =
  * To remove the scraper fallback when Marketplace Insights access is approved:
  *   Delete lib/ebay-completed-scraper.ts and remove the 403 branch below.
  */
+/** Fire-and-forget comp ingestion — never throws, never blocks the fetch result. */
+async function ingestComps(
+  sales: SlabSale[],
+  source: string,
+  name: string,
+  company: string,
+  grade: string,
+  cardNumber?: string | null
+): Promise<void> {
+  if (source === "none" || sales.length === 0) return;
+  const { ingestSoldComps } = await import("./soldComps.server");
+  await ingestSoldComps({ name, company, grade, cardNumber, sales, source });
+}
+
 export async function fetchSlabSoldSales(
   name: string,
   company: string,
@@ -599,6 +610,7 @@ export async function fetchSlabSoldSales(
         itemUrl,
       };
     });
+    await ingestComps(sales, "insights", name, company, grade, cardNumber);
     return { sales, source: "insights" };
   }
 
@@ -607,6 +619,7 @@ export async function fetchSlabSoldSales(
     console.log(`[eBay-sold] #${callNum} Insights 403 — falling back to eBay completed-search scraper`);
     const { scrapeEbayCompletedSales } = await import("./ebay-completed-scraper");
     const { sales, source } = await scrapeEbayCompletedSales(name, company, grade, cardNumber);
+    await ingestComps(sales, source, name, company, grade, cardNumber);
     return { sales, source };
   }
 

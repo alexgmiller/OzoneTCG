@@ -11,6 +11,24 @@
 
 import { createAdminClient } from "./supabase/admin";
 
+// Query errors must be visible — a missing table sat undetected for months
+// because results were destructured as { data } only. The missing-table case
+// is logged once per process to avoid spamming every lookup.
+let missingTableWarned = false;
+export function logQueryError(where: string, error: { message: string } | null | undefined): void {
+  if (!error) return;
+  const isMissingTable = error.message.includes("does not exist");
+  if (isMissingTable) {
+    if (missingTableWarned) return;
+    missingTableWarned = true;
+    console.error(
+      `[cardImages] ${where}: ${error.message} — run migrations/20240420_card_images.sql (see migrations/README.md)`
+    );
+    return;
+  }
+  console.error(`[cardImages] ${where} query error:`, error.message);
+}
+
 export type CardImageRow = {
   lookup_key: string;
   name: string;
@@ -71,54 +89,60 @@ export async function getCardImage(
 
     // 1. Exact: name + set + number + language + category + variant
     if (variant && setName && num) {
-      const { data } = await admin.from("card_images").select(SELECT)
+      const { data, error } = await admin.from("card_images").select(SELECT)
         .ilike("card_name", name).ilike("set_name", setName)
         .eq("card_number", num).eq("language", language).eq("category", category)
         .eq("variant", variant).limit(1);
+      logQueryError("getCardImage#1", error);
       const hit = rowToHit(Array.isArray(data) ? data[0] : null);
       if (hit) return hit;
     }
 
     // 2. name + set + number + language + category (any variant)
     if (setName && num) {
-      const { data } = await admin.from("card_images").select(SELECT)
+      const { data, error } = await admin.from("card_images").select(SELECT)
         .ilike("card_name", name).ilike("set_name", setName)
         .eq("card_number", num).eq("language", language).eq("category", category)
         .limit(1);
+      logQueryError("getCardImage#2", error);
       const hit = rowToHit(Array.isArray(data) ? data[0] : null);
       if (hit) return hit;
     }
 
     // 3. name + number (any set)
     if (num) {
-      const { data } = await admin.from("card_images").select(SELECT)
+      const { data, error } = await admin.from("card_images").select(SELECT)
         .ilike("card_name", name).eq("card_number", num)
         .eq("language", language).eq("category", category).limit(1);
+      logQueryError("getCardImage#3", error);
       const hit = rowToHit(Array.isArray(data) ? data[0] : null);
       if (hit) return hit;
     }
 
     // 4. name + set (no number)
     if (setName) {
-      const { data } = await admin.from("card_images").select(SELECT)
+      const { data, error } = await admin.from("card_images").select(SELECT)
         .ilike("card_name", name).ilike("set_name", setName)
         .eq("language", language).eq("category", category).limit(1);
+      logQueryError("getCardImage#4", error);
       const hit = rowToHit(Array.isArray(data) ? data[0] : null);
       if (hit) return hit;
     }
 
     // 5. name only
     {
-      const { data } = await admin.from("card_images").select(SELECT)
+      const { data, error } = await admin.from("card_images").select(SELECT)
         .ilike("card_name", name).eq("language", language).eq("category", category).limit(1);
+      logQueryError("getCardImage#5", error);
       const hit = rowToHit(Array.isArray(data) ? data[0] : null);
       if (hit) return hit;
     }
 
     // 6. Cross-language fallback (lower confidence — for display only)
     if (language !== "English") {
-      const { data } = await admin.from("card_images").select(SELECT)
+      const { data, error } = await admin.from("card_images").select(SELECT)
         .ilike("card_name", name).eq("category", category).limit(1);
+      logQueryError("getCardImage#6", error);
       const hit = rowToHit(Array.isArray(data) ? data[0] : null);
       if (hit) return hit;
     }
@@ -259,15 +283,46 @@ export type CardImageStats = {
 
 export async function getCardImageStats(): Promise<CardImageStats> {
   const admin = createAdminClient();
-  const [totalRes, notFoundRes] = await Promise.all([
-    admin.from("card_image_cache").select("lookup_key", { count: "exact", head: true }).neq("source", "not_found"),
-    admin.from("card_image_cache").select("lookup_key", { count: "exact", head: true }).eq("source", "not_found"),
-  ]);
+
+  const ciCount = (apply: (q: ReturnType<ReturnType<typeof admin.from>["select"]>) => typeof q) =>
+    apply(admin.from("card_images").select("id", { count: "exact", head: true }));
+
+  const [totalRes, notFoundRes, ciTotal, verifiedRes, flaggedRes, singleRes, slabRes, sealedRes, enRes, jaRes, zhRes] =
+    await Promise.all([
+      admin.from("card_image_cache").select("lookup_key", { count: "exact", head: true }).neq("source", "not_found"),
+      admin.from("card_image_cache").select("lookup_key", { count: "exact", head: true }).eq("source", "not_found"),
+      ciCount((q) => q),
+      ciCount((q) => q.eq("verified", true)),
+      ciCount((q) => q.eq("flagged", true)),
+      ciCount((q) => q.eq("category", "single")),
+      ciCount((q) => q.eq("category", "slab")),
+      ciCount((q) => q.eq("category", "sealed")),
+      ciCount((q) => q.eq("language", "English")),
+      ciCount((q) => q.eq("language", "Japanese")),
+      ciCount((q) => q.eq("language", "Chinese")),
+    ]);
+
+  logQueryError("getCardImageStats/cache", totalRes.error);
+  // One representative check for card_images — if the table is missing all
+  // card_images counts fail identically and gracefully degrade to zeros
+  logQueryError("getCardImageStats/card_images", ciTotal.error);
+
+  const ci = ciTotal.count ?? 0;
+  const en = enRes.count ?? 0;
+  const ja = jaRes.count ?? 0;
+  const zh = zhRes.count ?? 0;
+
   return {
     total: totalRes.count ?? 0,
-    verified: 0, unverified: 0, flagged: 0,
-    byCategory: { single: 0, slab: 0, sealed: 0 },
-    byLanguage: { English: 0, Japanese: 0, Chinese: 0, other: 0 },
+    verified: verifiedRes.count ?? 0,
+    unverified: ci - (verifiedRes.count ?? 0),
+    flagged: flaggedRes.count ?? 0,
+    byCategory: {
+      single: singleRes.count ?? 0,
+      slab: slabRes.count ?? 0,
+      sealed: sealedRes.count ?? 0,
+    },
+    byLanguage: { English: en, Japanese: ja, Chinese: zh, other: Math.max(0, ci - en - ja - zh) },
     notFoundCached: notFoundRes.count ?? 0,
   };
 }

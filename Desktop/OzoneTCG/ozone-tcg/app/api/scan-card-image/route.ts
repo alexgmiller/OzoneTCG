@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { matchScannedCard } from "@/lib/cardMatchFromScan.server";
+import { persistScanPhoto } from "@/lib/scanPhotos.server";
 
 
 export async function POST(req: NextRequest) {
@@ -109,7 +110,20 @@ If you cannot read a field clearly, use an empty string (not null). If this is n
   const lang = language === "ja" ? "ja" : "en";
   const match = await matchScannedCard({ name, set_name, card_number, language: lang });
 
+  // ── Step 3: persist photo + identification (training-data flywheel) ──────────
+  // Fail-soft: a persistence problem must never break the scan flow.
+  const scanPhotoId = await persistScanPhoto({
+    imageBase64: image,
+    visionName: name,
+    visionSetName: set_name,
+    visionCardNumber: card_number,
+    visionConfidence: confidence,
+    matchedCardId: match?.matchedCardId ?? null,
+  });
+
   return NextResponse.json({
+    // Echoed back so the client can confirm the match later (training label)
+    scanPhotoId,
     // Vision results
     name,
     set_name,

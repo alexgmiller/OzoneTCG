@@ -1,102 +1,116 @@
-// Offline sync engine: replays pending actions from IndexedDB when online.
-// Uses an executor function to avoid importing server actions directly
-// (server actions can't be imported into lib/ without circular dependency issues).
+import { getPendingActions, markSynced, markFailed } from "./offlineQueue";
+import {
+  recordShowBuy,
+  recordShowSell,
+  recordShowTrade,
+  addShowExpense,
+} from "@/app/protected/show/actions";
 
-import { getPendingActions, markSynced, markFailed, PendingAction } from "./offlineQueue";
-
-export type Executor = (action: PendingAction) => Promise<void>;
-
-export interface SyncCallbacks {
-  onSynced?: (clientId: string) => void;
-  onFailed?: (clientId: string, error: string) => void;
-  onQueueEmpty?: () => void;
-}
-
-export function isNetworkError(err: unknown): boolean {
-  if (!err) return false;
-  if (typeof navigator !== "undefined" && !navigator.onLine) return true;
-  const msg = err instanceof Error ? err.message : String(err);
-  return (
-    msg.toLowerCase().includes("fetch failed") ||
-    msg.toLowerCase().includes("failed to fetch") ||
-    msg.toLowerCase().includes("network request failed") ||
-    msg.toLowerCase().includes("networkerror")
-  );
-}
-
-let syncing = false;
-
-export async function replayPendingActions(
-  executor: Executor,
-  callbacks: SyncCallbacks = {}
-): Promise<void> {
-  if (syncing) return;
-  syncing = true;
+export async function replayPendingActions(): Promise<{ synced: number; failed: number }> {
+  let actions;
   try {
-    const actions = await getPendingActions();
-    if (actions.length === 0) {
-      callbacks.onQueueEmpty?.();
-      return;
-    }
+    actions = await getPendingActions();
+  } catch {
+    return { synced: 0, failed: 0 };
+  }
+  if (actions.length === 0) return { synced: 0, failed: 0 };
 
-    // Sort by queued_at then group_seq for deterministic ordering
-    actions.sort((a, b) => {
-      if (a.queued_at !== b.queued_at) return a.queued_at - b.queued_at;
-      return a.group_seq - b.group_seq;
-    });
+  let synced = 0;
+  let failed = 0;
 
-    // Process groups atomically: if one fails, skip the rest of its group
-    const failedGroups = new Set<string>();
-
-    for (const action of actions) {
-      if (action.group_id && failedGroups.has(action.group_id)) continue;
-
-      try {
-        await executor(action);
-        await markSynced(action.id);
-        callbacks.onSynced?.(action.id);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        await markFailed(action.id, msg);
-        callbacks.onFailed?.(action.id, msg);
-        if (action.group_id) failedGroups.add(action.group_id);
+  for (const action of actions) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload = action.payload as any;
+      switch (action.actionType) {
+        case "buy":
+        case "deal-buy":
+          await recordShowBuy(payload);
+          break;
+        case "sell":
+          await recordShowSell(payload);
+          break;
+        case "trade":
+        case "deal-trade":
+          await recordShowTrade(payload);
+          break;
+        case "expense":
+          await addShowExpense(payload);
+          break;
       }
+      await markSynced(action.id);
+      synced++;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      try { await markFailed(action.id, msg); } catch { /* ignore IDB errors */ }
+      failed++;
     }
+  }
 
-    const remaining = await getPendingActions();
-    if (remaining.length === 0) callbacks.onQueueEmpty?.();
-  } finally {
-    syncing = false;
+  window.dispatchEvent(
+    new CustomEvent("offline-sync-result", { detail: { synced, failed } })
+  );
+  return { synced, failed };
+}
+
+export async function replayOneAction(id: string): Promise<{ synced: boolean }> {
+  let actions;
+  try {
+    actions = await getPendingActions();
+  } catch {
+    return { synced: false };
+  }
+  const action = actions.find((a) => a.id === id);
+  if (!action) return { synced: false };
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload = action.payload as any;
+    switch (action.actionType) {
+      case "buy":
+      case "deal-buy":
+        await recordShowBuy(payload);
+        break;
+      case "sell":
+        await recordShowSell(payload);
+        break;
+      case "trade":
+      case "deal-trade":
+        await recordShowTrade(payload);
+        break;
+      case "expense":
+        await addShowExpense(payload);
+        break;
+    }
+    await markSynced(id);
+    window.dispatchEvent(new CustomEvent("offline-sync-result", { detail: { synced: 1, failed: 0 } }));
+    return { synced: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    try { await markFailed(id, msg); } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent("offline-sync-result", { detail: { synced: 0, failed: 1 } }));
+    return { synced: false };
   }
 }
 
-export function startAutoSync(
-  executor: Executor,
-  callbacks: SyncCallbacks = {}
-): () => void {
-  let intervalId: ReturnType<typeof setInterval> | null = null;
+let autoSyncCleanup: (() => void) | null = null;
 
-  function attempt() {
-    if (typeof navigator !== "undefined" && navigator.onLine) {
-      void replayPendingActions(executor, callbacks);
-    }
-  }
+export function startAutoSync(): () => void {
+  if (autoSyncCleanup) autoSyncCleanup();
 
-  function onOnline() {
-    attempt();
-  }
-
-  if (typeof window !== "undefined") {
-    window.addEventListener("online", onOnline);
-    intervalId = setInterval(attempt, 30_000);
-    // Attempt immediately in case there are queued items
-    attempt();
-  }
-
-  return () => {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("online", onOnline);
-    }
-    if (intervalId !== null) clearInterval(intervalId);
+  const onOnline = () => {
+    setTimeout(() => replayPendingActions(), 2000);
   };
+  window.addEventListener("online", onOnline);
+
+  const interval = setInterval(() => {
+    if (navigator.onLine) replayPendingActions();
+  }, 30_000);
+
+  autoSyncCleanup = () => {
+    window.removeEventListener("online", onOnline);
+    clearInterval(interval);
+    autoSyncCleanup = null;
+  };
+  return autoSyncCleanup;
 }
