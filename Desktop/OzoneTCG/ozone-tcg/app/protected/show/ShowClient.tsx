@@ -12,6 +12,7 @@ import { initCatalog } from "@/lib/clientCardCatalog";
 import { useShowHotkeys } from "@/lib/useShowHotkeys";
 import { getPendingCount, getPendingActions, clearAll, type PendingAction } from "@/lib/offlineQueue";
 import { startAutoSync } from "@/lib/offlineSync";
+import { useConfirm } from "@/components/ui";
 import {
   offlineRecordShowBuy,
   offlineRecordShowSell,
@@ -317,6 +318,7 @@ type Props = {
 
 export default function ShowClient({ recentShows, initialActiveSession }: Props) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [phase, setPhase] = useState<"loading" | "start" | "active">("loading");
   const [session, setSession] = useState<ShowSession | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -2313,11 +2315,21 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
                 Sync Now
               </button>
               <button
-                onClick={() => {
-                  if (!confirm("Clear all queued transactions? This cannot be undone.")) return;
-                  void clearAll().then(() => { setPendingCount(0); setPendingActions([]); setPendingOpen(false); });
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: "Clear all queued transactions?",
+                    description:
+                      "Anything not yet synced will be discarded. This cannot be undone.",
+                    confirmLabel: "Clear queue",
+                    destructive: true,
+                  });
+                  if (!ok) return;
+                  await clearAll();
+                  setPendingCount(0);
+                  setPendingActions([]);
+                  setPendingOpen(false);
                 }}
-                className="text-xs px-3 py-2 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                className="text-xs px-3 py-2 rounded-xl border border-negative-border text-negative hover:bg-negative-soft transition-colors duration-150"
               >
                 Clear
               </button>

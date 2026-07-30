@@ -7,6 +7,7 @@ import {
   ExternalLink, Wrench,
 } from "lucide-react";
 import type { CardImageRow } from "@/lib/cardImages";
+import { useConfirm } from "@/components/ui";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
   const [page, setPage]     = useState(1);
   const [data, setData]     = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const confirm = useConfirm();
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
@@ -101,7 +103,13 @@ function BrowseTab({ showToast }: { showToast: (m: string, ok?: boolean) => void
   }, [source, showToast]);
 
   async function handleDelete(lookupKey: string) {
-    if (!confirm("Delete this cache entry?")) return;
+    const ok = await confirm({
+      title: "Delete this cache entry?",
+      description: "The image will be re-fetched next time this card is looked up.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiFetch("/api/admin/card-images?action=delete", {
         method: "POST",

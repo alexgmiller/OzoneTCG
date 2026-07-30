@@ -8,6 +8,7 @@ import { uploadDealPhoto, createDealLog, toggleDealResolved, deleteDealLog } fro
 import TradeModal from "../inventory/TradeModal";
 import CertLookupWidget, { type CertWidgetResult } from "@/components/CertLookupWidget";
 import ConfirmationModal from "@/components/ConfirmationModal";
+import { useToast } from "@/components/ui";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -1232,6 +1233,7 @@ export default function TransactionsClient({
   const [revertingId, setRevertingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localDealLogs, setLocalDealLogs] = useState<DealLog[]>(dealLogs);
+  const toast = useToast();
 
   async function handleRevert(saleId: string) {
     if (revertingId === saleId) {
@@ -1250,16 +1252,18 @@ export default function TransactionsClient({
   async function handleDeleteBuy(expenseId: string) {
     try {
       await deleteBuyExpense({ expenseId });
+      toast.success("Buy deleted");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : "Delete failed");
     }
   }
 
   async function handleRevertTrade(tradeGroupId: string) {
     try {
       await revertTrade({ tradeGroupId });
+      toast.success("Trade undone");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Undo failed");
+      toast.error(e instanceof Error ? e.message : "Undo failed");
     }
   }
 

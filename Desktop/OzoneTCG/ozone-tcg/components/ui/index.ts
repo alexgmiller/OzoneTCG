@@ -10,3 +10,5 @@ export { Modal } from "./Modal";
 export { EmptyState } from "./EmptyState";
 export { ToastProvider, useToast } from "./Toast";
 export type { ToastTone } from "./Toast";
+export { ConfirmProvider, useConfirm } from "./ConfirmDialog";
+export type { ConfirmOptions } from "./ConfirmDialog";
