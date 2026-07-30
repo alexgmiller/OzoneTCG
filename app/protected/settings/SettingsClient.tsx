@@ -20,6 +20,7 @@ import {
   type BusinessStructure,
 } from "@/lib/businessFeatures";
 import { verifyGuestPin, saveGuestPin } from "@/app/protected/guest/actions";
+import { useToast } from "@/components/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -655,6 +656,7 @@ export default function SettingsClient({
 }) {
   const router = useRouter();
   const { theme: currentTheme, setTheme } = useTheme();
+  const toast = useToast();
   const [settings, setSettings] = useState<UserSettings>(initialSettings);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -767,8 +769,9 @@ export default function SettingsClient({
       const csv = await exportInventoryCSV();
       const date = new Date().toISOString().slice(0, 10);
       downloadCSV(csv, `inventory-${date}.csv`);
+      toast.success("Inventory exported");
     } catch {
-      alert("Export failed — try again");
+      toast.error("Export failed — try again");
     } finally {
       setExportingInv(false);
     }
@@ -780,8 +783,9 @@ export default function SettingsClient({
       const csv = await exportTransactionsCSV();
       const date = new Date().toISOString().slice(0, 10);
       downloadCSV(csv, `transactions-${date}.csv`);
+      toast.success("Transactions exported");
     } catch {
-      alert("Export failed — try again");
+      toast.error("Export failed — try again");
     } finally {
       setExportingTx(false);
     }
@@ -1147,7 +1151,7 @@ export default function SettingsClient({
                   await sendPasswordResetEmail();
                   setResetSent(true);
                 } catch {
-                  alert("Failed to send reset email");
+                  toast.error("Failed to send reset email");
                 } finally {
                   setResetLoading(false);
                 }

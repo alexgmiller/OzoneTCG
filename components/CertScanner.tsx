@@ -13,6 +13,7 @@ import { recordCertBuy, type CertBuyItem } from "@/app/protected/transactions/ac
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 import type { SlabSale, PricingResult, SoldPricingResult } from "@/lib/ebay";
 import { computeBlendedFMV, type PricingStrategyOverride } from "@/lib/fmv";
+import { useConfirm } from "@/components/ui";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -199,6 +200,8 @@ function OfferCalc({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrategy?: PricingStrategyOverride }) {
+  const confirm = useConfirm();
+
   // ── phase / company
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [company, setCompany] = useState<GradingCompany>("PSA");
@@ -1369,14 +1372,19 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
               <div className="modal-title">Recent Scans</div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    if (confirm("Clear scan history?")) {
-                      setHistory([]);
-                      localStorage.removeItem(HISTORY_KEY);
-                      setHistoryOpen(false);
-                    }
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: "Clear scan history?",
+                      description: "Recent scans on this device will be removed.",
+                      confirmLabel: "Clear",
+                      destructive: true,
+                    });
+                    if (!ok) return;
+                    setHistory([]);
+                    localStorage.removeItem(HISTORY_KEY);
+                    setHistoryOpen(false);
                   }}
-                  className="text-xs opacity-30 hover:opacity-60 transition-opacity"
+                  className="text-xs opacity-30 hover:opacity-60 transition-opacity duration-150"
                 >
                   Clear
                 </button>
