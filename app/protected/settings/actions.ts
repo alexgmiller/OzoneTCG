@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { fetchAll } from "@/lib/supabase/fetchAll";
 import { revalidatePath } from "next/cache";
 
 export type UserSettings = {
@@ -245,18 +246,26 @@ export async function exportTransactionsCSV(): Promise<string> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
-  const { data, error } = await supabase
-    .from("card_transactions")
-    .select("transaction_type,date,cash_paid,market_price_at_time,cost_basis,buy_percentage,trade_credit_value,cash_difference,notes,created_at")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: false });
+  type TxRow = {
+    id: string; trade_group_id: string | null; transaction_type: string; date: string;
+    card: { name: string } | null; sale_price: number | null; cash_paid: number | null;
+    market_price_at_time: number | null; cost_basis: number | null; buy_percentage: number | null;
+    cash_difference: number | null; payment_method: string | null; counterparty: string | null;
+    paid_by: string | null; show_session_id: string | null; notes: string | null;
+  };
+  const data = await fetchAll<TxRow>((from, to) =>
+    supabase
+      .from("card_transactions")
+      .select("id,trade_group_id,transaction_type,date,card:items!card_id(name),sale_price,cash_paid,market_price_at_time,cost_basis,buy_percentage,cash_difference,payment_method,counterparty,paid_by,show_session_id,notes")
+      .eq("workspace_id", workspaceId)
+      .order("date", { ascending: false })
+      .range(from, to) as unknown as PromiseLike<{ data: TxRow[] | null; error: { message: string } | null }>);
 
-  if (error) throw new Error(error.message);
-
-  const headers = ["Type", "Date", "Cash Paid", "Market at Time", "Cost Basis", "Buy %", "Trade Credit", "Cash Diff", "Notes", "Created At"];
-  const rows = (data ?? []).map((r) =>
-    [r.transaction_type, r.date, r.cash_paid, r.market_price_at_time, r.cost_basis,
-      r.buy_percentage, r.trade_credit_value, r.cash_difference, r.notes, r.created_at
+  const headers = ["Deal", "Type", "Date", "Card", "Sale Price", "Cash Paid", "Market at Time", "Cost Basis", "Buy %", "Cash Diff", "Payment Method", "Counterparty", "Paid By", "Show", "Notes"];
+  const rows = data.map((r) =>
+    [r.trade_group_id ?? r.id, r.transaction_type, r.date, r.card?.name, r.sale_price, r.cash_paid,
+      r.market_price_at_time, r.cost_basis, r.buy_percentage, r.cash_difference, r.payment_method,
+      r.counterparty, r.paid_by, r.show_session_id, r.notes
     ].map(esc).join(",")
   );
 

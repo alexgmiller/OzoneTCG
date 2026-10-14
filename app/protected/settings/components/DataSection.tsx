@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { Database, Download } from "lucide-react";
 import { useToast } from "@/components/ui";
-import { exportInventoryCSV, exportTransactionsCSV, exportExpensesCSV } from "../actions";
+import { exportInventoryCSV } from "../actions";
 import { Section, SettingRow, ActionButton } from "./SettingsPrimitives";
 
-type ExportKind = "inventory" | "transactions" | "expenses";
+type ExportKind = "inventory";
 
 const EXPORTS: {
   kind: ExportKind;
@@ -17,20 +17,8 @@ const EXPORTS: {
   {
     kind: "inventory",
     label: "Export inventory",
-    description: "All current inventory as CSV",
+    description: "All current inventory as CSV. Transactions and expenses export from Finance.",
     run: exportInventoryCSV,
-  },
-  {
-    kind: "transactions",
-    label: "Export transactions",
-    description: "All buys, sells and trades as CSV",
-    run: exportTransactionsCSV,
-  },
-  {
-    kind: "expenses",
-    label: "Export expenses",
-    description: "All expenses with deductible amounts as CSV",
-    run: exportExpensesCSV,
   },
 ];
 

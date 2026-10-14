@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Home, ShoppingCart, Package, Zap, MoreHorizontal,
-  Receipt, Users, Wallet, ArrowLeftRight, CalendarDays, Settings, LogOut, X,
+  Receipt, Users, Wallet, ArrowLeftRight, CalendarDays, Settings, LogOut, X, PieChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeSwitcher } from "./theme-switcher";
@@ -21,6 +21,7 @@ const PRIMARY: NavItem[] = [
 ];
 
 const MORE: NavItem[] = [
+  { href: "/protected/finance",      label: "Finance",      icon: PieChart },
   { href: "/protected/expenses",     label: "Expenses",     icon: Receipt },
   { href: "/protected/consigners",   label: "Consigners",   icon: Users },
   { href: "/protected/payout",       label: "Payout",       icon: Wallet },

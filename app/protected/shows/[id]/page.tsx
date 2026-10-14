@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
 import { groupDeals, type TxRow } from "@/app/protected/transactions/deals";
+import { pnlFor, type FinanceTx } from "@/app/protected/finance/math";
 import type { ShowSession } from "../actions";
 import { fmtDate, pillCls, showVenue, STATUS_PILL } from "../shared";
 import ShowDeals from "./ShowDeals";
@@ -49,13 +50,15 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
   if (!show) notFound();
 
   const expenses = (expRes.data ?? []) as ExpenseRow[];
-  const expensesTotal = expenses.reduce((s, e) => s + (e.cost ?? 0), 0);
-  const deals = groupDeals((txRes.data ?? []) as unknown as TxRow[], new Map());
+  const txRows = (txRes.data ?? []) as unknown as TxRow[];
+  const deals = groupDeals(txRows, new Map());
+  // Every number below comes from the deals and expenses themselves
+  const pnl = pnlFor(txRows as unknown as FinanceTx[], expenses.map((e) => ({ expense_date: null, cost: e.cost, category: e.category })));
+  const boothFee = expenses.filter((e) => e.category === "booth_fee").reduce((s, e) => s + (e.cost ?? 0), 0);
   const hasActive = activeRes.data !== null;
 
   const venue = showVenue(show);
   const pill = STATUS_PILL[show.status];
-  const netPL = show.net_pl ?? 0;
 
   return (
     <div className="w-full max-w-2xl mx-auto py-4 space-y-5">
@@ -84,35 +87,34 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
         hasActive={hasActive}
       />
 
-      {/* ── Totals ── */}
+      {/* ── P&L (revenue − cost of goods − show expenses) ── */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Revenue" value={<MoneyDisplay amount={show.total_revenue ?? 0} tone="neutral" />} />
-        <StatCard label="Spent" value={<MoneyDisplay amount={show.total_spent ?? 0} tone="neutral" />} />
+        <StatCard label="Revenue" money={pnl.revenue} delta={`${pnl.cardsSold} card${pnl.cardsSold === 1 ? "" : "s"} sold`} />
+        <StatCard label="Cost of goods" value={<MoneyDisplay amount={-pnl.cogs} />} />
         <StatCard
-          label="Net"
-          value={<MoneyDisplay amount={netPL} showSign />}
-          delta={
-            expensesTotal > 0 ? (
-              <>After fees <MoneyDisplay amount={netPL - expensesTotal} showSign /></>
-            ) : undefined
-          }
+          label="Expenses"
+          value={<MoneyDisplay amount={-pnl.expenses} />}
+          delta={boothFee > 0 ? <>Booth fee <MoneyDisplay amount={-boothFee} /></> : undefined}
+        />
+        <StatCard label="Net" value={<MoneyDisplay amount={pnl.net} showSign />} tone={pnl.net >= 0 ? "positive" : "default"} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard
+          label="Spent on cards"
+          value={<MoneyDisplay amount={pnl.buysSpent + pnl.tradeCashOut} tone="neutral" />}
+          delta={`${pnl.cardsBought} card${pnl.cardsBought === 1 ? "" : "s"} in · inventory, not P&L`}
         />
         <StatCard
-          label="Cards"
-          value={
-            <span className="text-foreground tabular-nums">
-              {show.cards_bought ?? 0} <span className="text-sm text-muted-foreground">in</span>{" "}
-              {show.cards_sold ?? 0} <span className="text-sm text-muted-foreground">out</span>
-            </span>
-          }
-          delta={show.trades_count > 0 ? `${show.trades_count} trade${show.trades_count === 1 ? "" : "s"}` : undefined}
+          label="Deals"
+          value={<span className="text-foreground tabular-nums">{pnl.deals}</span>}
+          delta={pnl.tradeCashIn > 0 ? <>Trade cash received <MoneyDisplay amount={pnl.tradeCashIn} tone="neutral" /></> : undefined}
         />
       </div>
 
       {/* ── Expenses ── */}
       {expenses.length > 0 && (
         <section className="space-y-2">
-          <SectionHeader action={<MoneyDisplay amount={-expensesTotal} className="text-sm" />}>
+          <SectionHeader action={<MoneyDisplay amount={-pnl.expenses} className="text-sm" />}>
             Expenses
           </SectionHeader>
           <ul className="divide-y divide-border rounded-xl border border-border bg-card">

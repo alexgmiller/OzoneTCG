@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { revalidatePath } from "next/cache";
+import { cashDrawer, type FinanceTx } from "@/app/protected/finance/math";
 
 export type ShowSession = {
   id: string;
@@ -127,14 +128,19 @@ export async function getActiveShow(): Promise<ActiveShowInfo | null> {
     const workspaceId = await getWorkspaceId();
     const { data } = await supabase
       .from("show_sessions")
-      .select("id,name,starting_cash,total_revenue,total_spent")
+      .select("id,name,starting_cash")
       .eq("workspace_id", workspaceId).eq("status", "active")
       .limit(1).maybeSingle();
     if (!data) return null;
+    // Only cash-method deals move the drawer; Venmo/Zelle sales don't
+    const { data: rows } = await supabase
+      .from("card_transactions")
+      .select("id,trade_group_id,transaction_type,date,sale_price,cost_basis,cash_paid,cash_difference,payment_method")
+      .eq("workspace_id", workspaceId).eq("show_session_id", data.id).limit(1000);
     return {
       id: data.id as string,
       name: data.name as string,
-      expected_cash: (data.starting_cash ?? 0) + (data.total_revenue ?? 0) - (data.total_spent ?? 0),
+      expected_cash: (data.starting_cash ?? 0) + cashDrawer((rows ?? []) as FinanceTx[]),
     };
   } catch {
     return null;
