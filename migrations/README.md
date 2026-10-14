@@ -22,7 +22,7 @@ file is the source of truth for what has been applied.
 | `20240415_sealed_products.sql` | ✅ | |
 | `20240416_missing_item_columns.sql` | ✅ | |
 | `20240420_card_images.sql` | ✅ | verified 2026-10-14 (table exists). Backfill via `scripts/import-card-images.ts` if images are missing. |
-| `20240421_card_search_freq.sql` | ⬜ | **NOT APPLIED** (verified 2026-10-14: `card_search_frequency` missing). The autocomplete frequency ranking fails silently until this runs. |
+| `20240421_card_search_freq.sql` | ✅ | applied 2026-10-14 |
 | `20240422_show_scans_client_id.sql` | ✅ | |
 | `20240422_tax_deductible_expenses.sql` | ✅ | verified 2026-10-14 (columns exist) |
 | `20240423_client_id_dedup.sql` | ✅ | verified 2026-10-14 (show_scans.client_id exists) |
