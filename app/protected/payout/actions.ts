@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { computePayoutTotals } from "@/lib/payout";
 import { revalidatePath } from "next/cache";
+import { partnerPosPayments } from "./posPayments";
 
 export async function settlePeriod(notes?: string) {
   const supabase = await createClient();
@@ -63,7 +64,7 @@ export async function settlePeriod(notes?: string) {
   const [{ data: expData }, { data: itemData }, { data: salesData }, { data: consignerData }] =
     await Promise.all([expQuery, itemCostQuery, salesQuery, consignerSalesQuery]);
 
-  const expenses = expData ?? [];
+  const expenses = [...(expData ?? []), ...(await partnerPosPayments(supabase, workspaceId, lastEnd))];
   const items = itemData ?? [];
   const sales = salesData ?? [];
   const consignerSales = consignerData ?? [];

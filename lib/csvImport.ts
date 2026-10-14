@@ -1,8 +1,7 @@
 /**
  * Shared CSV-import parsing helpers.
  *
- * Used by both the inventory importer (app/protected/inventory/CSVImport.tsx)
- * and the buy-flow importer (app/protected/buy/BuyCSVImport.tsx). Pure
+ * Used by the inventory importer (app/protected/inventory/CSVImport.tsx). Pure
  * functions only — no React, no browser APIs — so they stay unit-testable.
  */
 

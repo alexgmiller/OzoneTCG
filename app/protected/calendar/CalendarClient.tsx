@@ -434,7 +434,7 @@ function DayDetailPanel({
                       )}
                       {show.status === "active" && (
                         <Link
-                          href="/protected/show"
+                          href="/protected/pos"
                           className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap"
                           style={{ color: "#eab308", background: "rgba(234,179,8,0.10)" }}
                         >
@@ -1060,7 +1060,7 @@ export default function CalendarClient({
             )}
             {activeShow && (
               <Link
-                href="/protected/show"
+                href="/protected/pos"
                 onClick={(e) => e.stopPropagation()}
                 className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap"
                 style={{ color: "#eab308", background: "rgba(234,179,8,0.10)" }}

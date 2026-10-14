@@ -34,6 +34,7 @@ file is the source of truth for what has been applied.
 | `20260720_card_embeddings.sql` | ✅ | pgvector + match_card RPC (applied 2026-07-20) |
 | `20260721_scan_photos.sql` | ✅ | scan photo persistence for recognition training data (applied 2026-07-21) |
 | `20261013_internal_v1.sql` | ⬜ | Drops guest_pins, scan_photos, card_embeddings (+ match_card), pop_snapshots, scan-photos bucket. Take the backups at the top first. After running, those tables will show MISSING in the check below — expected. |
+| `20261013_pos.sql` | ⬜ | **Required before POS works.** card_transactions payment_method/counterparty/show_session_id/client_id/paid_by/sale_price; deal_logs.transaction_id. Optional commented backfill of legacy deals into the ledger at the bottom. |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.
 > ❓ = not yet checked against the live database; run the query below and flip to ✅ or ⬜.

@@ -3,7 +3,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 import MobileBottomNav from "@/components/NavLinks";
 import Link from "next/link";
 import { Suspense } from "react";
-import { getActiveShow } from "@/app/protected/show/actions";
+import { getActiveShow } from "@/app/protected/shows/actions";
 
 function money(v: number) {
   return `$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -37,7 +37,7 @@ export default async function ProtectedLayout({
         {/* Active show banner — visible on all pages when a show is running */}
         {activeShow && (
           <a
-            href="/protected/show"
+            href="/protected/pos"
             className="w-full flex items-center justify-between px-4 py-1.5 text-xs font-medium gap-3 border-b border-amber-400/20 bg-amber-400/8 hover:bg-amber-400/12 transition-colors"
           >
             <div className="flex items-center gap-2 min-w-0">

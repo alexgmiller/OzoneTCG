@@ -3,11 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Zap } from "lucide-react";
-import { createShowSession } from "@/app/protected/show/actions";
-
-function todayDate() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { startShow } from "@/app/protected/shows/actions";
 
 export default function ShowsClient() {
   const router = useRouter();
@@ -21,12 +17,11 @@ export default function ShowsClient() {
     setLoading(true);
     setError(null);
     try {
-      await createShowSession({
+      await startShow({
         name: name.trim(),
-        date: todayDate(),
         starting_cash: startCash ? parseFloat(startCash) : null,
       });
-      router.push("/protected/show");
+      router.push("/protected/pos");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start show");
       setLoading(false);

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
-import type { ShowSession } from "@/app/protected/show/actions";
+import type { ShowSession } from "@/app/protected/shows/actions";
 import ShowsClient from "./ShowsClient";
 import ShowsPastList from "./ShowsPastList";
 
@@ -27,9 +27,9 @@ export default async function ShowsServer() {
   const shows = (data ?? []) as ShowSession[];
   const active = shows.find((s) => s.status === "active");
 
-  // Active show → jump straight into show mode
+  // Active show → jump straight into POS
   if (active) {
-    redirect("/protected/show");
+    redirect("/protected/pos");
   }
 
   const completed = shows.filter((s) => s.status === "completed");

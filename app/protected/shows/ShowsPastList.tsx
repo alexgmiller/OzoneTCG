@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, Trash2 } from "lucide-react";
-import type { ShowSession } from "@/app/protected/show/actions";
-import { deleteShowSession } from "@/app/protected/show/actions";
+import type { ShowSession } from "@/app/protected/shows/actions";
+import { deleteShowSession } from "@/app/protected/shows/actions";
 import ConfirmationModal from "@/components/ConfirmationModal";
 
 function money(v: number) {
@@ -21,13 +21,10 @@ function fmtDate(iso: string) {
   });
 }
 
-type DeleteTarget = { show: ShowSession; withTransactions: boolean } | null;
-
 export default function ShowsPastList({ shows }: { shows: ShowSession[] }) {
   const router = useRouter();
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
-  const [choiceTarget, setChoiceTarget] = useState<ShowSession | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ShowSession | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   function openMenu(id: string, e: React.MouseEvent) {
@@ -38,14 +35,14 @@ export default function ShowsPastList({ shows }: { shows: ShowSession[] }) {
   function requestDelete(show: ShowSession, e: React.MouseEvent) {
     e.stopPropagation();
     setMenuOpenId(null);
-    setChoiceTarget(show);
+    setDeleteTarget(show);
   }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteShowSession(deleteTarget.show.id, deleteTarget.withTransactions);
+      await deleteShowSession(deleteTarget.id);
       router.refresh();
     } finally {
       setDeleting(false);
@@ -126,74 +123,12 @@ export default function ShowsPastList({ shows }: { shows: ShowSession[] }) {
         ))}
       </div>
 
-      {/* Step 1: choose scope */}
-      {choiceTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-background border rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="shrink-0 w-9 h-9 rounded-full bg-red-500/15 flex items-center justify-center">
-                <Trash2 size={16} className="text-red-500" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-base">Delete "{choiceTarget.name}"?</h2>
-                <p className="text-sm opacity-60 mt-1">
-                  What should happen to the inventory items and expenses recorded during this show?
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteTarget({ show: choiceTarget, withTransactions: false });
-                  setChoiceTarget(null);
-                }}
-                className="w-full text-left border rounded-xl px-4 py-3 hover:bg-muted/50 transition-colors"
-              >
-                <div className="font-medium text-sm">Delete show only</div>
-                <div className="text-xs opacity-50 mt-0.5">Keep all inventory items and expenses</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteTarget({ show: choiceTarget, withTransactions: true });
-                  setChoiceTarget(null);
-                }}
-                className="w-full text-left border border-red-500/30 rounded-xl px-4 py-3 hover:bg-red-500/5 transition-colors"
-              >
-                <div className="font-medium text-sm text-red-500">Delete show + transactions</div>
-                <div className="text-xs opacity-50 mt-0.5">Also removes linked inventory items and expenses</div>
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setChoiceTarget(null)}
-              className="w-full py-2 text-sm opacity-50 hover:opacity-80 transition-opacity"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 2: confirmation (type-to-confirm for "delete + transactions") */}
       {deleteTarget && (
         <ConfirmationModal
-          title={
-            deleteTarget.withTransactions
-              ? `Delete show + all transactions?`
-              : `Delete "${deleteTarget.show.name}"?`
-          }
-          description={
-            deleteTarget.withTransactions
-              ? `This will permanently delete the show record, all linked inventory items, and all linked expenses. This cannot be undone.`
-              : `The show record and its feed will be permanently deleted. Inventory items and expenses are kept.`
-          }
-          confirmLabel={deleteTarget.withTransactions ? "Delete everything" : "Delete show"}
+          title={`Delete "${deleteTarget.name}"?`}
+          description="The show record is deleted. Its transactions and expenses are kept and no longer linked to a show — revert deals from Transactions if you need them gone."
+          confirmLabel="Delete show"
           destructive
-          requireTyping={deleteTarget.withTransactions ? deleteTarget.show.name : undefined}
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}
         />

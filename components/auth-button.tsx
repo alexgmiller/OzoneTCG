@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { DesktopNavLinks } from "./NavLinks";
 import { ProfileDropdown } from "./ProfileDropdown";
-import { getActiveShow } from "@/app/protected/show/actions";
+import { getActiveShow } from "@/app/protected/shows/actions";
 
 export async function AuthButton() {
   const supabase = await createClient();

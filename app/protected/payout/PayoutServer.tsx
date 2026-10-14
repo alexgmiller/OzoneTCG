@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import PayoutClient from "./PayoutClient";
+import { partnerPosPayments } from "./posPayments";
 
 export type ExpenseEntry = {
   id: string;
@@ -139,7 +140,9 @@ export default async function PayoutServer() {
   if (soloError) throw new Error(soloError.message);
   if (consignerError) throw new Error(consignerError.message);
 
-  const expenses = (expData ?? []) as ExpenseEntry[];
+  const posPayments = await partnerPosPayments(supabase, workspaceId, lastEnd);
+  const expenses = [...((expData ?? []) as ExpenseEntry[]), ...posPayments]
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
   const itemCosts = (itemData ?? []) as ItemCostEntry[];
   const sharedSales = (salesData ?? []) as SharedSaleEntry[];
   const soloSales = (soloData ?? []) as SoloSaleEntry[];

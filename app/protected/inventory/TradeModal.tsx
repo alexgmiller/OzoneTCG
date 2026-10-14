@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useId } from "react";
-import { recordTrade } from "./actions";
+import { recordTrade } from "@/app/protected/pos/actions";
 import CertLookupWidget, { type CertWidgetResult } from "@/components/CertLookupWidget";
 
 type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
@@ -167,22 +167,23 @@ export default function TradeModal({
       await recordTrade({
         goingOut: goingOut.map((g) => ({
           itemId: g.item.id,
-          tradeValue: toNum(g.tradeValue) ?? g.item.market ?? 0,
+          value: toNum(g.tradeValue) ?? g.item.market ?? 0,
         })),
         comingIn: comingIn.map((c) => ({
           name: c.name.trim(),
-          setName: c.setName.trim() || null,
-          cardNumber: c.cardNumber.trim() || null,
+          set_name: c.setName.trim() || null,
+          card_number: c.cardNumber.trim() || null,
           grade: c.grade.trim() || null,
           category: c.category,
           condition: c.condition,
           owner: c.owner,
-          marketPrice: toNum(c.marketPrice) ?? 0,
-          tradePct: toNum(c.tradePct) ?? 80,
+          market: toNum(c.marketPrice) ?? 0,
         })),
         cashDifference: cashDiff,
-        paidBy,
+        paid_by: paidBy,
         notes: notes.trim() || null,
+        show_session_id: null,
+        payment_method: Math.abs(cashDiff) < 0.005 ? "trade" : "cash",
       });
       handleClose();
     } catch (e) {

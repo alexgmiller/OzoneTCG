@@ -4,7 +4,7 @@ import DashboardClient from "./DashboardClient";
 import DashboardCharts, { type ChartItem } from "./DashboardCharts";
 import { computeDashboardTotals } from "./totals";
 import type { ItemRow, ExpenseRow, GradingRow } from "./totals";
-import type { ShowSession } from "@/app/protected/show/actions";
+import type { ShowSession } from "@/app/protected/shows/actions";
 
 function money(n: number) {
   return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
@@ -98,7 +98,7 @@ export default async function DashboardServer() {
       {/* Active show banner */}
       {activeShow && (
         <a
-          href="/protected/show"
+          href="/protected/pos"
           className="flex items-center justify-between p-3 rounded-xl border-2 gap-3"
           style={{ borderColor: "rgba(234,179,8,0.4)", background: "rgba(234,179,8,0.06)" }}
         >

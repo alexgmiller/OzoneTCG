@@ -5,39 +5,35 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Package, ArrowLeftRight,
   ScanLine, Users, Receipt, Wallet,
-  MoreHorizontal, Settings, LogOut, Zap, CalendarDays,
+  MoreHorizontal, Settings, LogOut, Zap, CalendarDays, ShoppingCart,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { useState, useEffect, useRef } from "react";
 
-// Shows is active for both /protected/shows (history/launcher) and /protected/show (active UI)
 function isShowsActive(pathname: string) {
-  return (
-    pathname === "/protected/shows" ||
-    pathname.startsWith("/protected/shows/") ||
-    pathname === "/protected/show" ||
-    pathname.startsWith("/protected/show/")
-  );
+  return pathname === "/protected/shows" || pathname.startsWith("/protected/shows/");
 }
 
 // Desktop nav shows Calendar between Transactions and Shows
 const primaryLinks = [
   { href: "/protected/dashboard",    label: "Dashboard",    icon: LayoutDashboard },
+  { href: "/protected/pos",          label: "POS",          icon: ShoppingCart },
   { href: "/protected/inventory",    label: "Inventory",    icon: Package },
   { href: "/protected/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/protected/calendar",     label: "Calendar",     icon: CalendarDays },
   { href: "/protected/shows",        label: "Shows",        icon: Zap },
 ];
 
-// Mobile bottom tab bar uses first 4 items; Calendar lives in More menu on mobile
+// Mobile bottom tab bar uses first 4 items; the rest live in the More menu
 const mobileTabLinks = [
   { href: "/protected/dashboard",    label: "Dashboard",    icon: LayoutDashboard },
+  { href: "/protected/pos",          label: "POS",          icon: ShoppingCart },
   { href: "/protected/inventory",    label: "Inventory",    icon: Package },
-  { href: "/protected/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/protected/shows",        label: "Shows",        icon: Zap },
 ];
 
 const moreNavLinks = [
+  { href: "/protected/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/protected/calendar",     label: "Calendar",     icon: CalendarDays },
   { href: "/protected/scan",        label: "Scan",       icon: ScanLine },
   { href: "/protected/consigners",  label: "Consigners", icon: Users },
@@ -113,10 +109,6 @@ export default function MobileBottomNav({
   const moreActive = moreNavLinks.some(
     (l) => pathname === l.href || pathname.startsWith(l.href + "/")
   );
-
-  // During an active show, ShowClient renders its own bottom nav portaled to body.
-  // Suppress this nav entirely to eliminate z-index stacking conflicts on iOS Safari scroll repaints.
-  if (pathname === "/protected/show") return null;
 
   async function handleLogout() {
     const { createClient } = await import("@/lib/supabase/client");

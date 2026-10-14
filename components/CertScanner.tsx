@@ -9,7 +9,22 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { createItem } from "@/app/protected/inventory/actions";
-import { recordCertBuy, type CertBuyItem } from "@/app/protected/transactions/actions";
+import { recordBuy } from "@/app/protected/pos/actions";
+import type { PaymentMethod } from "@/app/protected/pos/ledger";
+import { getActiveShow } from "@/app/protected/shows/actions";
+
+type CertBuyItem = {
+  certNumber: string;
+  company: GradingCompany;
+  grade: string;
+  gradeLabel?: string | null;
+  name: string;
+  setName?: string | null;
+  cardNumber?: string | null;
+  market: number | null;
+  cost: number;
+  owner: "alex" | "mila" | "shared";
+};
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 import type { SlabSale, PricingResult, SoldPricingResult } from "@/lib/ebay";
 import { computeBlendedFMV, type PricingStrategyOverride } from "@/lib/fmv";
@@ -759,7 +774,16 @@ export default function CertScanner({ pricingStrategy = "auto" }: { pricingStrat
       if (!cards.length) return;
       const totalCost = cards.reduce((s, c) => s + c.cost, 0);
 
-      await recordCertBuy({ cards, totalCost, paidBy: buyOwner === "shared" ? "shared" : buyOwner, paymentType: buyPaymentType });
+      const show = await getActiveShow();
+      await recordBuy({
+        cards: cards.map((c) => ({
+          name: c.name, category: "slab", cert_number: c.certNumber, market: c.market, cost: c.cost, owner: c.owner,
+          grade: c.gradeLabel ? `${c.company} ${c.gradeLabel} ${c.grade}` : `${c.company} ${c.grade}`,
+          set_name: c.setName ?? null, card_number: c.cardNumber ?? null,
+        })),
+        total: totalCost, paid_by: buyOwner, payment_method: buyPaymentType as PaymentMethod,
+        show_session_id: show?.id ?? null,
+      });
 
       showToast(
         bulkBuyMode
