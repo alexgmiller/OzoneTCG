@@ -33,9 +33,6 @@ DROP TABLE IF EXISTS card_embeddings;
 DROP TABLE IF EXISTS pop_snapshots;
 
 -- ── scan-photos storage bucket ───────────────────────────────────────────────
--- Supabase blocks deleting storage objects with SQL. Empty and delete the
--- bucket in Dashboard → Storage → scan-photos (Empty bucket, then Delete).
--- If the bucket is already empty, this removes it:
-DELETE FROM storage.buckets
-WHERE id = 'scan-photos'
-  AND NOT EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = 'scan-photos');
+-- Not SQL: Supabase blocks deletes on storage.objects AND storage.buckets
+-- ("Direct deletion from storage tables is not allowed"). Delete it in
+-- Dashboard → Storage → scan-photos → Empty bucket, then Delete bucket.
