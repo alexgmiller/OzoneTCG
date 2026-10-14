@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
@@ -274,12 +275,12 @@ export default function ExpensesClient({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <a
+          <Link
             href="/protected/expenses/tax-report"
             className="inline-flex h-11 items-center rounded-lg border border-accent-primary-border px-3 text-sm text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
           >
             Tax Report →
-          </a>
+          </Link>
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}

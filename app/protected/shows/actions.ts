@@ -41,11 +41,13 @@ function revalidateShows() {
 
 // ── Start / end ───────────────────────────────────────────────────────────────
 
-// Starts a scheduled show when scheduledId is given, otherwise creates one for today
+// Starts a scheduled show when scheduledId is given, otherwise creates one for today.
+// date is the phone's local day (the server clock is UTC).
 export async function startShow(input: {
   scheduledId?: string | null;
   name: string;
   starting_cash: number | null;
+  date?: string;
 }): Promise<string> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
@@ -60,6 +62,7 @@ export async function startShow(input: {
     status: "active",
     started_at: new Date().toISOString(),
     starting_cash: input.starting_cash,
+    date: input.date ?? new Date().toISOString().slice(0, 10),
   };
   const { data, error } = input.scheduledId
     ? await supabase.from("show_sessions").update(fields)
@@ -69,7 +72,6 @@ export async function startShow(input: {
         ...fields,
         workspace_id: workspaceId,
         name: input.name.trim(),
-        date: new Date().toISOString().slice(0, 10),
       }).select("id").single();
 
   if (error) throw new Error(error.message);

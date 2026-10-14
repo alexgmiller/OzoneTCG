@@ -15,7 +15,7 @@ import { groupRecentDeals, type TxRow } from "./activity";
 
 const TX_COLS = "id,trade_group_id,transaction_type,date,sale_price,cash_paid,cost_basis,cash_difference";
 const TODAY_WINDOW_MS = 48 * 60 * 60 * 1000; // covers "today" in any browser timezone
-const RECENT_ROW_LIMIT = 100; // per-card rows; folded into the last 5 deals
+const RECENT_ROW_LIMIT = 400; // per-card rows; folded into the last 5 deals (bulk deals span many rows)
 
 export default async function DashboardServer() {
   const supabase = await createClient();

@@ -88,6 +88,7 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
                 onClick={() => run(() => startShow({
                   scheduledId: scheduled && showName === scheduled.name ? scheduled.id : null,
                   name: showName, starting_cash: cash ? Number(cash) : null,
+                  date: new Date().toLocaleDateString("en-CA"),
                 }))}>
                 Start show
               </button>

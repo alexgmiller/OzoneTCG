@@ -71,7 +71,7 @@ export default function NewShowForm({ hasActive }: { hasActive: boolean }) {
     try {
       const v = values();
       const scheduledId = v.location || v.boothFee ? await scheduleShow(v) : null;
-      await startShow({ scheduledId, name: v.name, starting_cash: v.startingCash ?? null });
+      await startShow({ scheduledId, name: v.name, starting_cash: v.startingCash ?? null, date: v.date });
       router.push("/protected/pos");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not start show");

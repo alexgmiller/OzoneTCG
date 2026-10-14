@@ -40,7 +40,7 @@ export function EditItemModal({
         <button type="button" className={`${btnOutline} w-full`} onClick={() => setEditImagePickerOpen(true)} disabled={busy}>
           Find image
         </button>
-        {editForm.category === "single" && editingItem?.status !== "grading" && (
+        {editForm.category === "single" && editingItem?.status === "inventory" && (
           <button type="button" className={`${btnOutline} w-full`} onClick={handleGradeItem} disabled={busy}>
             Send to grading
           </button>

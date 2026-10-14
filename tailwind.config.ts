@@ -67,25 +67,25 @@ export default {
         },
         "accent-secondary": "rgb(196 181 253)", // violet-300
         positive: {
-          DEFAULT: "rgb(52 211 153)",        // emerald-400
+          DEFAULT: "rgb(var(--positive) / <alpha-value>)", // emerald-600 light / 400 dark
           strong: "rgb(16 185 129)",          // emerald-500
           soft: "rgb(52 211 153 / 0.10)",
           border: "rgb(52 211 153 / 0.28)",
         },
         negative: {
-          DEFAULT: "rgb(251 113 133)",        // rose-400
+          DEFAULT: "rgb(var(--negative) / <alpha-value>)", // rose-600 light / 400 dark
           strong: "rgb(244 63 94)",           // rose-500
           soft: "rgb(244 63 94 / 0.10)",
           border: "rgb(244 63 94 / 0.28)",
         },
         warning: {
-          DEFAULT: "rgb(251 191 36)",         // amber-400
+          DEFAULT: "rgb(var(--warning) / <alpha-value>)",  // amber-600 light / 400 dark
           strong: "rgb(245 158 11)",           // amber-500
           soft: "rgb(245 158 11 / 0.10)",
           border: "rgb(245 158 11 / 0.28)",
         },
         neutral: {
-          DEFAULT: "rgb(148 163 184)",        // slate-400
+          DEFAULT: "rgb(var(--neutral) / <alpha-value>)",  // slate-500 light / 400 dark
           strong: "rgb(100 116 139)",          // slate-500
           muted: "rgb(71 85 105)",             // slate-600
         },

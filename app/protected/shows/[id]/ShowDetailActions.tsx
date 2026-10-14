@@ -7,7 +7,7 @@ import { Trash2 } from "lucide-react";
 import { useConfirm, useToast } from "@/components/ui";
 import { deleteShowSession, startShow } from "../actions";
 import EndShowPanel from "../EndShowPanel";
-import { btnGhostDanger, btnPrimary, btnSecondary, type ShowStatus } from "../shared";
+import { btnGhostDanger, btnPrimary, btnSecondary, todayLocalISO, type ShowStatus } from "../shared";
 
 type ShowSummary = {
   id: string;
@@ -26,7 +26,7 @@ export default function ShowDetailActions({ show, hasActive }: { show: ShowSumma
   async function start() {
     setBusy(true);
     try {
-      await startShow({ scheduledId: show.id, name: show.name, starting_cash: show.starting_cash });
+      await startShow({ scheduledId: show.id, name: show.name, starting_cash: show.starting_cash, date: todayLocalISO() });
       router.push("/protected/pos");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not start show");

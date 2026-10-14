@@ -28,7 +28,7 @@ export default function CalendarPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto w-full max-w-2xl space-y-4 px-4 pt-4">
+        <div className="mx-auto w-full max-w-2xl space-y-4 pt-4">
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-11 w-full" />
           <Skeleton className="h-28 w-full" />

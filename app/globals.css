@@ -77,6 +77,12 @@
 
   --text-muted:       #94a3b8;
 
+  /* semantic tones (Tailwind positive/negative/warning/neutral) — 600-weight for light */
+  --positive: 5 150 105;
+  --negative: 225 29 72;
+  --warning:  217 119 6;
+  --neutral:  100 116 139;
+
   --radius-md:   10px;
   --radius-full: 999px;
 }
@@ -89,6 +95,12 @@
   --accent-primary:   #8b5cf6;
 
   --text-muted:       #64748b;
+
+  /* 400-weight tones read best on dark surfaces */
+  --positive: 52 211 153;
+  --negative: 251 113 133;
+  --warning:  251 191 36;
+  --neutral:  148 163 184;
 
   --radius-md:   10px;
   --radius-full: 999px;

@@ -26,7 +26,7 @@ export function SelectionBar({
   onClear: () => void;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-background md:bottom-0">
+    <div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-background md:bottom-0 md:left-56">
       <div className="mx-auto w-full max-w-3xl space-y-2 px-4 py-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground tabular-nums">{count} selected</span>
@@ -40,7 +40,8 @@ export function SelectionBar({
             </>
           )}
           <button className={`${btnOutline} px-2`} onClick={onSetCost} disabled={busy}>Cost</button>
-          <button className={`${btnOutline} px-2`} onClick={onEdit} disabled={busy}>Edit</button>
+          {/* Sold rows keep their sale fields; undo a sale from Transactions instead */}
+          {!soldSelected && <button className={`${btnOutline} px-2`} onClick={onEdit} disabled={busy}>Edit</button>}
         </div>
         <button className="h-11 w-full text-sm font-medium text-negative" onClick={onDelete} disabled={busy}>
           Delete {count} item{count !== 1 ? "s" : ""}

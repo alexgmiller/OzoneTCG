@@ -69,7 +69,7 @@ function ScheduledRow({ show, hasActive }: { show: ShowSession; hasActive: boole
   async function start() {
     setBusy(true);
     try {
-      await startShow({ scheduledId: show.id, name: show.name, starting_cash: show.starting_cash });
+      await startShow({ scheduledId: show.id, name: show.name, starting_cash: show.starting_cash, date: todayLocalISO() });
       router.push("/protected/pos");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not start show");

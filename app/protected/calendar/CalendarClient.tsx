@@ -170,7 +170,7 @@ export default function CalendarClient({
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 px-4 pb-28 pt-4">
+    <div className="mx-auto w-full max-w-2xl space-y-4 pb-28 pt-4">
       <TodayWidget
         todayStr={todayStr}
         activity={activityMap.get(todayStr)}

@@ -295,6 +295,7 @@ export default function InventoryClient({
 
   // ── Bulk actions ──
   async function onMassEdit() {
+    if (hasSoldSelected) return; // sold rows are undone from Transactions, never re-statused here
     const patch: Record<string, string | null> = {};
     if (massOwner.startsWith("consigner:")) { patch.owner = "consigner"; patch.consigner_id = massOwner.slice("consigner:".length); }
     else if (massOwner) { patch.owner = massOwner; patch.consigner_id = null; }
