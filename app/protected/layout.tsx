@@ -18,6 +18,22 @@ async function getHandle(): Promise<string> {
 }
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  // Every page needs the workspace; say so plainly instead of a production error digest
+  if (!process.env.OZONE_WORKSPACE_ID) {
+    return (
+      <div className="min-h-dvh bg-background p-5 text-foreground">
+        <div className="mx-auto w-full max-w-md space-y-3 rounded-xl border border-border bg-card p-5">
+          <h1 className="text-lg font-semibold">Setup needed</h1>
+          <p className="text-sm text-muted-foreground">
+            The <code className="font-mono">OZONE_WORKSPACE_ID</code> environment variable is not set for this
+            deployment. Add it in Vercel (Settings → Environment Variables, for Preview and Production) or in
+            <code className="font-mono"> .env.local</code>, then redeploy.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const [activeShow, handle] = await Promise.all([
     getActiveShow().catch(() => null),
     getHandle(),
