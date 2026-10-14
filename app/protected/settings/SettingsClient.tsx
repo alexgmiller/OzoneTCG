@@ -4,22 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
-  User, Building2, ShieldCheck, TrendingUp, Monitor, Database,
+  User, ShieldCheck, TrendingUp, Monitor, Database,
   Bell, Trash2, KeyRound, Download, LogOut, CheckCircle2, AlertCircle,
-  ChevronRight, Eye, EyeOff, HardDrive, TriangleAlert, MapPin, Pencil,
+  HardDrive, MapPin, Pencil,
 } from "lucide-react";
 import {
-  saveSettings, sendPasswordResetEmail, deleteAccount,
-  exportInventoryCSV, exportTransactionsCSV, updateBusinessStructure,
+  saveSettings, sendPasswordResetEmail,
+  exportInventoryCSV, exportTransactionsCSV,
   updateHomeAddress, updateSavedLocationLabel, deleteSavedLocation,
   type UserSettings, type WorkspaceData, type SavedLocation,
 } from "./actions";
-import {
-  BUSINESS_STRUCTURE_LABELS, BUSINESS_STRUCTURE_DESCRIPTIONS,
-  taxFeaturesEnabled, partnershipFeatures,
-  type BusinessStructure,
-} from "@/lib/businessFeatures";
-import { verifyGuestPin, saveGuestPin } from "@/app/protected/guest/actions";
 import { useToast } from "@/components/ui";
 import { getPendingCount, clearAll as clearQueueAll } from "@/lib/offlineQueue";
 import { replayPendingActions } from "@/lib/offlineSync";
@@ -292,185 +286,6 @@ function ImageCacheSection() {
   );
 }
 
-// ─── Business Structure Section ───────────────────────────────────────────────
-
-const US_STATES = [
-  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
-  "HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
-  "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
-  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
-  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC",
-];
-
-function BusinessStructureSection({ initial }: { initial: WorkspaceData }) {
-  const [structure, setStructure] = useState<BusinessStructure>(initial.business_structure);
-  const [bizName, setBizName] = useState(initial.business_name ?? "");
-  const [ein, setEin] = useState(initial.business_ein ?? "");
-  const [state, setBizState] = useState(initial.business_state ?? "");
-  const [sCorpElection, setSCorpElection] = useState(initial.s_corp_election);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const isDirty =
-    structure !== initial.business_structure ||
-    bizName !== (initial.business_name ?? "") ||
-    ein !== (initial.business_ein ?? "") ||
-    state !== (initial.business_state ?? "") ||
-    sCorpElection !== initial.s_corp_election;
-
-  const showEntityFields = structure === "sole_prop" || structure === "single_llc";
-  const showSCorp = structure === "single_llc";
-  const showPartnershipNotice = structure === "multi_llc";
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await updateBusinessStructure({
-        business_structure: structure,
-        business_name: bizName.trim() || null,
-        business_ein: ein.trim() || null,
-        business_state: state || null,
-        s_corp_election: sCorpElection,
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Section icon={Building2} title="Business Structure">
-      {/* Radio options */}
-      <div className="divide-y divide-border/50">
-        {(["hobby", "sole_prop", "single_llc", "multi_llc"] as const).map((opt) => (
-          <button
-            key={opt}
-            onClick={() => setStructure(opt)}
-            className="w-full text-left px-4 py-3 flex items-start gap-3 transition-colors duration-150 hover:bg-muted/30"
-          >
-            {/* Radio indicator */}
-            <div
-              className="mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors duration-150"
-              style={
-                structure === opt
-                  ? { borderColor: "#8b5cf6", backgroundColor: "#8b5cf6" }
-                  : { borderColor: "rgba(255,255,255,0.25)" }
-              }
-            >
-              {structure === opt && (
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-medium">{BUSINESS_STRUCTURE_LABELS[opt]}</div>
-              <div className="text-xs opacity-50 mt-0.5">{BUSINESS_STRUCTURE_DESCRIPTIONS[opt]}</div>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Conditional entity fields */}
-      {showEntityFields && (
-        <>
-          <SettingRow label="Business / entity name" description="Legal name (optional)">
-            <input
-              type="text"
-              placeholder="Ozone TCG LLC"
-              value={bizName}
-              onChange={(e) => setBizName(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm bg-background w-44"
-            />
-          </SettingRow>
-          <SettingRow label="Federal EIN" description="Employer Identification Number (optional)">
-            <input
-              type="text"
-              placeholder="XX-XXXXXXX"
-              value={ein}
-              onChange={(e) => setEin(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm bg-background w-36 font-mono"
-              maxLength={10}
-            />
-          </SettingRow>
-          <SettingRow label="State of formation" description="2-letter state code">
-            <select
-              value={state}
-              onChange={(e) => setBizState(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm bg-background w-28"
-            >
-              <option value="">—</option>
-              {US_STATES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </SettingRow>
-        </>
-      )}
-
-      {/* S-corp checkbox (single_llc only) */}
-      {showSCorp && (
-        <div className="px-4 py-3">
-          <label className="flex items-start gap-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={sCorpElection}
-              onChange={(e) => setSCorpElection(e.target.checked)}
-              className="mt-0.5 rounded"
-            />
-            <div>
-              <div className="text-sm font-medium">My LLC elected S-corp taxation</div>
-              <div className="text-xs opacity-50 mt-0.5">
-                Filed Form 2553 with the IRS. Affects reasonable compensation tracking in a future release.
-              </div>
-            </div>
-          </label>
-        </div>
-      )}
-
-      {/* Multi-member coming soon panel */}
-      {showPartnershipNotice && (
-        <div className="px-4 py-3 m-3 rounded-xl border text-sm space-y-1"
-          style={{ background: "rgba(139,92,246,0.06)", borderColor: "rgba(139,92,246,0.20)" }}
-        >
-          <div className="font-medium text-violet-300">Partnership management — coming soon</div>
-          <p className="text-xs opacity-60 leading-relaxed">
-            For now, track partner contributions using the <strong>Paid by</strong> field on expenses.
-            K-1 allocation, Form 1065 prep, and per-partner reporting are in phase 2.
-            Contact support for early access.
-          </p>
-        </div>
-      )}
-
-      {/* Save row */}
-      <div className="px-4 py-3 flex items-center justify-between border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        {saved ? (
-          <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-            <CheckCircle2 size={13} />
-            Saved
-          </span>
-        ) : (
-          <span className="text-xs opacity-30">
-            {taxFeaturesEnabled(structure) ? "Tax features enabled" : "Tax features hidden"}
-          </span>
-        )}
-        <button
-          onClick={handleSave}
-          disabled={!isDirty || saving}
-          className="text-xs px-4 py-1.5 rounded-lg font-semibold transition-colors duration-150 disabled:opacity-40"
-          style={{
-            background: isDirty && !saving ? "rgba(139,92,246,0.85)" : undefined,
-            color: isDirty && !saving ? "white" : undefined,
-            border: "1px solid rgba(139,92,246,0.4)",
-          }}
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
-      </div>
-    </Section>
-  );
-}
-
-// ─── Home Address Section ─────────────────────────────────────────────────────
 
 function HomeAddressSection({ initial }: { initial: string | null }) {
   const [address, setAddress] = useState(initial ?? "");
@@ -641,14 +456,12 @@ export default function SettingsClient({
   email,
   settings: initialSettings,
   workspaceData,
-  pinConfigured: initialPinConfigured,
   apiStatus,
   savedLocations = [],
 }: {
   email: string;
   settings: UserSettings;
   workspaceData: WorkspaceData;
-  pinConfigured: boolean;
   apiStatus: ApiStatus;
   savedLocations?: SavedLocation[];
 }) {
@@ -658,24 +471,6 @@ export default function SettingsClient({
   const [settings, setSettings] = useState<UserSettings>(initialSettings);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
-
-  // ── PIN change modal ───────────────────────────────────────────────────────
-  const [pinModal, setPinModal] = useState(false);
-  const [pinStep, setPinStep] = useState<"verify" | "new">("verify");
-  const [pinCurrent, setPinCurrent] = useState("");
-  const [pinNew, setPinNew] = useState("");
-  const [pinConfirm, setPinConfirm] = useState("");
-  const [pinError, setPinError] = useState("");
-  const [pinLoading, setPinLoading] = useState(false);
-  const [pinConfigured, setPinConfigured] = useState(initialPinConfigured);
-  const [showPinCurrent, setShowPinCurrent] = useState(false);
-  const [showPinNew, setShowPinNew] = useState(false);
-
-  // ── Delete account modal ───────────────────────────────────────────────────
-  const [deleteModal, setDeleteModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
 
   // ── Export state ──────────────────────────────────────────────────────────
   const [exportingInv, setExportingInv] = useState(false);
@@ -776,52 +571,6 @@ export default function SettingsClient({
     debounceRef.current = setTimeout(() => persistSave(patch), 700);
   }
 
-  // ── PIN handlers ──────────────────────────────────────────────────────────
-
-  function openPinModal() {
-    setPinStep(pinConfigured ? "verify" : "new");
-    setPinCurrent("");
-    setPinNew("");
-    setPinConfirm("");
-    setPinError("");
-    setPinModal(true);
-  }
-
-  async function handlePinVerify() {
-    if (!pinCurrent) { setPinError("Enter your current PIN"); return; }
-    setPinLoading(true);
-    setPinError("");
-    try {
-      const ok = await verifyGuestPin(pinCurrent);
-      if (ok) {
-        setPinStep("new");
-        setPinCurrent("");
-      } else {
-        setPinError("Incorrect PIN");
-      }
-    } catch {
-      setPinError("Something went wrong");
-    } finally {
-      setPinLoading(false);
-    }
-  }
-
-  async function handlePinSave() {
-    if (pinNew.length < 4) { setPinError("PIN must be at least 4 digits"); return; }
-    if (pinNew !== pinConfirm) { setPinError("PINs don't match"); return; }
-    setPinLoading(true);
-    setPinError("");
-    try {
-      await saveGuestPin(pinNew);
-      setPinConfigured(true);
-      setPinModal(false);
-    } catch {
-      setPinError("Failed to save PIN");
-    } finally {
-      setPinLoading(false);
-    }
-  }
-
   // ── Export handlers ───────────────────────────────────────────────────────
 
   async function handleExportInventory() {
@@ -849,20 +598,6 @@ export default function SettingsClient({
       toast.error("Export failed — try again");
     } finally {
       setExportingTx(false);
-    }
-  }
-
-  // ── Delete account ────────────────────────────────────────────────────────
-
-  async function handleDeleteAccount() {
-    if (deleteConfirmText !== "DELETE") return;
-    setDeleteLoading(true);
-    setDeleteError("");
-    try {
-      await deleteAccount();
-    } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : "Failed to delete account");
-      setDeleteLoading(false);
     }
   }
 
@@ -915,7 +650,7 @@ export default function SettingsClient({
         <SettingRow label="Email" description="Your sign-in email">
           <span className="text-sm opacity-50 font-mono">{email}</span>
         </SettingRow>
-        <SettingRow label="Business name" description="Shown in guest mode and consigner portals">
+        <SettingRow label="Business name" description="Shown in consigner portals">
           <input
             type="text"
             placeholder="OzoneTCG"
@@ -1004,30 +739,6 @@ export default function SettingsClient({
               </button>
             ))}
           </div>
-        </SettingRow>
-      </Section>
-
-      {/* ── GUEST MODE ───────────────────────────────────────────────────── */}
-      <Section icon={Eye} title="Guest Mode">
-        <SettingRow label="PIN status" description="Required to enter and exit guest mode">
-          <div className="flex items-center gap-2">
-            <StatusDot ok={pinConfigured} label="No PIN set" />
-            <button
-              onClick={openPinModal}
-              className="text-xs px-2.5 py-1 rounded-lg border font-medium hover:bg-muted transition-colors"
-            >
-              {pinConfigured ? "Change PIN" : "Set PIN"}
-            </button>
-          </div>
-        </SettingRow>
-        <SettingRow label="Guest display name" description="Shown at the top of the guest view">
-          <input
-            type="text"
-            placeholder={settings.business_name ?? "OzoneTCG"}
-            value={settings.guest_display_name ?? ""}
-            onChange={(e) => updateDebounced("guest_display_name", e.target.value || null)}
-            className="border rounded-lg px-3 py-1.5 text-sm bg-background w-44"
-          />
         </SettingRow>
       </Section>
 
@@ -1245,22 +956,6 @@ export default function SettingsClient({
         </SettingRow>
       </Section>
 
-      {/* ── BUSINESS STRUCTURE CONFIRMATION BANNER ───────────────────────── */}
-      {!workspaceData.business_structure_confirmed && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border"
-          style={{ background: "rgba(245,158,11,0.07)", borderColor: "rgba(245,158,11,0.30)" }}
-        >
-          <TriangleAlert size={15} className="shrink-0 mt-0.5 text-amber-400" />
-          <p className="text-xs leading-relaxed opacity-80">
-            We&apos;ve set your business type to <strong>Sole Proprietor</strong> by default.
-            Please confirm or update this in the Business Structure section below.
-          </p>
-        </div>
-      )}
-
-      {/* ── BUSINESS STRUCTURE ───────────────────────────────────────────── */}
-      <BusinessStructureSection initial={workspaceData} />
-
       {/* ── HOME ADDRESS ─────────────────────────────────────────────────── */}
       <HomeAddressSection initial={workspaceData.home_address} />
 
@@ -1308,149 +1003,8 @@ export default function SettingsClient({
             Logout
           </button>
         </SettingRow>
-        <SettingRow label="Delete account" description="Permanently delete all your data">
-          <button
-            onClick={() => { setDeleteModal(true); setDeleteConfirmText(""); setDeleteError(""); }}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 font-medium hover:bg-red-500/10 transition-colors"
-          >
-            <Trash2 size={13} />
-            Delete account
-          </button>
-        </SettingRow>
       </Section>
 
-      {/* ══ PIN CHANGE MODAL ══════════════════════════════════════════════ */}
-      {pinModal && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setPinModal(false); }}
-        >
-          <div className="modal-panel w-full max-w-xs p-6 space-y-4">
-            <div>
-              <h2 className="modal-title">
-                {pinStep === "verify" ? "Verify Current PIN" : pinConfigured ? "Set New PIN" : "Set Guest PIN"}
-              </h2>
-              <p className="text-xs opacity-50 mt-1">
-                {pinStep === "verify"
-                  ? "Enter your current PIN to continue."
-                  : "Choose a PIN customers will never see. You'll need it to exit guest mode."}
-              </p>
-            </div>
-
-            {pinStep === "verify" ? (
-              <>
-                <div className="relative">
-                  <input
-                    type={showPinCurrent ? "text" : "password"}
-                    inputMode="numeric"
-                    placeholder="Current PIN"
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background pr-10"
-                    value={pinCurrent}
-                    onChange={(e) => setPinCurrent(e.target.value.slice(0, 8))}
-                    onKeyDown={(e) => e.key === "Enter" && handlePinVerify()}
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-70"
-                    onClick={() => setShowPinCurrent((v) => !v)}
-                  >
-                    {showPinCurrent ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="relative">
-                  <input
-                    type={showPinNew ? "text" : "password"}
-                    inputMode="numeric"
-                    placeholder="New PIN (4+ digits)"
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background pr-10"
-                    value={pinNew}
-                    onChange={(e) => setPinNew(e.target.value.slice(0, 8))}
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-70"
-                    onClick={() => setShowPinNew((v) => !v)}
-                  >
-                    {showPinNew ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="Confirm PIN"
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-                  value={pinConfirm}
-                  onChange={(e) => setPinConfirm(e.target.value.slice(0, 8))}
-                  onKeyDown={(e) => e.key === "Enter" && handlePinSave()}
-                />
-              </>
-            )}
-
-            {pinError && <p className="text-xs text-red-500">{pinError}</p>}
-
-            <div className="flex gap-2">
-              <button className="modal-btn-ghost flex-1" onClick={() => setPinModal(false)}>
-                Cancel
-              </button>
-              <button
-                className="modal-btn-primary flex-1"
-                onClick={pinStep === "verify" ? handlePinVerify : handlePinSave}
-                disabled={pinLoading}
-              >
-                {pinLoading ? "…" : pinStep === "verify" ? (
-                  <span className="flex items-center justify-center gap-1">Continue <ChevronRight size={14} /></span>
-                ) : "Save PIN"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ══ DELETE ACCOUNT MODAL ═════════════════════════════════════════ */}
-      {deleteModal && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setDeleteModal(false); }}
-        >
-          <div className="modal-panel w-full max-w-sm p-6 space-y-4">
-            <div>
-              <h2 className="modal-title text-red-500">Delete Account</h2>
-              <p className="text-xs opacity-60 mt-1">
-                This will permanently delete your account and all associated data including inventory,
-                transactions, consigners, and expenses. This cannot be undone.
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium">Type <span className="font-mono font-bold">DELETE</span> to confirm</p>
-              <input
-                type="text"
-                placeholder="DELETE"
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background border-red-400/30 focus:border-red-500"
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-              />
-            </div>
-            {deleteError && <p className="text-xs text-red-500">{deleteError}</p>}
-            <div className="flex gap-2">
-              <button className="modal-btn-ghost flex-1" onClick={() => setDeleteModal(false)} disabled={deleteLoading}>
-                Cancel
-              </button>
-              <button
-                className="modal-btn-destructive flex-1"
-                onClick={handleDeleteAccount}
-                disabled={deleteConfirmText !== "DELETE" || deleteLoading}
-              >
-                {deleteLoading ? "Deleting…" : "Delete Forever"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

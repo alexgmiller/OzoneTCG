@@ -10,7 +10,6 @@ import {
   type DocType, type ExpenseCategory, type SavedLocation,
 } from "@/app/protected/expenses/actions";
 import type { ShowSessionSummary } from "@/app/protected/expenses/ExpensesServer";
-import { taxFeaturesEnabled, type BusinessStructure } from "@/lib/businessFeatures";
 import { estimateTaxSavings } from "@/lib/taxEstimate";
 import { ExpenseTooltip } from "./ExpenseTooltip";
 
@@ -185,7 +184,6 @@ export function ExpenseForm({
   existingPhotoUrl,
   title = "Add Expense",
   zIndex = 60,
-  businessStructure,
   lastShowMileage,
   homeAddress = null,
   savedLocations = [],
@@ -200,13 +198,10 @@ export function ExpenseForm({
   existingPhotoUrl?: string;
   title?: string;
   zIndex?: number;
-  businessStructure?: BusinessStructure;
   lastShowMileage?: { miles: string; description: string };
   homeAddress?: string | null;
   savedLocations?: SavedLocation[];
 }) {
-  const taxEnabled = businessStructure ? taxFeaturesEnabled(businessStructure) : true;
-
   const [form, setForm] = useState<FormState>(() =>
     buildForm({ category: defaultCategory, showSessionId: defaultShowSessionId, initial: initialValues }),
   );
@@ -534,10 +529,10 @@ export function ExpenseForm({
             <div>
               <div className="flex items-center mb-2">
                 <label className="text-xs opacity-50 uppercase tracking-wide font-mono">Category</label>
-                {taxEnabled && <ExpenseTooltip content={CATEGORY_TOOLTIP} />}
+                <ExpenseTooltip content={CATEGORY_TOOLTIP} />
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {CATEGORIES.filter((c) => taxEnabled || c.value !== "mileage").map((c) => (
+                {CATEGORIES.map((c) => (
                   <button
                     key={c.value}
                     onClick={() => setField("category", c.value)}
@@ -710,9 +705,7 @@ export function ExpenseForm({
                     <div className="text-sm font-semibold tabular-nums font-mono text-emerald-400">
                       = {money(mileageAmount)}
                     </div>
-                    {taxEnabled && (
-                      <div className="text-xs opacity-50">~{money(estimateTaxSavings(mileageAmount))} estimated tax savings</div>
-                    )}
+                    <div className="text-xs opacity-50">~{money(estimateTaxSavings(mileageAmount))} estimated tax savings</div>
                   </div>
                 )}
               </div>
@@ -728,7 +721,7 @@ export function ExpenseForm({
                     autoFocus
                   />
                 </div>
-                {taxEnabled && deductibleAmt > 0 && (
+                {deductibleAmt > 0 && (
                   <div className="rounded-lg border px-3 py-2 text-xs"
                     style={{ borderColor: "rgba(52,211,153,0.15)", background: "rgba(52,211,153,0.04)" }}
                   >
@@ -786,24 +779,22 @@ export function ExpenseForm({
             </div>
 
             {/* ── Deductible % + Payment method ── */}
-            <div className={`grid gap-3 ${taxEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
-              {taxEnabled && (
-                <div>
-                  <div className="flex items-center mb-1.5">
-                    <label className="text-xs opacity-50">Tax deductible %</label>
-                    <ExpenseTooltip content={DEDUCTIBLE_TOOLTIP} />
-                  </div>
-                  <input
-                    type="number" inputMode="decimal" min={0} max={100}
-                    className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background font-mono"
-                    value={form.deductible_percentage}
-                    onChange={(e) => setField("deductible_percentage", e.target.value)}
-                  />
-                  {form.category === "meals" && (
-                    <p className="text-xs opacity-40 mt-1">50% per IRS rules for business meals</p>
-                  )}
+            <div className="grid gap-3 grid-cols-2">
+              <div>
+                <div className="flex items-center mb-1.5">
+                  <label className="text-xs opacity-50">Tax deductible %</label>
+                  <ExpenseTooltip content={DEDUCTIBLE_TOOLTIP} />
                 </div>
-              )}
+                <input
+                  type="number" inputMode="decimal" min={0} max={100}
+                  className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background font-mono"
+                  value={form.deductible_percentage}
+                  onChange={(e) => setField("deductible_percentage", e.target.value)}
+                />
+                {form.category === "meals" && (
+                  <p className="text-xs opacity-40 mt-1">50% per IRS rules for business meals</p>
+                )}
+              </div>
               <div>
                 <label className="text-xs opacity-50 mb-1.5 block">Payment method</label>
                 <input

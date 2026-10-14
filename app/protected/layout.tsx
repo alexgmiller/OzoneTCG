@@ -1,11 +1,8 @@
-import { EnvVarWarning } from "@/components/env-var-warning";
 import { AuthButton } from "@/components/auth-button";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import MobileBottomNav from "@/components/NavLinks";
-import { hasEnvVars } from "@/lib/utils";
 import Link from "next/link";
 import { Suspense } from "react";
-import { hasPinConfigured } from "@/app/protected/guest/actions";
 import { getActiveShow } from "@/app/protected/show/actions";
 
 function money(v: number) {
@@ -17,10 +14,7 @@ export default async function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [pinConfigured, activeShow] = await Promise.all([
-    hasPinConfigured().catch(() => false),
-    getActiveShow().catch(() => null),
-  ]);
+  const activeShow = await getActiveShow().catch(() => null);
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -33,13 +27,9 @@ export default async function ProtectedLayout({
 
             <div className="flex items-center gap-2">
               <ThemeSwitcher />
-              {!hasEnvVars ? (
-                <EnvVarWarning />
-              ) : (
-                <Suspense>
-                  <AuthButton />
-                </Suspense>
-              )}
+              <Suspense>
+                <AuthButton />
+              </Suspense>
             </div>
           </div>
         </nav>
@@ -68,7 +58,7 @@ export default async function ProtectedLayout({
         </div>
       </div>
       {/* Rendered outside the sticky/backdrop-blur nav to keep fixed positioning intact on Safari */}
-      <MobileBottomNav hasPinConfigured={pinConfigured} hasActiveShow={!!activeShow} />
+      <MobileBottomNav hasActiveShow={!!activeShow} />
     </main>
   );
 }

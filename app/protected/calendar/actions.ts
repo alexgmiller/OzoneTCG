@@ -14,6 +14,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { revalidatePath } from "next/cache";
+import { addExpense } from "@/app/protected/expenses/actions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -302,6 +303,7 @@ export async function scheduleShow(data: {
   location?: string;
   hours?: string;
   startingCash?: number;
+  boothFee?: number;
   notes?: string;
 }): Promise<string> {
   const supabase = await createClient();
@@ -339,7 +341,22 @@ export async function scheduleShow(data: {
   }
 
   if (result.error) throw new Error(result.error.message);
+  const showId = result.data.id as string;
+
+  // Booth fee is a shared expense tagged to the show
+  if (data.boothFee && data.boothFee > 0) {
+    await addExpense({
+      description: `Booth fee — ${data.name.trim()}`,
+      cost: data.boothFee,
+      paid_by: "shared",
+      category: "booth_fee",
+      expense_date: data.date,
+      vendor_name: data.location?.trim() || null,
+      show_session_id: showId,
+    });
+  }
+
   revalidatePath("/protected/calendar");
   revalidatePath("/protected/shows");
-  return result.data.id as string;
+  return showId;
 }

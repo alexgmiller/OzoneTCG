@@ -29,10 +29,11 @@ file is the source of truth for what has been applied.
 | `20240424_business_structure.sql` | ❓ | Unverified. workspaces business_* columns + workspace_partners |
 | `20240425_expense_documentation.sql` | ❓ | Unverified. expenses documentation_* columns |
 | `20240426_mileage_helpers.sql` | ❓ | Unverified. home/venue addresses + workspace_saved_locations |
-| `20240427_shows_calendar.sql` | ❓ | Unverified. card_shows + scraper_runs + workspace_bookmarked_shows |
+| `20240427_shows_calendar.sql` | ❓ | Unverified. card_shows + scraper_runs + workspace_bookmarked_shows. **Obsolete** — the TCDB scraper and shows-calendar page were removed in internal-v1; no need to run. |
 | `20260720_market_signals.sql` | ✅ | sold_comps + pop_snapshots + RLS + prune fn (applied 2026-07-21) |
 | `20260720_card_embeddings.sql` | ✅ | pgvector + match_card RPC (applied 2026-07-20) |
 | `20260721_scan_photos.sql` | ✅ | scan photo persistence for recognition training data (applied 2026-07-21) |
+| `20261013_internal_v1.sql` | ⬜ | Drops guest_pins, scan_photos, card_embeddings (+ match_card), pop_snapshots, scan-photos bucket. Take the backups at the top first. After running, those tables will show MISSING in the check below — expected. |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.
 > ❓ = not yet checked against the live database; run the query below and flip to ✅ or ⬜.

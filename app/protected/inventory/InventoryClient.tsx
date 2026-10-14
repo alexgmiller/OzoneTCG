@@ -2,14 +2,13 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Search, Plus, List, Grid2X2 } from "lucide-react";
+import { Search, Plus, List, Grid2X2 } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
 import { createItem, createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, refreshItemPrice, fetchCardData, uploadItemImage, refreshSlabPrice, getEbayDailyCallCount, refreshRawCardPrice, refreshSealedPrice, type RefreshedSlabPrice, type RefreshedRawCardPrice } from "./actions";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
 import { makeSlabPriceKey, parseGrade } from "@/lib/ebay-client";
 import { makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
 import { computeBlendedFMV, type FMVResult, type PricingStrategyOverride } from "@/lib/fmv";
-import CardScanner, { type ScanResult } from "@/components/CardScanner";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
 import type { Category, Owner, Status, SortKey, ConsignerOption, Item, ItemForm, StagedItem, Psa10Entry } from "./types";
 import {
@@ -54,7 +53,6 @@ export default function InventoryClient({
   const [inventoryOpen, setInventoryOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
   const [cardSearchOpen, setCardSearchOpen] = useState(false);
   const [editImagePickerOpen, setEditImagePickerOpen] = useState(false);
 
@@ -613,19 +611,6 @@ export default function InventoryClient({
   function openEdit(it: Item) { setEditingItem(it); setEditForm(itemToForm(it)); }
   function closeEdit() { setEditingItem(null); setDeleteConfirm(false); }
 
-  function onScanResult(data: ScanResult) {
-    setAddForm({
-      ...blankForm(),
-      name: data.name,
-      condition: data.condition,
-      market: data.market != null ? String(data.market) : "",
-      imageUrl: data.imageUrl ?? "",
-      setName: data.setName,
-      cardNumber: data.cardNumber,
-    });
-    setAddOpen(true);
-  }
-
   async function onCardSearchResult(data: CardSearchResult) {
     // Pre-fill with picker data immediately
     setAddForm((prev) => ({
@@ -926,7 +911,6 @@ export default function InventoryClient({
 
   return (
     <div className={`space-y-4 ${selectedIds.size > 0 ? "pb-32" : ""}`}>
-      <CardScanner open={scanOpen} onClose={() => setScanOpen(false)} onResult={onScanResult} />
       <CardSearchPicker
         open={cardSearchOpen || editImagePickerOpen}
         onClose={() => { setCardSearchOpen(false); setEditImagePickerOpen(false); }}
@@ -940,7 +924,6 @@ export default function InventoryClient({
       <AddItemPanel
         addOpen={addOpen}
         setAddOpen={setAddOpen}
-        setScanOpen={setScanOpen}
         consigners={consigners}
         addForm={addForm}
         setAddForm={setAddForm}
@@ -1453,12 +1436,6 @@ export default function InventoryClient({
               onClick={() => { setFabOpen(false); setMobileFilterOpen(true); }}
             >
               <Search size={14} />Search &amp; Filter
-            </button>
-            <button
-              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-card border border-border shadow-lg text-sm font-medium whitespace-nowrap"
-              onClick={() => { setFabOpen(false); setScanOpen(true); }}
-            >
-              <Camera size={14} />Scan Card
             </button>
           </>
         )}

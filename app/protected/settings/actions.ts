@@ -1,12 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import type { BusinessStructure } from "@/lib/businessFeatures";
 
 export type UserSettings = {
   display_name: string | null;
@@ -22,7 +18,6 @@ export type UserSettings = {
   currency: string;
   default_sort: string;
   price_alert_threshold: number;
-  guest_display_name: string | null;
   /** FMV tier strategy. Requires: ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS pricing_strategy TEXT DEFAULT 'auto'; */
   pricing_strategy: "auto" | "q1" | "median" | "q3";
   /** PSA grading cost per card in USD. Requires: ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS grading_cost NUMERIC DEFAULT 20; */
@@ -43,7 +38,6 @@ const SETTINGS_DEFAULTS: UserSettings = {
   currency: "USD",
   default_sort: "date-desc",
   price_alert_threshold: 15,
-  guest_display_name: null,
   pricing_strategy: "auto",
   grading_cost: 20,
 };
@@ -86,29 +80,9 @@ export async function sendPasswordResetEmail(): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function deleteAccount(): Promise<void> {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) throw new Error("Not logged in");
-
-  const admin = createAdminClient();
-  const { error } = await admin.auth.admin.deleteUser(auth.user.id);
-  if (error) throw new Error(error.message);
-
-  const cookieStore = await cookies();
-  cookieStore.delete("guestMode");
-  redirect("/auth/login");
-}
-
-// ── Workspace (business structure) ────────────────────────────────────────────
+// ── Workspace ─────────────────────────────────────────────────────────────────
 
 export type WorkspaceData = {
-  business_structure: BusinessStructure;
-  business_name: string | null;
-  business_ein: string | null;
-  business_state: string | null;
-  s_corp_election: boolean;
-  business_structure_confirmed: boolean;
   home_address: string | null;
 };
 
@@ -122,12 +96,6 @@ export type SavedLocation = {
 };
 
 const WORKSPACE_DEFAULTS: WorkspaceData = {
-  business_structure: "sole_prop",
-  business_name: null,
-  business_ein: null,
-  business_state: null,
-  s_corp_election: false,
-  business_structure_confirmed: false,
   home_address: null,
 };
 
@@ -137,7 +105,7 @@ export async function loadWorkspaceData(): Promise<WorkspaceData> {
 
   const { data } = await supabase
     .from("workspaces")
-    .select("business_structure,business_name,business_ein,business_state,s_corp_election,business_structure_confirmed,home_address")
+    .select("home_address")
     .eq("id", workspaceId)
     .maybeSingle();
 
@@ -192,29 +160,6 @@ export async function deleteSavedLocation(id: string): Promise<void> {
     .eq("workspace_id", workspaceId);
   if (error) throw new Error(error.message);
   revalidatePath("/protected/settings");
-}
-
-export async function updateBusinessStructure(patch: {
-  business_structure: BusinessStructure;
-  business_name?: string | null;
-  business_ein?: string | null;
-  business_state?: string | null;
-  s_corp_election?: boolean;
-}): Promise<void> {
-  const supabase = await createClient();
-  const workspaceId = await getWorkspaceId();
-
-  const { error } = await supabase
-    .from("workspaces")
-    .update({
-      ...patch,
-      business_structure_confirmed: true,
-    })
-    .eq("id", workspaceId);
-
-  if (error) throw new Error(error.message);
-  revalidatePath("/protected/settings");
-  revalidatePath("/protected/expenses");
 }
 
 // ── CSV export helpers ────────────────────────────────────────────────────────

@@ -3,11 +3,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { ScanLine, ShoppingBag, DollarSign, ArrowLeftRight, Handshake, Camera, Clock } from "lucide-react";
+import { ScanLine, ShoppingBag, DollarSign, ArrowLeftRight, Handshake, Clock } from "lucide-react";
 import { type AutocompleteCard } from "@/components/CardAutocomplete";
 import { type CertWidgetResult } from "@/components/CertLookupWidget";
-import CardImageScanner, { type CardImageScanResult } from "@/components/CardImageScanner";
-import { preloadOcrWorker } from "@/lib/ocrCardReader";
 import {
   createShowSession,
   getShowSession,
@@ -194,13 +192,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
   const [tradeShowMore, setTradeShowMore] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
-  // ── Card image scanner ────────────────────────────────────────────────────
-
-  // Which tab triggered the scanner: "buy" | "trade-getting" | "deal-add" | "deal-inventory"
-  const [scannerOpen, setScannerOpen] = useState<"buy" | "trade-getting" | "trade-inventory" | "deal-add" | "deal-inventory" | null>(null);
-  // Which tradeComingIn card id to fill (for trade-getting)
-  const [scannerTradeCardId, setScannerTradeCardId] = useState<string | null>(null);
-  const [scanToast, setScanToast] = useState<string | null>(null);
 
   useEffect(() => { setIsMounted(true); }, []);
 
@@ -265,18 +256,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
       }
     })();
   }, [initialActiveSession]);
-
-  // Preload Tesseract OCR worker once the session is active
-  useEffect(() => {
-    if (phase !== "active") return;
-    preloadOcrWorker();
-  }, [phase]);
-
-  // Dismiss the card scanner whenever the user switches tabs
-  useEffect(() => {
-    setScannerOpen(null);
-    setScannerTradeCardId(null);
-  }, [tab]);
 
   // Load trade/sell/deal inventory once when any of those tabs is opened
   useEffect(() => {
@@ -355,72 +334,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
     setSyncToast({ msg: "Saved offline — will sync when connected", kind: "warn" });
     setTimeout(() => setSyncToast(null), 4000);
     getPendingCount().then(setPendingCount).catch(() => {});
-  }
-
-  // ── Card image scanner handler ────────────────────────────────────────────
-
-  function handleScanResult(result: CardImageScanResult) {
-    setScannerOpen(null);
-
-    const displayName = result.matchedName ?? result.name;
-    const confLabel = result.confidence >= 80 ? "high" : result.confidence >= 50 ? "medium" : "low";
-    const sourceBadge = result.scanSource === "ocr" ? " ⚡" : result.scanSource === "cloud" ? " ☁️" : "";
-    const toastMsg = `${displayName}${result.confidence > 0 ? ` · ${confLabel} confidence` : ""}${sourceBadge}`;
-    setScanToast(toastMsg);
-    setTimeout(() => setScanToast(null), 4000);
-
-    if (scannerOpen === "buy") {
-      // Fill the Buy tab search with the matched card
-      const name = result.matchedName ?? result.name;
-      setBatchQuery(name);
-      if (result.matchedName) {
-        setBatchCard({
-          name: result.matchedName,
-          setName: result.matchedSetName ?? result.set_name ?? "",
-          cardNumber: result.matchedCardNumber ?? result.card_number ?? "",
-          imageUrl: result.matchedImageUrl ?? null,
-          market: result.matchedMarket ?? null,
-          cardId: result.matchedCardId,
-        });
-        if (result.matchedMarket != null) setBatchMarket(result.matchedMarket.toFixed(2));
-      }
-    } else if (scannerOpen === "trade-getting" && scannerTradeCardId) {
-      // Fill the tradeComingIn entry
-      const name = result.matchedName ?? result.name;
-      setTradeComingIn((prev) =>
-        prev.map((c) =>
-          c._id === scannerTradeCardId
-            ? {
-                ...c,
-                name,
-                marketPrice: result.matchedMarket != null ? result.matchedMarket.toFixed(2) : c.marketPrice,
-              }
-            : c
-        )
-      );
-      setScannerTradeCardId(null);
-    } else if (scannerOpen === "trade-inventory") {
-      // Filter the trade inventory grid by the scanned card name
-      setTradeInventoryQuery(result.matchedName ?? result.name);
-    } else if (scannerOpen === "deal-add") {
-      // Pre-fill the deal card add form
-      const name = result.matchedName ?? result.name;
-      setDealAddName(name);
-      if (result.matchedName) {
-        setDealAddCard({
-          name: result.matchedName,
-          setName: result.matchedSetName ?? result.set_name ?? "",
-          cardNumber: result.matchedCardNumber ?? result.card_number ?? "",
-          imageUrl: result.matchedImageUrl ?? null,
-          market: result.matchedMarket ?? null,
-          cardId: result.matchedCardId,
-        });
-        if (result.matchedMarket != null) setDealAddMarket(result.matchedMarket.toFixed(2));
-      }
-    } else if (scannerOpen === "deal-inventory") {
-      // Filter the deal inventory grid by the scanned card name
-      setDealInventoryQuery(result.matchedName ?? result.name);
-    }
   }
 
   // ── Deal photo handlers ───────────────────────────────────────────────────
@@ -1420,14 +1333,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
         </div>
       )}
 
-      {/* ── Scan success toast ── */}
-      {scanToast && (
-        <div className="mx-4 mt-3 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 flex items-center gap-2">
-          <Camera size={14} className="shrink-0" />
-          {scanToast}
-        </div>
-      )}
-
       {/* ── Tab content ── */}
       <div className="px-4 pt-3 pb-20 md:pb-4">
         {tab === "scan" && (
@@ -1493,7 +1398,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
             onBatchFlatChange={onBatchFlatChange}
             handleAddToBatch={handleAddToBatch}
             handleFinalizeBatch={handleFinalizeBatch}
-            setScannerOpen={setScannerOpen}
           />
         )}
         {tab === "sell" && (
@@ -1567,7 +1471,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
             handleDealSetBuyPrice={handleDealSetBuyPrice}
             handleDealReset={handleDealReset}
             handleCompleteDeal={handleCompleteDeal}
-            setScannerOpen={setScannerOpen}
           />
         )}
         {tab === "trade" && (
@@ -1598,8 +1501,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
             setTradeShowMore={setTradeShowMore}
             busy={busy}
             isMounted={isMounted}
-            setScannerOpen={setScannerOpen}
-            setScannerTradeCardId={setScannerTradeCardId}
             handleRecordTrade={handleRecordTrade}
             err={err}
           />
@@ -1676,14 +1577,6 @@ export default function ShowClient({ recentShows, initialActiveSession }: Props)
           photoInputRef={photoInputRef}
           dismissPhotoPrompt={dismissPhotoPrompt}
           handlePhotoConfirm={handlePhotoConfirm}
-        />
-      )}
-
-      {/* ── Card image scanner ── */}
-      {scannerOpen && (
-        <CardImageScanner
-          onResult={handleScanResult}
-          onClose={() => { setScannerOpen(null); setScannerTradeCardId(null); }}
         />
       )}
 

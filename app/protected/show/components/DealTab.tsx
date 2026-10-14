@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Camera, Handshake } from "lucide-react";
+import { Handshake } from "lucide-react";
 import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
 import CertLookupWidget from "@/components/CertLookupWidget";
 import type { InventorySearchResult } from "../actions";
@@ -60,7 +60,6 @@ type Props = {
   handleDealSetBuyPrice: (id: string, val: string) => void;
   handleDealReset: () => void;
   handleCompleteDeal: () => void;
-  setScannerOpen: React.Dispatch<React.SetStateAction<"buy" | "trade-getting" | "trade-inventory" | "deal-add" | "deal-inventory" | null>>;
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -107,7 +106,6 @@ export default function DealTab({
   handleDealSetBuyPrice,
   handleDealReset,
   handleCompleteDeal,
-  setScannerOpen,
 }: Props) {
   const cashCards = dealCards.filter((c) => c.disposition === "cash");
   const tradeCards = dealCards.filter((c) => c.disposition === "trade");
@@ -217,13 +215,6 @@ export default function DealTab({
                   className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
                 />
               </div>
-              <button
-                onClick={() => setScannerOpen("deal-add")}
-                className="shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center opacity-60 hover:opacity-90 transition-opacity"
-                title="Scan card"
-              >
-                <Camera size={16} />
-              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -478,12 +469,6 @@ export default function DealTab({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-semibold opacity-60">Pick items to trade out</div>
-                <button
-                  onClick={() => setScannerOpen("deal-inventory")}
-                  className="flex items-center gap-1 text-[10px] opacity-50 hover:opacity-80 border rounded-lg px-2 py-1 transition-opacity"
-                >
-                  <Camera size={11} /> Scan
-                </button>
               </div>
 
               <div className="flex gap-2">

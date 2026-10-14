@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/refresh-raw-cards",
       "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/scrape-shows",
-      "schedule": "0 5 * * *"
     }
   ]
 }

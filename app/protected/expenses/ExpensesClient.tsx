@@ -13,7 +13,6 @@ import {
   type DocType, type ExpenseCategory, type SavedLocation,
 } from "./actions";
 import type { ExpenseRow, ShowSessionSummary } from "./ExpensesServer";
-import { taxFeaturesEnabled, scheduleCEligible, type BusinessStructure } from "@/lib/businessFeatures";
 import { estimateTaxSavings, TAX_SAVINGS_DISCLAIMER } from "@/lib/taxEstimate";
 import ConfirmationModal from "@/components/ConfirmationModal";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -83,18 +82,15 @@ export default function ExpensesClient({
   workspaceId,
   initialExpenses,
   showSessions,
-  businessStructure,
   homeAddress = null,
   savedLocations = [],
 }: {
   workspaceId: string;
   initialExpenses: ExpenseRow[];
   showSessions: ShowSessionSummary[];
-  businessStructure: BusinessStructure;
   homeAddress?: string | null;
   savedLocations?: SavedLocation[];
 }) {
-  const taxEnabled = taxFeaturesEnabled(businessStructure);
   const router = useRouter();
   const currentYear = new Date().getFullYear();
   const yearOptions = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3];
@@ -350,15 +346,13 @@ export default function ExpensesClient({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {taxEnabled && (
-            <a
-              href="/protected/expenses/tax-report"
-              className="text-xs px-2.5 py-1 rounded-lg border transition-colors hover:bg-white/5 text-violet-400"
-              style={{ borderColor: "rgba(139,92,246,0.30)" }}
-            >
-              Tax Report →
-            </a>
-          )}
+          <a
+            href="/protected/expenses/tax-report"
+            className="text-xs px-2.5 py-1 rounded-lg border transition-colors hover:bg-white/5 text-violet-400"
+            style={{ borderColor: "rgba(139,92,246,0.30)" }}
+          >
+            Tax Report →
+          </a>
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -372,25 +366,23 @@ export default function ExpensesClient({
       </div>
 
       {/* ── Readiness pill row ── */}
-      {taxEnabled && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            {docsExplained && (
-              <button
-                onClick={() => setDocsModalOpen(true)}
-                className="opacity-30 hover:opacity-60 transition-opacity"
-                title="About documentation"
-              >
-                <Info size={13} />
-              </button>
-            )}
-          </div>
-          <YearEndReadinessPill
-            expenses={initialExpenses}
-            onEditExpense={(id) => { openEditById(id); }}
-          />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          {docsExplained && (
+            <button
+              onClick={() => setDocsModalOpen(true)}
+              className="opacity-30 hover:opacity-60 transition-opacity"
+              title="About documentation"
+            >
+              <Info size={13} />
+            </button>
+          )}
         </div>
-      )}
+        <YearEndReadinessPill
+          expenses={initialExpenses}
+          onEditExpense={(id) => { openEditById(id); }}
+        />
+      </div>
 
       {/* ── Educational banner (compact, expandable, one-time) ── */}
       {!docsExplained && (
@@ -466,7 +458,7 @@ export default function ExpensesClient({
       )}
 
       {/* ── Hero stat tiles — Vault B pattern ── */}
-      <div className={`grid gap-3 grid-cols-2 ${taxEnabled ? "sm:grid-cols-3" : ""}`}>
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
         {/* Gross — amber gold treatment */}
         <div className="relative rounded-xl border overflow-hidden p-4 flex flex-col gap-1.5 bg-card/60"
           style={{ borderColor: "rgba(245,158,11,0.22)" }}>
@@ -486,33 +478,31 @@ export default function ExpensesClient({
         </div>
 
         {/* Tax Deductible — emerald treatment */}
-        {taxEnabled && (
-          <div className="relative rounded-xl border overflow-hidden p-4 flex flex-col gap-1.5 bg-card/60"
-            style={{ borderColor: "rgba(52,211,153,0.20)" }}>
-            <div className="pointer-events-none absolute -top-5 -right-5 w-20 h-20 rounded-full"
-              style={{ background: "radial-gradient(circle, rgba(52,211,153,0.12), transparent 65%)" }} />
-            <span className="font-mono text-xs uppercase tracking-[0.16em]" style={{ color: "rgba(52,211,153,0.80)" }}>
-              Tax deductible
+        <div className="relative rounded-xl border overflow-hidden p-4 flex flex-col gap-1.5 bg-card/60"
+          style={{ borderColor: "rgba(52,211,153,0.20)" }}>
+          <div className="pointer-events-none absolute -top-5 -right-5 w-20 h-20 rounded-full"
+            style={{ background: "radial-gradient(circle, rgba(52,211,153,0.12), transparent 65%)" }} />
+          <span className="font-mono text-xs uppercase tracking-[0.16em]" style={{ color: "rgba(52,211,153,0.80)" }}>
+            Tax deductible
+          </span>
+          <span
+            className="text-2xl font-semibold tabular-nums tracking-tight font-mono text-positive"
+            style={{ textShadow: "0 0 18px rgba(52,211,153,0.28)" }}
+          >
+            <MoneyDisplay amount={totals.deductible} tone="positive" />
+          </span>
+          <div className="min-h-4">
+            <span className="text-xs" style={{ color: "rgba(52,211,153,0.55)" }}>
+              {totals.deductible > 0
+                ? `~${estimateTaxSavings(totals.deductible).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} saved`
+                : `${filtered.length} expense${filtered.length !== 1 ? "s" : ""}`}
             </span>
-            <span
-              className="text-2xl font-semibold tabular-nums tracking-tight font-mono text-positive"
-              style={{ textShadow: "0 0 18px rgba(52,211,153,0.28)" }}
-            >
-              <MoneyDisplay amount={totals.deductible} tone="positive" />
-            </span>
-            <div className="min-h-4">
-              <span className="text-xs" style={{ color: "rgba(52,211,153,0.55)" }}>
-                {totals.deductible > 0
-                  ? `~${estimateTaxSavings(totals.deductible).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} saved`
-                  : `${filtered.length} expense${filtered.length !== 1 ? "s" : ""}`}
-              </span>
-            </div>
           </div>
-        )}
+        </div>
 
         {/* Miles — violet/neutral treatment */}
         <div
-          className={`relative rounded-xl border overflow-hidden p-4 flex flex-col gap-1.5 bg-card/60 ${taxEnabled ? "col-span-2 sm:col-span-1" : ""}`}
+          className="relative rounded-xl border overflow-hidden p-4 flex flex-col gap-1.5 bg-card/60 col-span-2 sm:col-span-1"
           style={{ borderColor: "rgba(139,92,246,0.20)" }}
         >
           <div className="pointer-events-none absolute -top-5 -right-5 w-20 h-20 rounded-full"
@@ -525,7 +515,7 @@ export default function ExpensesClient({
           </span>
           <div className="min-h-4">
             <span className="text-xs" style={{ color: "rgba(139,92,246,0.55)" }}>
-              {taxEnabled && totals.mileageTotal > 0
+              {totals.mileageTotal > 0
                 ? `~${estimateTaxSavings(totals.mileageTotal * 0.70).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} deductible`
                 : `${filtered.filter((e) => e.category === "mileage").length} trips`}
             </span>
@@ -560,7 +550,7 @@ export default function ExpensesClient({
       )}
 
       {/* ── Annual mileage motivator ── */}
-      {taxEnabled && yearMileage > 0 && (
+      {yearMileage > 0 && (
         <div className="flex items-center justify-between rounded-xl border px-4 py-2.5 text-xs"
           style={{ borderColor: "rgba(139,92,246,0.18)", background: "rgba(139,92,246,0.05)" }}
         >
@@ -574,7 +564,7 @@ export default function ExpensesClient({
       )}
 
       {/* IRS receipt warning — only shown when 3+ items need attention */}
-      {taxEnabled && totals.missingReceiptCount >= 3 && (
+      {totals.missingReceiptCount >= 3 && (
         <div
           className="flex items-start gap-2.5 rounded-xl border px-3 py-3"
           style={{
@@ -600,13 +590,13 @@ export default function ExpensesClient({
         <div className="relative flex-1 min-w-0">
           <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory pb-0.5 pr-8 [&::-webkit-scrollbar]:hidden">
             {[
-              { cat: "meals"     as ExpenseCategory, label: "Meal",     taxOnly: false },
-              { cat: "mileage"   as ExpenseCategory, label: "Mileage",  taxOnly: true  },
-              { cat: "lodging"   as ExpenseCategory, label: "Hotel",    taxOnly: false },
-              { cat: "booth_fee" as ExpenseCategory, label: "Booth Fee",taxOnly: false },
-              { cat: "supplies"  as ExpenseCategory, label: "Supplies", taxOnly: false },
-              { cat: "other"     as ExpenseCategory, label: "Other",    taxOnly: false },
-            ].filter(({ taxOnly }) => !taxOnly || taxEnabled).map(({ cat, label }) => {
+              { cat: "meals"     as ExpenseCategory, label: "Meal" },
+              { cat: "mileage"   as ExpenseCategory, label: "Mileage" },
+              { cat: "lodging"   as ExpenseCategory, label: "Hotel" },
+              { cat: "booth_fee" as ExpenseCategory, label: "Booth Fee" },
+              { cat: "supplies"  as ExpenseCategory, label: "Supplies" },
+              { cat: "other"     as ExpenseCategory, label: "Other" },
+            ].map(({ cat, label }) => {
               const meta = catMeta(cat);
               return (
                 <button
@@ -642,7 +632,6 @@ export default function ExpensesClient({
           <div className="relative flex-1 min-w-0">
             <div className="flex gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5 pr-8">
               {CATEGORIES
-                .filter((c) => taxEnabled || c.value !== "mileage")
                 .map((c) => (
                   <button
                     key={c.value}
@@ -763,7 +752,6 @@ export default function ExpensesClient({
                   key={e.id}
                   expense={e}
                   uploadingFor={uploadingFor}
-                  taxEnabled={taxEnabled}
                   onEdit={() => openEdit(e)}
                   onDelete={() => setConfirmDeleteId(e.id)}
                   onReceiptPick={() => handleReceiptPick(e.id)}
@@ -783,7 +771,6 @@ export default function ExpensesClient({
           onSave={handleSave}
           showSessions={showSessions}
           defaultCategory={formCategory}
-          businessStructure={businessStructure}
           lastShowMileage={!editingExpense ? lastShowMileage : undefined}
           existingPhotoUrl={editingExpense?.receipt_url ?? undefined}
           homeAddress={homeAddress}
@@ -850,7 +837,6 @@ export default function ExpensesClient({
 function ExpenseRowItem({
   expense: e,
   uploadingFor,
-  taxEnabled,
   onEdit,
   onDelete,
   onReceiptPick,
@@ -858,7 +844,6 @@ function ExpenseRowItem({
 }: {
   expense: ExpenseRow;
   uploadingFor: string | null;
-  taxEnabled: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onReceiptPick: () => void;
@@ -965,10 +950,10 @@ function ExpenseRowItem({
           <div className="text-sm font-semibold tabular-nums font-mono text-negative">
             <MoneyDisplay amount={e.cost} tone="negative" />
           </div>
-          {taxEnabled && e.deductible_percentage === 100 && e.cost > 0 && (
+          {e.deductible_percentage === 100 && e.cost > 0 && (
             <div className="text-xs font-mono text-positive/50">100% ded.</div>
           )}
-          {taxEnabled && e.deductible_percentage > 0 && e.deductible_percentage < 100 && (
+          {e.deductible_percentage > 0 && e.deductible_percentage < 100 && (
             <div className="text-xs tabular-nums font-mono text-positive/70">
               <MoneyDisplay amount={deductibleAmt} tone="positive" /> ded.
             </div>
@@ -993,7 +978,7 @@ function ExpenseRowItem({
           {e.payment_method && (
             <span className="text-xs opacity-40">{e.payment_method}</span>
           )}
-          {taxEnabled && deductibleAmt > 0 && (
+          {deductibleAmt > 0 && (
             <span className="text-xs opacity-50">~{money(deductibleAmt * 0.27)} saved on this</span>
           )}
           {missingReceipt && (

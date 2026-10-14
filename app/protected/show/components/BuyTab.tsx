@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ScanLine, Camera, X as XIcon } from "lucide-react";
+import { ScanLine, X as XIcon } from "lucide-react";
 import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
 import CertLookupWidget from "@/components/CertLookupWidget";
 import type { GradeCompany, StagedBuy } from "../types";
@@ -64,7 +64,6 @@ type Props = {
   onBatchFlatChange: (val: string) => void;
   handleAddToBatch: () => void;
   handleFinalizeBatch: () => void;
-  setScannerOpen: React.Dispatch<React.SetStateAction<"buy" | "trade-getting" | "trade-inventory" | "deal-add" | "deal-inventory" | null>>;
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -108,7 +107,6 @@ export default function BuyTab({
   onBatchFlatChange,
   handleAddToBatch,
   handleFinalizeBatch,
-  setScannerOpen,
 }: Props) {
   const batchMarketNum = parseFloat(batchMarket) || 0;
   const flatAmt = parseFloat(batchFlatAmount) || 0;
@@ -166,17 +164,6 @@ export default function BuyTab({
               placeholder="Search card name…"
               className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
             />
-            {/* Camera scan button */}
-            {!batchCard && (
-              <button
-                type="button"
-                onClick={() => setScannerOpen("buy")}
-                className="flex items-center justify-center w-10 rounded-lg border border-border/60 opacity-60 hover:opacity-100 transition-opacity shrink-0"
-                title="Scan card with camera"
-              >
-                <Camera size={16} />
-              </button>
-            )}
             {batchCategory === "slab" && !batchCard && (
               <button
                 type="button"

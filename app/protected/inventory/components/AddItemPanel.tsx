@@ -1,6 +1,5 @@
 "use client";
 
-import { Camera } from "lucide-react";
 import CSVImport from "../CSVImport";
 import type { Category, Owner, Condition, ConsignerOption, ItemForm, StagedItem } from "../types";
 import ItemFormFields from "./ItemFormFields";
@@ -9,7 +8,6 @@ import ItemFormFields from "./ItemFormFields";
 export default function AddItemPanel({
   addOpen,
   setAddOpen,
-  setScanOpen,
   consigners,
   addForm,
   setAddForm,
@@ -24,7 +22,6 @@ export default function AddItemPanel({
 }: {
   addOpen: boolean;
   setAddOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setScanOpen: (v: boolean) => void;
   consigners: ConsignerOption[];
   addForm: ItemForm;
   setAddForm: (f: ItemForm) => void;
@@ -48,13 +45,6 @@ export default function AddItemPanel({
           Add item
         </button>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setScanOpen(true)}
-            className="text-sm px-2.5 py-1 border rounded-lg hover:bg-muted transition-colors"
-            title="Scan a card"
-          >
-            <Camera size={14} className="inline mr-1" />Scan
-          </button>
           <CSVImport consigners={consigners} />
         </div>
       </div>

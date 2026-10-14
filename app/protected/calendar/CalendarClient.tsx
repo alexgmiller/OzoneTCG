@@ -599,7 +599,7 @@ function ScheduleShowModal({
   date: string;
   onDateChange: (d: string) => void;
   onClose: () => void;
-  onSubmit: (data: { name: string; location: string; hours: string; startingCash: string; notes: string }) => void;
+  onSubmit: (data: { name: string; location: string; hours: string; startingCash: string; boothFee: string; notes: string }) => void;
   busy: boolean;
   err: string;
 }) {
@@ -607,13 +607,14 @@ function ScheduleShowModal({
   const [location, setLocation]         = useState("");
   const [hours, setHours]               = useState("");
   const [startingCash, setStartingCash] = useState("");
+  const [boothFee, setBoothFee]         = useState("");
   const [notes, setNotes]               = useState("");
   const [submitted, setSubmitted]       = useState(false);
 
   // Reset field + validation state when the modal opens.
   useEffect(() => {
     if (open) {
-      setName(""); setLocation(""); setHours(""); setStartingCash(""); setNotes("");
+      setName(""); setLocation(""); setHours(""); setStartingCash(""); setBoothFee(""); setNotes("");
       setSubmitted(false);
     }
   }, [open]);
@@ -637,7 +638,7 @@ function ScheduleShowModal({
       else document.getElementById("ssm-date")?.focus();
       return;
     }
-    onSubmit({ name, location, hours, startingCash, notes });
+    onSubmit({ name, location, hours, startingCash, boothFee, notes });
   }
 
   return (
@@ -692,10 +693,10 @@ function ScheduleShowModal({
             {dateErr && <p className="text-xs text-negative mt-1">Required</p>}
           </div>
 
-          {/* Location — optional */}
+          {/* Venue — optional */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider opacity-60 mb-1.5">
-              Location <span className="text-xs normal-case font-normal tracking-normal opacity-40">optional</span>
+              Venue <span className="text-xs normal-case font-normal tracking-normal opacity-40">optional</span>
             </label>
             <input
               className="w-full"
@@ -731,6 +732,23 @@ function ScheduleShowModal({
               step="0.01"
               value={startingCash}
               onChange={(e) => setStartingCash(e.target.value)}
+            />
+          </div>
+
+          {/* Booth Fee — optional, logged as a show expense */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider opacity-60 mb-1.5">
+              Booth Fee <span className="text-xs normal-case font-normal tracking-normal opacity-40">optional</span>
+            </label>
+            <input
+              type="number"
+              inputMode="decimal"
+              className="w-full"
+              placeholder="e.g. 150"
+              min="0"
+              step="0.01"
+              value={boothFee}
+              onChange={(e) => setBoothFee(e.target.value)}
             />
           </div>
 
@@ -951,7 +969,7 @@ export default function CalendarClient({
   }
 
   async function handleScheduleShow(fields: {
-    name: string; location: string; hours: string; startingCash: string; notes: string;
+    name: string; location: string; hours: string; startingCash: string; boothFee: string; notes: string;
   }) {
     if (!fields.name.trim()) { setScheduleErr("Show name is required"); return; }
     setScheduleBusy(true);
@@ -963,6 +981,7 @@ export default function CalendarClient({
         location: fields.location || undefined,
         hours:    fields.hours || undefined,
         startingCash: fields.startingCash ? parseFloat(fields.startingCash) : undefined,
+        boothFee: fields.boothFee ? parseFloat(fields.boothFee) : undefined,
         notes:    fields.notes || undefined,
       });
       setScheduleOpen(false);

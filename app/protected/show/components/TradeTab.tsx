@@ -2,7 +2,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
-import { Camera, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import CertLookupWidget, { type CertWidgetResult } from "@/components/CertLookupWidget";
 import type { InventorySearchResult } from "../actions";
 import type { SortBy, PriceRange, TradeComingIn } from "../types";
@@ -44,8 +44,6 @@ type Props = {
   setTradeShowMore: React.Dispatch<React.SetStateAction<boolean>>;
   busy: boolean;
   isMounted: boolean;
-  setScannerOpen: React.Dispatch<React.SetStateAction<"buy" | "trade-getting" | "trade-inventory" | "deal-add" | "deal-inventory" | null>>;
-  setScannerTradeCardId: React.Dispatch<React.SetStateAction<string | null>>;
   handleRecordTrade: () => void;
   err: (msg: string) => void;
 };
@@ -79,8 +77,6 @@ export default function TradeTab({
   setTradeShowMore,
   busy,
   isMounted,
-  setScannerOpen,
-  setScannerTradeCardId,
   handleRecordTrade,
   err,
 }: Props) {
@@ -116,14 +112,6 @@ export default function TradeTab({
             value={tradeInventoryQuery}
             onChange={(e) => setTradeInventoryQuery(e.target.value)}
           />
-          <button
-            type="button"
-            onClick={() => setScannerOpen("trade-inventory")}
-            className="flex items-center justify-center w-10 rounded-xl border border-border/60 opacity-60 hover:opacity-100 transition-opacity shrink-0"
-            title="Scan card with camera"
-          >
-            <Camera size={16} />
-          </button>
         </div>
 
         {/* Category filter pills + clear */}
@@ -343,15 +331,6 @@ export default function TradeTab({
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] opacity-40">Card {idx + 1}</span>
                         <div className="flex items-center gap-2">
-                          {/* Camera scan for incoming card */}
-                          <button
-                            type="button"
-                            onClick={() => { setScannerTradeCardId(card._id); setScannerOpen("trade-getting"); }}
-                            className="opacity-40 hover:opacity-80 transition-opacity p-0.5"
-                            title="Scan card with camera"
-                          >
-                            <Camera size={13} />
-                          </button>
                           <CertLookupWidget
                             label="Cert"
                             onResult={(r: CertWidgetResult) =>

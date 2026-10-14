@@ -295,7 +295,7 @@ export default function ItemFormFields({
         />
         <input
           className="border rounded-lg px-3 py-2 text-sm bg-background col-span-2"
-          placeholder="Sticker price (shown to guests)"
+          placeholder="Sticker price"
           value={form.stickerPrice}
           inputMode="decimal"
           onChange={(e) => setForm({ ...form, stickerPrice: e.target.value })}

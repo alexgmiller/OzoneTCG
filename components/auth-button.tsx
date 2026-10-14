@@ -3,7 +3,6 @@ import { Button } from "./ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { DesktopNavLinks } from "./NavLinks";
 import { ProfileDropdown } from "./ProfileDropdown";
-import { hasPinConfigured } from "@/app/protected/guest/actions";
 import { getActiveShow } from "@/app/protected/show/actions";
 
 export async function AuthButton() {
@@ -18,19 +17,13 @@ export async function AuthButton() {
         <Button asChild size="sm" variant="outline">
           <Link href="/auth/login">Sign in</Link>
         </Button>
-        <Button asChild size="sm" variant="default">
-          <Link href="/auth/sign-up">Sign up</Link>
-        </Button>
       </div>
     );
   }
 
   const handle = user.email?.split("@")[0] ?? "there";
   const initials = handle.slice(0, 2).toUpperCase();
-  const [pinConfigured, activeShow] = await Promise.all([
-    hasPinConfigured().catch(() => false),
-    getActiveShow().catch(() => null),
-  ]);
+  const activeShow = await getActiveShow().catch(() => null);
 
   return (
     <div className="flex items-center gap-4">
@@ -40,7 +33,6 @@ export async function AuthButton() {
         <ProfileDropdown
           userHandle={handle}
           initials={initials}
-          hasPinConfigured={pinConfigured}
         />
       </div>
       {/* Mobile: avatar links directly to Settings — no dropdown, menu is in bottom nav ••• */}

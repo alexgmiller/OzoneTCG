@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { Search, Camera } from "lucide-react";
+import { Search } from "lucide-react";
 import { finalizeBuy, finalizeTrade, type CustomerCard } from "./actions";
-import CardScanner, { type ScanResult } from "@/components/CardScanner";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
 import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
 import BuyCSVImport from "./BuyCSVImport";
@@ -64,7 +63,6 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
   const [liveListingsCard, setLiveListingsCard] = useState<CustomerCard | null>(null);
 
   // Modals
-  const [scanOpen, setScanOpen] = useState(false);
   const [cardSearchOpen, setCardSearchOpen] = useState(false);
 
   // Finalize modal
@@ -114,19 +112,6 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
     setCardCondition("Near Mint");
     setPendingImageUrl(null);
     setLookupConfirmed(null);
-    setLookupError(null);
-  }
-
-  function onScanResult(data: ScanResult) {
-    setCardName(data.name);
-    setCardSetName(data.setName ?? "");
-    setCardNumber(data.cardNumber ?? "");
-    setCardCondition(data.condition);
-    setCardMarket(data.market != null ? String(data.market) : "");
-    setPendingImageUrl(data.imageUrl ?? null);
-    setLookupConfirmed(
-      data.name ? { name: data.name, setName: data.setName ?? "", cardNumber: data.cardNumber ?? "" } : null
-    );
     setLookupError(null);
   }
 
@@ -323,7 +308,6 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
         </div>
       </div>
 
-      <CardScanner open={scanOpen} onClose={() => setScanOpen(false)} onResult={onScanResult} />
       <CardSearchPicker
         open={cardSearchOpen}
         onClose={() => setCardSearchOpen(false)}
@@ -344,13 +328,6 @@ export default function BuyClient({ inventoryItems }: { inventoryItems: Inventor
               title="Find card by name"
             >
               <Search size={14} className="inline mr-1" />Find
-            </button>
-            <button
-              onClick={() => setScanOpen(true)}
-              className="text-sm px-2.5 py-1 border rounded-lg hover:bg-muted transition-colors"
-              title="Scan card photo"
-            >
-              <Camera size={14} className="inline mr-1" />Scan
             </button>
             <BuyCSVImport onImport={onCSVImport} />
           </div>
