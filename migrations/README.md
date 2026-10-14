@@ -61,24 +61,24 @@ Column-only migrations (expenses, POS) do not show up above. Paste this to
 check them — every row should say ok:
 
 ```sql
-SELECT t.tbl || . || t.col AS expected,
-       CASE WHEN c.column_name IS NULL THEN MISSING ELSE ok END AS status,
+SELECT t.tbl || '.' || t.col AS expected,
+       CASE WHEN c.column_name IS NULL THEN 'MISSING' ELSE 'ok' END AS status,
        t.migration
 FROM (VALUES
-  (expenses,category,20240422_tax_deductible_expenses),
-  (expenses,mileage_miles,20240422_tax_deductible_expenses),
-  (show_scans,client_id,20240423_client_id_dedup),
-  (expenses,documentation_type,20240425_expense_documentation),
-  (card_transactions,payment_method,20261013_pos),
-  (card_transactions,counterparty,20261013_pos),
-  (card_transactions,show_session_id,20261013_pos),
-  (card_transactions,client_id,20261013_pos),
-  (card_transactions,paid_by,20261013_pos),
-  (card_transactions,sale_price,20261013_pos),
-  (deal_logs,transaction_id,20261013_pos)
+  ('expenses', 'category', '20240422_tax_deductible_expenses'),
+  ('expenses', 'mileage_miles', '20240422_tax_deductible_expenses'),
+  ('show_scans', 'client_id', '20240423_client_id_dedup'),
+  ('expenses', 'documentation_type', '20240425_expense_documentation'),
+  ('card_transactions', 'payment_method', '20261013_pos'),
+  ('card_transactions', 'counterparty', '20261013_pos'),
+  ('card_transactions', 'show_session_id', '20261013_pos'),
+  ('card_transactions', 'client_id', '20261013_pos'),
+  ('card_transactions', 'paid_by', '20261013_pos'),
+  ('card_transactions', 'sale_price', '20261013_pos'),
+  ('deal_logs', 'transaction_id', '20261013_pos')
 ) AS t(tbl, col, migration)
 LEFT JOIN information_schema.columns c
-  ON c.table_schema = public AND c.table_name = t.tbl AND c.column_name = t.col
+  ON c.table_schema = 'public' AND c.table_name = t.tbl AND c.column_name = t.col
 ORDER BY status DESC, t.migration, t.col;
 ```
 
