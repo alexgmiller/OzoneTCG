@@ -24,11 +24,18 @@ file is the source of truth for what has been applied.
 | `20240420_card_images.sql` | ⬜ | **NOT APPLIED — lib/cardImages.ts queries fail silently until this runs.** Run it, then backfill via `scripts/import-card-images.ts`. |
 | `20240421_card_search_freq.sql` | ✅ | |
 | `20240422_show_scans_client_id.sql` | ✅ | |
+| `20240422_tax_deductible_expenses.sql` | ❓ | Unverified — arrived with the April WIP merge. expenses category/deductible/mileage columns |
+| `20240423_client_id_dedup.sql` | ❓ | Unverified. show_scans.client_id (overlaps 20240422_show_scans_client_id) |
+| `20240424_business_structure.sql` | ❓ | Unverified. workspaces business_* columns + workspace_partners |
+| `20240425_expense_documentation.sql` | ❓ | Unverified. expenses documentation_* columns |
+| `20240426_mileage_helpers.sql` | ❓ | Unverified. home/venue addresses + workspace_saved_locations |
+| `20240427_shows_calendar.sql` | ❓ | Unverified. card_shows + scraper_runs + workspace_bookmarked_shows |
 | `20260720_market_signals.sql` | ✅ | sold_comps + pop_snapshots + RLS + prune fn (applied 2026-07-21) |
 | `20260720_card_embeddings.sql` | ✅ | pgvector + match_card RPC (applied 2026-07-20) |
 | `20260721_scan_photos.sql` | ✅ | scan photo persistence for recognition training data (applied 2026-07-21) |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.
+> ❓ = not yet checked against the live database; run the query below and flip to ✅ or ⬜.
 
 ## Verify against the live database
 
@@ -39,7 +46,9 @@ SELECT t.expected,
        CASE WHEN c.table_name IS NULL THEN 'MISSING' ELSE 'ok' END AS status
 FROM (VALUES
   ('card_transactions'), ('card_images'), ('card_search_frequency'),
-  ('sold_comps'), ('pop_snapshots'), ('card_embeddings'), ('scan_photos')
+  ('sold_comps'), ('pop_snapshots'), ('card_embeddings'), ('scan_photos'),
+  ('workspace_partners'), ('workspace_saved_locations'), ('card_shows'),
+  ('scraper_runs'), ('workspace_bookmarked_shows')
 ) AS t(expected)
 LEFT JOIN information_schema.tables c
   ON c.table_schema = 'public' AND c.table_name = t.expected
