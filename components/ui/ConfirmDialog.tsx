@@ -3,34 +3,21 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Modal } from "./Modal";
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
-/**
- * Confirmation UI — one implementation, two APIs.
- *
- *  <ConfirmPanel />  presentational body, rendered inside <Modal />.
- *  useConfirm()      promise-based imperative wrapper, for replacing the
- *                    native `confirm()` at call sites that already read
- *                    `if (!ok) return;`.
- *
- * `components/ConfirmationModal.tsx` is the declarative wrapper over the same
- * panel, kept for the call sites that hold their own open/close state.
- *
- * USE for destructive or irreversible actions.
- * DON'T use to report a result — that's <Toast />.
- */
+// ── Confirmation UI ──
+// <ConfirmPanel /> is the presentational body rendered inside <Modal />.
+// useConfirm() is the promise-based wrapper that replaces native confirm().
+// components/ConfirmationModal.tsx wraps the same panel for declarative call sites.
 
 export type ConfirmPanelProps = {
   title: string;
   description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** Negative-toned confirm button + warning icon. */
+  // Negative-toned confirm button + warning icon.
   destructive?: boolean;
-  /**
-   * When set, the confirm button stays disabled until the user types this
-   * exact string. Use for high-stakes irreversible actions.
-   */
+  // When set, confirm stays disabled until the user types this exact string.
   requireTyping?: string;
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
@@ -53,8 +40,7 @@ export function ConfirmPanel({
 
   const canConfirm = requireTyping ? typedValue === requireTyping : true;
 
-  // Focus the type-to-confirm input, else the cancel button so a stray Enter
-  // never fires a destructive action.
+  // Focus the type-to-confirm input, else Cancel, so a stray Enter never confirms.
   useEffect(() => {
     const id = window.setTimeout(() => {
       if (requireTyping) inputRef.current?.focus();
@@ -78,22 +64,22 @@ export function ConfirmPanel({
       <div className="flex items-start gap-3">
         {destructive && (
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-negative-border bg-negative-soft">
-            <AlertTriangle size={16} className="text-negative" />
+            <AlertTriangle size={16} className="text-negative-strong dark:text-negative" />
           </div>
         )}
         <div className="min-w-0">
-          <h2 className="text-base font-semibold leading-snug text-white">{title}</h2>
+          <h2 className="text-base font-semibold leading-snug text-foreground">{title}</h2>
           {description && (
-            <p className="mt-1 text-sm leading-relaxed text-neutral">{description}</p>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
           )}
         </div>
       </div>
 
       {requireTyping && (
         <div className="space-y-2">
-          <label className="text-xs text-neutral">
+          <label className="text-xs text-muted-foreground">
             Type{" "}
-            <span className="font-mono font-semibold text-white">{requireTyping}</span>{" "}
+            <span className="font-mono font-semibold text-foreground">{requireTyping}</span>{" "}
             to confirm
           </label>
           <input
@@ -105,8 +91,8 @@ export function ConfirmPanel({
               if (e.key === "Enter") handleConfirm();
             }}
             className={cn(
-              "w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2",
-              "font-mono text-sm text-white",
+              "h-11 w-full rounded-lg border border-border bg-background px-3",
+              "font-mono text-sm text-foreground placeholder:text-muted-foreground",
               "focus:border-negative-border focus:outline-none",
             )}
             placeholder={requireTyping}
@@ -122,9 +108,9 @@ export function ConfirmPanel({
           onClick={onCancel}
           disabled={loading}
           className={cn(
-            "rounded-lg border border-white/10 px-4 py-2 text-sm font-medium",
-            "text-neutral transition-colors duration-150",
-            "hover:text-white disabled:opacity-40",
+            "h-11 rounded-lg border border-border px-4 text-sm font-medium",
+            "text-muted-foreground transition-colors duration-150",
+            "hover:bg-muted hover:text-foreground disabled:opacity-40",
           )}
         >
           {cancelLabel}
@@ -134,11 +120,11 @@ export function ConfirmPanel({
           onClick={handleConfirm}
           disabled={!canConfirm || loading}
           className={cn(
-            "rounded-lg border px-4 py-2 text-sm font-semibold transition-colors duration-150",
+            "h-11 rounded-lg border px-4 text-sm font-semibold transition-colors duration-150",
             "disabled:opacity-30",
             destructive
-              ? "border-negative-border bg-negative-soft text-negative hover:bg-negative/20"
-              : "border-accent-primary-border bg-accent-primary-soft text-accent-secondary hover:bg-accent-primary/20",
+              ? "border-negative-border bg-negative-soft text-negative-strong hover:bg-negative/20 dark:text-negative"
+              : "border-transparent bg-accent-primary text-primary-foreground hover:bg-accent-primary-hover",
           )}
         >
           {loading ? "…" : confirmLabel}
@@ -148,7 +134,7 @@ export function ConfirmPanel({
   );
 }
 
-// ── Promise-based API ────────────────────────────────────────────────────────
+// ── Promise-based API ──
 
 export type ConfirmOptions = Omit<ConfirmPanelProps, "onConfirm" | "onCancel">;
 

@@ -1,16 +1,9 @@
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 import { MoneyDisplay } from "./MoneyDisplay";
 
-/**
- * StatCard — primary stat tile used in headers, deal summaries, dashboards.
- *
- * USE for a single named value that the user glances at (totals, counts, P&L).
- * DON'T use inside dense rows — use plain text + MoneyDisplay there.
- * DON'T stack >3 in a row — split into a second row or drop to a list.
- *
- * Wire `money` with a numeric amount to get tabular-nums + sign + color for free.
- * Wire `value` to render any other ReactNode (counts, time-to-next-show, etc).
- */
+// ── StatCard ──
+// Primary stat tile for headers, deal summaries, dashboards. Wire `money` for
+// tabular-nums + sign for free; wire `value` for any other node.
 export function StatCard({
   label,
   value,
@@ -35,26 +28,27 @@ export function StatCard({
         ? "bg-warning-soft border-warning-border"
         : tone === "positive"
           ? "bg-positive-soft border-positive-border"
-          : "bg-white/[0.02] border-white/[0.06]";
+          : "bg-card border-border";
 
   const Wrapper = onClick ? "button" : "div";
 
   return (
     <Wrapper
       onClick={onClick}
+      type={onClick ? "button" : undefined}
       className={cn(
         "group flex w-full flex-col gap-1.5 rounded-xl border p-4 text-left",
         "transition-colors duration-150",
-        onClick && "hover:bg-white/[0.04]",
+        onClick && "hover:bg-muted",
         toneBg,
         className,
       )}
     >
-      <span className="font-mono text-xs uppercase tracking-[0.12em] sm:tracking-[0.16em] text-neutral w-full">
+      <span className="w-full font-mono text-xs uppercase tracking-[0.12em] text-neutral sm:tracking-[0.16em]">
         {label}
       </span>
-      <span className="text-xl font-semibold tabular-nums tracking-tight text-white">
-        {money != null ? <MoneyDisplay amount={money} tone="neutral" /> : value}
+      <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
+        {money != null ? <MoneyDisplay amount={money} tone="neutral" className="text-foreground" /> : value}
       </span>
       <div className="min-h-4">
         {delta ? <span className="text-xs text-neutral">{delta}</span> : null}

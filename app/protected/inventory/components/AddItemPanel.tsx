@@ -1,10 +1,14 @@
 "use client";
 
+import { ChevronDown, X } from "lucide-react";
 import CSVImport from "../CSVImport";
 import type { Category, Owner, Condition, ConsignerOption, ItemForm, StagedItem } from "../types";
+import { setLine, btnOutline, btnPrimary, fieldClass } from "../utils";
 import ItemFormFields from "./ItemFormFields";
 
-/* Add form — collapsible (hidden on mobile unless open) */
+const smallField = "h-11 rounded-lg border border-border bg-background px-2 text-sm text-foreground";
+
+// ── Add item panel (collapsible) ──
 export default function AddItemPanel({
   addOpen,
   setAddOpen,
@@ -34,22 +38,22 @@ export default function AddItemPanel({
   onSaveAll: () => void;
   busy: boolean;
 }) {
+  const patchStaged = (id: string, patch: Partial<StagedItem>) =>
+    setStagedItems((prev) => prev.map((s) => (s._id === id ? { ...s, ...patch } : s)));
+
   return (
-    <div className={`border rounded-xl overflow-hidden ${!addOpen ? "hidden md:block" : ""}`}>
-      <div className="flex items-center justify-between px-3 py-2.5">
-        <button
-          className="flex items-center gap-2 font-medium text-sm"
-          onClick={() => setAddOpen((o) => !o)}
-        >
-          <span>{addOpen ? "▾" : "▸"}</span>
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex items-center justify-between gap-2 px-3 py-1">
+        <button className="flex h-11 flex-1 items-center gap-2 text-left text-sm font-semibold text-foreground" onClick={() => setAddOpen((o) => !o)} aria-expanded={addOpen}>
+          <ChevronDown size={16} className={`text-muted-foreground transition-transform duration-150 ${addOpen ? "" : "-rotate-90"}`} />
           Add item
+          {stagedItems.length > 0 && <span className="rounded-full bg-accent-primary-soft px-2 text-xs font-semibold text-accent-primary tabular-nums">{stagedItems.length} pending</span>}
         </button>
-        <div className="flex items-center gap-2">
-          <CSVImport consigners={consigners} />
-        </div>
+        <CSVImport consigners={consigners} />
       </div>
+
       {addOpen && (
-        <div className="border-t p-3 space-y-3">
+        <div className="space-y-3 border-t border-border p-3">
           <ItemFormFields
             form={addForm}
             setForm={(f) => { setAddForm(f); setFindConfirmed(null); }}
@@ -57,104 +61,65 @@ export default function AddItemPanel({
             onFind={handleAddFormFind}
             findConfirmed={findConfirmed}
           />
-          <button
-            className="px-4 py-2 rounded-lg border font-medium disabled:opacity-40"
-            onClick={onAddToList}
-            disabled={!addForm.name.trim()}
-          >
-            Add to List
+          <button className={`${btnOutline} w-full`} onClick={onAddToList} disabled={!addForm.name.trim()}>
+            Add to list
           </button>
 
-          {/* Staging list */}
+          {/* ── Staged items ── */}
           {stagedItems.length > 0 && (
-            <div className="border-t pt-3 space-y-2">
-              <div className="text-xs font-medium opacity-60 uppercase tracking-wide">
-                Pending — {stagedItems.length} item{stagedItems.length !== 1 ? "s" : ""}
+            <div className="space-y-2 border-t border-border pt-3">
+              <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral tabular-nums">
+                Pending · {stagedItems.length}
               </div>
               {stagedItems.map((item) => (
-                <div key={item._id} className="flex items-start gap-2 border rounded-lg p-2">
-                  {/* Thumbnail */}
+                <div key={item._id} className="flex items-start gap-3 rounded-xl border border-border p-3">
                   {item.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.imageUrl} alt="" className="h-14 w-auto rounded object-contain flex-shrink-0" />
+                    <img src={item.imageUrl} alt="" className="h-16 w-auto shrink-0 rounded-lg object-contain" />
                   ) : (
-                    <div className="h-14 w-10 rounded bg-muted flex-shrink-0" />
+                    <div className="h-16 w-11 shrink-0 rounded-lg bg-muted" />
                   )}
-
-                  {/* Details */}
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="text-sm font-medium truncate">{item.name}</div>
-                    {(item.setName || item.cardNumber) && (
-                      <div className="text-xs opacity-60 truncate">
-                        {[item.setName, item.cardNumber ? `#${item.cardNumber}` : ""].filter(Boolean).join(" · ")}
-                      </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="truncate text-sm font-medium text-foreground">{item.name}</div>
+                    {setLine({ set_name: item.setName, card_number: item.cardNumber }) && (
+                      <div className="truncate text-xs text-muted-foreground">{setLine({ set_name: item.setName, card_number: item.cardNumber })}</div>
                     )}
-                    <div className="flex flex-wrap gap-1">
-                      <select
-                        className="text-xs border rounded px-1 py-0.5 bg-background"
-                        value={item.condition}
-                        onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, condition: e.target.value as Condition } : s))}
-                      >
+                    <div className="grid grid-cols-3 gap-2">
+                      <select className={smallField} value={item.condition} onChange={(e) => patchStaged(item._id, { condition: e.target.value as Condition })}>
                         <option value="Near Mint">NM</option>
                         <option value="Lightly Played">LP</option>
                         <option value="Moderately Played">MP</option>
                         <option value="Heavily Played">HP</option>
-                        <option value="Damaged">D</option>
+                        <option value="Damaged">Dmg</option>
                       </select>
-                      <select
-                        className="text-xs border rounded px-1 py-0.5 bg-background"
-                        value={item.owner}
-                        onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, owner: e.target.value as Owner } : s))}
-                      >
+                      <select className={smallField} value={item.owner} onChange={(e) => patchStaged(item._id, { owner: e.target.value as Owner })}>
                         <option value="shared">Shared</option>
                         <option value="alex">Alex</option>
                         <option value="mila">Mila</option>
                       </select>
-                      <select
-                        className="text-xs border rounded px-1 py-0.5 bg-background"
-                        value={item.category}
-                        onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, category: e.target.value as Category } : s))}
-                      >
+                      <select className={smallField} value={item.category} onChange={(e) => patchStaged(item._id, { category: e.target.value as Category })}>
                         <option value="single">Single</option>
                         <option value="slab">Slab</option>
                         <option value="sealed">Sealed</option>
                       </select>
                     </div>
-                    <div className="flex gap-1">
-                      <input
-                        className="text-xs border rounded px-1.5 py-0.5 bg-background w-20"
-                        placeholder="Cost"
-                        value={item.cost}
-                        inputMode="decimal"
-                        onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, cost: e.target.value } : s))}
-                      />
-                      <input
-                        className="text-xs border rounded px-1.5 py-0.5 bg-background w-20"
-                        placeholder="Market"
-                        value={item.market}
-                        inputMode="decimal"
-                        onChange={(e) => setStagedItems((prev) => prev.map((s) => s._id === item._id ? { ...s, market: e.target.value } : s))}
-                      />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className={`${fieldClass} tabular-nums`} placeholder="Cost" value={item.cost} inputMode="decimal" onChange={(e) => patchStaged(item._id, { cost: e.target.value })} />
+                      <input className={`${fieldClass} tabular-nums`} placeholder="Market" value={item.market} inputMode="decimal" onChange={(e) => patchStaged(item._id, { market: e.target.value })} />
                     </div>
                   </div>
-
-                  {/* Remove */}
                   <button
-                    className="text-red-400 hover:text-red-600 text-xl leading-none flex-shrink-0 pt-0.5"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
                     title="Remove"
+                    aria-label="Remove"
                     onClick={() => setStagedItems((prev) => prev.filter((s) => s._id !== item._id))}
                   >
-                    ×
+                    <X size={18} />
                   </button>
                 </div>
               ))}
-
-              <button
-                className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                onClick={onSaveAll}
-                disabled={busy}
-              >
-                {busy ? "Saving…" : `Save All to Inventory (${stagedItems.length})`}
+              <button className={`${btnPrimary} w-full`} onClick={onSaveAll} disabled={busy}>
+                {busy ? "Saving…" : `Save ${stagedItems.length} to inventory`}
               </button>
             </div>
           )}

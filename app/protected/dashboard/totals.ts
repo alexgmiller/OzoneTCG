@@ -45,6 +45,8 @@ function blankBreakdown(): Breakdown {
   return { count: 0, market_active: 0, cost: 0, revenue_sold: 0 };
 }
 
+export type DashboardTotals = ReturnType<typeof computeDashboardTotals>;
+
 export function computeDashboardTotals(items: ItemRow[], expenses: ExpenseRow[], grading: GradingRow[]) {
   // -------- counts --------
   const counts = {

@@ -5,47 +5,9 @@ import { makeSlabPriceKey, type SlabSale } from "@/lib/ebay";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { loadSettings } from "@/app/protected/settings/actions";
 import InventoryClient from "./InventoryClient";
+import type { Item, ConsignerOption } from "./types";
 
-type Category = "single" | "slab" | "sealed";
-type Owner = "alex" | "mila" | "shared" | "consigner";
-type Status = "inventory" | "grading";
-type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
-
-type Item = {
-  id: string;
-  name: string;
-  category: Category;
-  owner: Owner;
-  status: Status;
-  market: number | null;
-  cost: number | null;
-  condition: Condition;
-  notes: string | null;
-  created_at: string;
-  consigner_id: string | null;
-  image_url: string | null;
-  set_name: string | null;
-  card_number: string | null;
-  grade: string | null;
-  cost_basis: number | null;
-  buy_percentage: number | null;
-  acquisition_type: string | null;
-  chain_depth: number;
-  original_cash_invested: number | null;
-  sticker_price: number | null;
-  acquired_market_price: number | null;
-  acquired_date: string | null;
-  // Sealed product metadata
-  product_type: string | null;
-  quantity: number;
-  language: string;
-};
-
-export type ConsignerOption = {
-  id: string;
-  name: string;
-  rate: number;
-};
+export type { ConsignerOption } from "./types";
 
 export type RawCardPrice = {
   lookup_key: string;
@@ -58,7 +20,7 @@ export type RawCardPrice = {
   printing: string;
   price_source: string;
   last_updated: string;
-  /** NM price history for the past 180 days, sorted ascending. */
+  // NM price history for the past 180 days, sorted ascending.
   price_history: { date: string; price: number }[] | null;
 };
 
@@ -84,17 +46,28 @@ export type SlabPrice = {
   sold_items: SlabSale[] | null;
 };
 
+const ITEM_COLS = "id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested,sticker_price,acquired_market_price,acquired_date,product_type,quantity,language";
+// Most recent sales only — the Transactions ledger holds the full history
+const SOLD_LIMIT = 500;
+
 export default async function InventoryServer() {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
-  const [itemsResult, consignersResult, settings] = await Promise.all([
+  const [itemsResult, soldResult, consignersResult, settings] = await Promise.all([
     supabase
       .from("items")
-      .select("id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested,sticker_price,acquired_market_price,acquired_date,product_type,quantity,language")
+      .select(ITEM_COLS)
       .eq("workspace_id", workspaceId)
       .neq("status", "sold")
       .order("updated_at", { ascending: false }),
+    supabase
+      .from("items")
+      .select(`${ITEM_COLS},sold_price,sold_at`)
+      .eq("workspace_id", workspaceId)
+      .eq("status", "sold")
+      .order("sold_at", { ascending: false, nullsFirst: false })
+      .limit(SOLD_LIMIT),
     supabase
       .from("consigners")
       .select("id,name,rate")
@@ -103,26 +76,25 @@ export default async function InventoryServer() {
     loadSettings().catch(() => null),
   ]);
 
-  // Log the actual error object so we can see what's failing.
-  // JSON.stringify with getOwnPropertyNames captures non-enumerable properties that
-  // are lost when Next.js serializes the error across the dev-server→browser boundary.
+  // JSON.stringify with getOwnPropertyNames keeps the non-enumerable error fields
+  // that Next.js drops when serializing across the dev-server→browser boundary.
   if (itemsResult.error) {
     const e = itemsResult.error;
-    console.error(
-      "[InventoryServer] items query failed:",
-      JSON.stringify(e, Object.getOwnPropertyNames(e))
-    );
+    console.error("[InventoryServer] items query failed:", JSON.stringify(e, Object.getOwnPropertyNames(e)));
+  }
+  if (soldResult.error) {
+    const e = soldResult.error;
+    console.error("[InventoryServer] sold items query failed:", JSON.stringify(e, Object.getOwnPropertyNames(e)));
   }
   if (consignersResult.error) {
     const e = consignersResult.error;
-    console.error(
-      "[InventoryServer] consigners query failed:",
-      JSON.stringify(e, Object.getOwnPropertyNames(e))
-    );
+    console.error("[InventoryServer] consigners query failed:", JSON.stringify(e, Object.getOwnPropertyNames(e)));
   }
 
-  // Never crash the page on a DB error — render with whatever data we have
+  // Never crash the page on a DB error — render with whatever data we have.
+  // Price lookups and header counts cover active items only; sold rows show their sale price.
   const data = itemsResult.data;
+  const soldRows = soldResult.data ?? [];
   const consignerRows = consignersResult.data;
 
   let slabPriceMap: Record<string, SlabPrice> = {};
@@ -131,7 +103,7 @@ export default async function InventoryServer() {
   try {
     const admin = createAdminClient();
 
-    // Build lookup keys for all slab items, then fetch their cached prices in one query
+    // ── Cached slab prices ──
     const slabs = (data ?? []).filter((it) => it.category === "slab" && it.grade);
     const slabLookupKeys = slabs.map((it) => {
       const parsed = it.grade?.trim().match(/^([A-Za-z]+)\s+(.+)$/);
@@ -147,7 +119,7 @@ export default async function InventoryServer() {
       slabPriceMap = Object.fromEntries((priceRows ?? []).map((r) => [r.lookup_key, r as SlabPrice]));
     }
 
-    // Build lookup keys for raw cards (singles + sealed), fetch their cached TCGPlayer prices
+    // ── Cached TCGPlayer prices (singles + sealed) ──
     const rawCards = (data ?? []).filter((it) => it.category !== "slab");
     const rawCardKeys = rawCards.map((it) => makeRawCardPriceKey(it.name, it.set_name, it.card_number));
     const uniqueRawKeys = [...new Set(rawCardKeys)];
@@ -169,10 +141,10 @@ export default async function InventoryServer() {
   const singleCount = (data ?? []).filter((i) => i.category === "single").length;
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="w-full space-y-4 py-4">
       <div>
-        <h1 className="text-xl font-bold inv-label">Inventory</h1>
-        <p className="text-xs opacity-40 mt-0.5 inv-label">
+        <h1 className="text-xl font-bold text-foreground">Inventory</h1>
+        <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
           {totalItems === 0
             ? "Nothing here yet — let's change that"
             : [
@@ -184,12 +156,11 @@ export default async function InventoryServer() {
       </div>
 
       <InventoryClient
-        items={(data ?? []) as Item[]}
+        items={[...(data ?? []), ...soldRows] as Item[]}
         consigners={(consignerRows ?? []) as ConsignerOption[]}
         workspaceId={workspaceId}
         slabPrices={slabPriceMap}
         rawCardPrices={rawCardPriceMap}
-        pricingStrategy={settings?.pricing_strategy ?? "auto"}
         gradingCost={settings?.grading_cost ?? 20}
       />
     </div>

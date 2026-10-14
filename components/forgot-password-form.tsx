@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useState } from "react";
 
+// ── ForgotPasswordForm ──
 export function ForgotPasswordForm({
   className,
   ...props
@@ -31,7 +32,7 @@ export function ForgotPasswordForm({
     setError(null);
 
     try {
-      // The url which will be included in the email. This URL needs to be configured in your redirect URLs in the Supabase dashboard at https://supabase.com/dashboard/project/_/auth/url-configuration
+      // The redirect URL must be allow-listed in the Supabase auth URL configuration.
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/update-password`,
       });
@@ -45,57 +46,57 @@ export function ForgotPasswordForm({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
+    <div className={cn("flex w-full flex-col gap-4", className)} {...props}>
       {success ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Check Your Email</CardTitle>
+            <CardTitle className="text-xl">Check your email</CardTitle>
             <CardDescription>Password reset instructions sent</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              If you registered using your email and password, you will receive
-              a password reset email.
+              If you registered using your email and password, you will receive a password reset email.
             </p>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/auth/login">Back to login</Link>
+            </Button>
           </CardContent>
         </Card>
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Reset Your Password</CardTitle>
+            <CardTitle className="text-xl">Reset your password</CardTitle>
             <CardDescription>
-              Type in your email and we&apos;ll send you a link to reset your
-              password
+              Type in your email and we&apos;ll send you a link to reset your password
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleForgotPassword}>
-              <div className="flex flex-col gap-6">
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="m@example.com"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Sending..." : "Send reset email"}
-                </Button>
+            <form onSubmit={handleForgotPassword} className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
               </div>
-              <div className="mt-4 text-center text-sm">
-                Already have an account?{" "}
-                <Link
-                  href="/auth/login"
-                  className="underline underline-offset-4"
-                >
-                  Login
+              {error && (
+                <p className="rounded-lg border border-negative-border bg-negative-soft px-3 py-2 text-sm text-negative-strong dark:text-negative">
+                  {error}
+                </p>
+              )}
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Sending…" : "Send reset email"}
+              </Button>
+              <p className="text-center text-sm text-muted-foreground">
+                <Link href="/auth/login" className="text-accent-primary underline-offset-4 hover:underline">
+                  Back to login
                 </Link>
-              </div>
+              </p>
             </form>
           </CardContent>
         </Card>

@@ -1,19 +1,18 @@
 "use client";
 
-/**
- * Compact cert-number lookup widget — embeds inside any modal.
- * Shows a "Scan cert" button. On tap: expands to cert input + optional camera.
- * Calls onResult() with card details once a cert is found.
- *
- * Props:
- *   controlledCompany — when provided the internal company selector is hidden
- *                        and this value is used for the lookup instead.
- *   inlineRow         — render as a bare row (no bordered panel, no header section)
- *                        intended for embedding directly inside a form row.
- */
+// ── CertLookupWidget ──
+// Compact cert-number lookup — embeds inside any modal or form row.
+// Collapsed: a "Scan cert" trigger. Open: cert input + optional barcode camera.
+// Calls onResult() with card details once a cert is found.
+//   controlledCompany — hides the internal company selector; this value is used.
+//   embedded          — always-open, no trigger button (tab UIs).
+//   inlineRow         — bare row (no bordered panel / header) for form rows;
+//                       the close button calls onClose instead of collapsing.
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ScanLine, Camera, X, Loader2, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { SectionHeader } from "@/components/ui";
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 
 export type CertWidgetResult = {
@@ -30,20 +29,22 @@ export type CertWidgetResult = {
 interface Props {
   onResult: (r: CertWidgetResult) => void;
   defaultCompany?: GradingCompany;
-  /** When provided: hides internal company selector and uses this value. */
+  // When provided: hides internal company selector and uses this value.
   controlledCompany?: GradingCompany;
   label?: string;
-  /** Always-open mode for embedding in tab UIs (no trigger button). */
+  // Always-open mode for embedding in tab UIs (no trigger button).
   embedded?: boolean;
-  /** Start camera scanning immediately when embedded. */
+  // Start camera scanning immediately when embedded.
   defaultCameraOn?: boolean;
-  /**
-   * Inline-row mode: renders as a bare input row with no bordered panel.
-   * The close button calls onClose instead of toggling open state.
-   */
+  // Inline-row mode: bare input row, no bordered panel; close calls onClose.
   inlineRow?: boolean;
   onClose?: () => void;
 }
+
+const COMPANIES: GradingCompany[] = ["PSA", "BGS", "CGC"];
+
+const iconButtonClass =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground";
 
 export default function CertLookupWidget({
   onResult,
@@ -192,7 +193,6 @@ export default function CertLookupWidget({
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onResult, embedded, inlineRow, defaultCameraOn]
   );
 
@@ -211,42 +211,44 @@ export default function CertLookupWidget({
     }
   }
 
-  // ── Trigger button (collapsed state) ────────────────────────────────────────
+  // ── Trigger button (collapsed state) ──
 
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-violet-500/30 text-violet-500 hover:bg-violet-500/10 transition-colors font-medium shrink-0"
+        className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-accent-primary-border px-3 text-sm font-medium text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
       >
-        <ScanLine size={13} />
+        <ScanLine size={16} />
         {label ?? "Scan cert"}
       </button>
     );
   }
 
-  // ── Shared inner content (used in both modes) ────────────────────────────────
+  // ── Shared inner content (used in both modes) ──
 
   const cameraStrip = cameraOn && (
-    <div className="relative rounded-lg overflow-hidden bg-black" style={{ height: 140 }}>
-      <video ref={videoRef} className="w-full h-full object-cover" muted playsInline autoPlay />
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="relative w-40 h-12">
-          <div className="absolute top-0 left-0 w-5 h-5 border-t-2 border-l-2 border-white/80" />
-          <div className="absolute top-0 right-0 w-5 h-5 border-t-2 border-r-2 border-white/80" />
-          <div className="absolute bottom-0 left-0 w-5 h-5 border-b-2 border-l-2 border-white/80" />
-          <div className="absolute bottom-0 right-0 w-5 h-5 border-b-2 border-r-2 border-white/80" />
+    <div className="relative h-36 overflow-hidden rounded-lg bg-muted">
+      <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="relative h-12 w-40">
+          <div className="absolute left-0 top-0 h-5 w-5 border-l-2 border-t-2 border-accent-primary" />
+          <div className="absolute right-0 top-0 h-5 w-5 border-r-2 border-t-2 border-accent-primary" />
+          <div className="absolute bottom-0 left-0 h-5 w-5 border-b-2 border-l-2 border-accent-primary" />
+          <div className="absolute bottom-0 right-0 h-5 w-5 border-b-2 border-r-2 border-accent-primary" />
         </div>
       </div>
-      <div className="absolute inset-x-0 bottom-0 text-center text-[10px] text-white/60 pb-1">
-        Point at barcode on slab label
+      <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
+        <span className="rounded-full bg-card/80 px-2 py-0.5 text-xs text-muted-foreground">
+          Point at barcode on slab label
+        </span>
       </div>
     </div>
   );
 
   const inputRow = (
-    <div className="flex gap-1.5">
+    <div className="flex gap-2">
       <input
         ref={inputRef}
         type="text"
@@ -255,51 +257,50 @@ export default function CertLookupWidget({
         onChange={(e) => setCertInput(e.target.value.replace(/\D/g, ""))}
         onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
         placeholder="Cert number…"
-        className="flex-1 bg-background border rounded-lg px-3 py-2.5 text-sm font-mono tracking-wider"
+        className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-sm tracking-wider text-foreground placeholder:text-muted-foreground disabled:opacity-50"
         disabled={loading}
       />
       <button
         type="button"
         onClick={() => setCameraOn((o) => !o)}
-        className={`px-2.5 py-2 rounded-lg border transition-colors ${
+        className={cn(
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150",
           cameraOn
-            ? "bg-violet-600 border-violet-500 text-white"
-            : "border-border opacity-50 hover:opacity-100"
-        }`}
+            ? "border-accent-primary bg-accent-primary text-primary-foreground"
+            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
         title="Toggle camera"
+        aria-label="Toggle camera"
+        aria-pressed={cameraOn}
       >
-        <Camera size={14} />
+        <Camera size={16} />
       </button>
       <button
         type="button"
         onClick={handleSubmit}
         disabled={loading || certInput.length < 5}
-        className="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-30 text-white text-xs font-semibold transition-colors flex items-center gap-1 shrink-0"
+        className="flex h-11 shrink-0 items-center gap-1 rounded-lg bg-accent-primary px-3 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
       >
-        {loading ? <Loader2 size={13} className="animate-spin" /> : "Look up"}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : "Look up"}
       </button>
-      <button
-        type="button"
-        onClick={handleClose}
-        className="p-2 rounded-lg opacity-40 hover:opacity-80 transition-opacity shrink-0"
-      >
-        <X size={14} />
+      <button type="button" onClick={handleClose} className={iconButtonClass} aria-label="Close">
+        <X size={16} />
       </button>
     </div>
   );
 
   const errorRow = error && (
-    <div className="flex items-start gap-1.5 text-xs text-amber-500 mt-1.5">
-      <AlertCircle size={12} className="shrink-0 mt-0.5" />
+    <div className="flex items-start gap-2 text-xs text-warning-strong dark:text-warning">
+      <AlertCircle size={14} className="mt-0.5 shrink-0" />
       <span>{error}</span>
     </div>
   );
 
-  // ── Inline-row mode (no panel border, no company selector) ──────────────────
+  // ── Inline-row mode (no panel border, no company selector) ──
 
   if (inlineRow) {
     return (
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {inputRow}
         {cameraStrip}
         {errorRow}
@@ -307,39 +308,37 @@ export default function CertLookupWidget({
     );
   }
 
-  // ── Standard panel mode ──────────────────────────────────────────────────────
+  // ── Standard panel mode ──
 
   return (
-    <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-3 space-y-2.5">
+    <div className="space-y-3 rounded-xl border border-accent-primary-border bg-card p-3">
       {/* Header row — company selector only shown when not controlled */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         {!controlledCompany ? (
-          <div className="flex gap-1 p-0.5 rounded-lg bg-black/10 dark:bg-white/10">
-            {(["PSA", "BGS", "CGC"] as GradingCompany[]).map((c) => (
+          <div className="flex gap-2" role="group" aria-label="Grading company">
+            {COMPANIES.map((c) => (
               <button
                 key={c}
                 type="button"
                 onClick={() => setInternalCompany(c)}
-                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md transition-all ${
+                aria-pressed={internalCompany === c}
+                className={cn(
+                  "h-11 rounded-lg border px-3 text-xs font-semibold transition-colors duration-150",
                   internalCompany === c
-                    ? "bg-white dark:bg-white/20 shadow-sm"
-                    : "opacity-40 hover:opacity-70"
-                }`}
+                    ? "border-accent-primary-border bg-accent-primary-soft text-accent-primary"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
               >
                 {c}
               </button>
             ))}
           </div>
         ) : (
-          <div className="text-[11px] font-bold opacity-50 uppercase tracking-wide">{controlledCompany} cert lookup</div>
+          <SectionHeader>{controlledCompany} cert lookup</SectionHeader>
         )}
         {!embedded && (
-          <button
-            type="button"
-            onClick={handleClose}
-            className="p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity"
-          >
-            <X size={13} />
+          <button type="button" onClick={handleClose} className={iconButtonClass} aria-label="Close">
+            <X size={16} />
           </button>
         )}
       </div>

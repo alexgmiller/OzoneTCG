@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     limit: "50",
   });
 
-  let prices: number[] = [];
+  const prices: number[] = [];
 
   try {
     const res = await fetch(`${EBAY_BROWSE_URL}?${params}`, {

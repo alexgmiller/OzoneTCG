@@ -1,14 +1,7 @@
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
-/**
- * EmptyState — ghost preview + starter CTA for empty lists.
- *
- * USE whenever a list, grid, or feed has no items.
- * DON'T just render "No items yet." — always include a `preview` or `cta`
- *   so the user understands what belongs here and how to create it.
- *
- * Pattern: title + one-line hint + (optional ghost preview) + (optional CTA).
- */
+// ── EmptyState ──
+// Title + hint + optional ghost preview + optional CTA. Never just "No items yet."
 export function EmptyState({
   title,
   hint,
@@ -25,16 +18,16 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-stretch rounded-xl border border-white/[0.06] bg-white/[0.02] p-5",
+        "flex flex-col items-stretch rounded-xl border border-border bg-card p-5",
         className,
       )}
     >
       <div className="text-center">
-        <div className="text-base font-semibold tracking-tight text-white">
+        <div className="text-base font-semibold tracking-tight text-foreground">
           {title}
         </div>
         {hint ? (
-          <div className="mt-1 text-sm text-neutral">{hint}</div>
+          <div className="mt-1 text-sm text-muted-foreground">{hint}</div>
         ) : null}
       </div>
       {preview ? (

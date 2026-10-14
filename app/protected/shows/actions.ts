@@ -23,6 +23,11 @@ export type ShowSession = {
   status: "scheduled" | "active" | "completed";
   started_at: string;
   ended_at: string | null;
+  // Optional columns — older rows may not have them
+  location?: string | null;
+  hours?: string | null;
+  notes?: string | null;
+  venue_address?: string | null;
 };
 
 export type ActiveShowInfo = { id: string; name: string; expected_cash: number };
@@ -99,8 +104,12 @@ export async function endShowSession(id: string, actualCash?: number | null): Pr
 export async function deleteShowSession(id: string): Promise<void> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
-  await supabase.from("expenses").update({ show_session_id: null })
-    .eq("show_session_id", id).eq("workspace_id", workspaceId);
+  await Promise.all([
+    supabase.from("expenses").update({ show_session_id: null })
+      .eq("show_session_id", id).eq("workspace_id", workspaceId),
+    supabase.from("card_transactions").update({ show_session_id: null })
+      .eq("show_session_id", id).eq("workspace_id", workspaceId),
+  ]);
   const { error } = await supabase
     .from("show_sessions").delete()
     .eq("id", id).eq("workspace_id", workspaceId);

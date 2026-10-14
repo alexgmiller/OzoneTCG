@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/components/ui";
+import { X } from "lucide-react";
+import { MoneyDisplay, useToast } from "@/components/ui";
 import { startAutoSync } from "@/lib/offlineSync";
 import { endShowSession, startShow, type ActiveShowInfo } from "@/app/protected/shows/actions";
 import type { Mode, PickItem } from "./ledger";
+import { BTN, INPUT } from "./ui";
 import BuyMode from "./BuyMode";
 import SellMode from "./SellMode";
 import TradeMode from "./TradeMode";
 
-const input = "h-10 border rounded-lg px-3 text-sm bg-background min-w-0";
-const button = "h-10 px-3 rounded-lg border text-sm font-medium whitespace-nowrap disabled:opacity-40";
+const MODES = ["buy", "sell", "trade"] as const;
 
 export default function PosClient({ activeShow, scheduled, items, buyPct, initialMode, preselected }: {
   activeShow: ActiveShowInfo | null;
@@ -47,37 +48,57 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
   }
 
   return (
-    <div className="w-full max-w-xl mx-auto py-4 space-y-4">
-      {/* Show session */}
-      <header className="border rounded-xl p-3 space-y-2">
+    <div className="mx-auto w-full max-w-xl space-y-4 py-4">
+      <h1 className="sr-only">POS</h1>
+
+      {/* ── Show session ── */}
+      <header className={`space-y-3 rounded-xl border p-3 ${
+        activeShow && attached ? "border-accent-primary-border bg-accent-primary-soft" : "border-border bg-card"
+      }`}>
         {activeShow ? (
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => setAttached((a) => !a)} title="Attach deals to this show"
-              className={`${button} truncate ${attached ? "border-primary text-primary" : "text-muted-foreground"}`}>
-              {attached ? `● ${activeShow.name} ✕` : "Not attached · tap to attach"}
+              aria-pressed={attached}
+              className={`flex h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors duration-150 ${
+                attached ? "border-accent-primary bg-background text-primary" : "border-border bg-background text-muted-foreground"
+              }`}>
+              {attached ? (
+                <>
+                  <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-primary" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate text-left">{activeShow.name}</span>
+                  <X size={16} className="shrink-0" aria-hidden />
+                </>
+              ) : (
+                <span className="truncate">Not attached · tap to attach</span>
+              )}
             </button>
-            <span className="ml-auto text-xs text-muted-foreground tabular-nums">Cash ${activeShow.expected_cash.toFixed(2)}</span>
-            <button type="button" className={button} onClick={() => setEnding((e) => !e)}>End</button>
+            <span className="shrink-0 text-sm text-muted-foreground">
+              <MoneyDisplay amount={activeShow.expected_cash} tone="neutral" className="font-semibold text-foreground" />
+            </span>
+            <button type="button" className={BTN} onClick={() => setEnding((e) => !e)} aria-expanded={ending}>End</button>
           </div>
         ) : (
-          <div className="flex gap-2">
-            <input className={`${input} flex-1`} value={showName} onChange={(e) => setShowName(e.target.value)} placeholder="Show name" />
-            <input className={`${input} w-24`} type="number" inputMode="decimal" value={cash}
-              onChange={(e) => setCash(e.target.value)} placeholder="Cash" aria-label="Starting cash" />
-            <button type="button" className={button} disabled={busy || !showName.trim()}
-              onClick={() => run(() => startShow({
-                scheduledId: scheduled && showName === scheduled.name ? scheduled.id : null,
-                name: showName, starting_cash: cash ? Number(cash) : null,
-              }))}>
-              Start show
-            </button>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">No show running · start one to attach deals</p>
+            <input className={`${INPUT} w-full`} value={showName} onChange={(e) => setShowName(e.target.value)} placeholder="Show name" />
+            <div className="flex gap-2">
+              <input className={`${INPUT} flex-1 tabular-nums`} type="number" inputMode="decimal" value={cash}
+                onChange={(e) => setCash(e.target.value)} placeholder="Starting cash" aria-label="Starting cash" />
+              <button type="button" className={BTN} disabled={busy || !showName.trim()}
+                onClick={() => run(() => startShow({
+                  scheduledId: scheduled && showName === scheduled.name ? scheduled.id : null,
+                  name: showName, starting_cash: cash ? Number(cash) : null,
+                }))}>
+                Start show
+              </button>
+            </div>
           </div>
         )}
         {activeShow && ending && (
           <div className="flex gap-2">
-            <input className={`${input} flex-1`} type="number" inputMode="decimal" value={cash}
-              onChange={(e) => setCash(e.target.value)} placeholder="Counted cash (optional)" />
-            <button type="button" className={button} disabled={busy}
+            <input className={`${INPUT} flex-1 tabular-nums`} type="number" inputMode="decimal" value={cash}
+              onChange={(e) => setCash(e.target.value)} placeholder="Counted cash (optional)" aria-label="Counted cash" />
+            <button type="button" className={BTN} disabled={busy}
               onClick={() => run(() => endShowSession(activeShow.id, cash ? Number(cash) : null))}>
               End show
             </button>
@@ -85,11 +106,13 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
         )}
       </header>
 
-      {/* Mode */}
-      <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-muted">
-        {(["buy", "sell", "trade"] as const).map((m) => (
-          <button key={m} type="button" onClick={() => setMode(m)}
-            className={`h-11 rounded-lg text-sm font-semibold capitalize ${mode === m ? "bg-background shadow-sm" : "text-muted-foreground"}`}>
+      {/* ── Mode ── */}
+      <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1" role="tablist" aria-label="Deal type">
+        {MODES.map((m) => (
+          <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
+            className={`h-12 rounded-lg text-sm font-semibold capitalize transition-colors duration-150 ${
+              mode === m ? "bg-accent-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}>
             {m}
           </button>
         ))}

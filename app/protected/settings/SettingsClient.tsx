@@ -1,457 +1,57 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
+import { CheckCircle2, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
-  User, ShieldCheck, TrendingUp, Monitor, Database,
-  Bell, Trash2, KeyRound, Download, LogOut, CheckCircle2, AlertCircle,
-  HardDrive, MapPin, Pencil,
-} from "lucide-react";
-import {
-  saveSettings, sendPasswordResetEmail,
-  exportInventoryCSV, exportTransactionsCSV,
-  updateHomeAddress, updateSavedLocationLabel, deleteSavedLocation,
+  saveSettings,
   type UserSettings, type WorkspaceData, type SavedLocation,
 } from "./actions";
-import { useToast } from "@/components/ui";
-import { getPendingCount, clearAll as clearQueueAll } from "@/lib/offlineQueue";
-import { replayPendingActions } from "@/lib/offlineSync";
+import type { SettingsUpdate } from "./components/SettingsPrimitives";
+import { ProfileSection } from "./components/ProfileSection";
+import { PricingDefaultsSection } from "./components/PricingDefaultsSection";
+import { DisplaySection } from "./components/DisplaySection";
+import { NotificationsSection } from "./components/NotificationsSection";
+import { PricingSourcesSection, type ApiStatus } from "./components/PricingSourcesSection";
+import { DataSection } from "./components/DataSection";
+import { StorageSection } from "./components/StorageSection";
+import { OfflineSyncSection } from "./components/OfflineSyncSection";
+import { LocationsSection } from "./components/LocationsSection";
+import { AccountSection } from "./components/AccountSection";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type ApiStatus = { ebay: boolean; justtcg: boolean; psa: boolean };
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type Timer = ReturnType<typeof setTimeout>;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const DEBOUNCE_MS = 700;
 
-function downloadCSV(csv: string, filename: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ─── Section Shell ────────────────────────────────────────────────────────────
-
-function Section({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: React.ElementType;
-  title: string;
-  children: React.ReactNode;
-}) {
+// ── Save indicator ──
+function SaveIndicator({ status }: { status: SaveStatus }) {
   return (
-    <div className="border rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b bg-muted/20 flex items-center gap-2">
-        <Icon size={15} className="opacity-50" />
-        <span className="text-sm font-semibold">{title}</span>
-      </div>
-      <div className="divide-y">{children}</div>
-    </div>
-  );
-}
-
-// ─── Setting Row ─────────────────────────────────────────────────────────────
-
-function SettingRow({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium">{label}</div>
-        {description && <div className="text-xs opacity-50 mt-0.5">{description}</div>}
-      </div>
-      <div className="flex-shrink-0">{children}</div>
-    </div>
-  );
-}
-
-// ─── Toggle ───────────────────────────────────────────────────────────────────
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        checked ? "bg-violet-600" : "bg-muted"
-      }`}
+    <div
+      aria-live="polite"
+      className={cn(
+        "flex items-center gap-1.5 text-xs transition-opacity duration-150",
+        status === "idle" ? "opacity-0" : "opacity-100",
+      )}
     >
-      <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-          checked ? "translate-x-6" : "translate-x-1"
-        }`}
-      />
-    </button>
-  );
-}
-
-// ─── Dot status ───────────────────────────────────────────────────────────────
-
-function StatusDot({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className={`w-2 h-2 rounded-full ${ok ? "bg-green-500" : "bg-red-400/70"}`} />
-      <span className={`text-xs ${ok ? "text-green-600 dark:text-green-400" : "opacity-40"}`}>
-        {ok ? "Connected" : label}
-      </span>
+      {status === "saving" && <span className="animate-pulse text-muted-foreground">Saving…</span>}
+      {status === "saved" && (
+        <>
+          <CheckCircle2 size={14} className="text-positive-strong" />
+          <span className="text-positive-strong">Saved</span>
+        </>
+      )}
+      {status === "error" && (
+        <>
+          <AlertCircle size={14} className="text-negative-strong" />
+          <span className="text-negative-strong">Save failed</span>
+        </>
+      )}
     </div>
   );
 }
 
-// ─── Number Input ─────────────────────────────────────────────────────────────
-
-function NumInput({
-  value,
-  onChange,
-  min = 0,
-  max = 100,
-  unit = "%",
-  width = "w-20",
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  min?: number;
-  max?: number;
-  unit?: string;
-  width?: string;
-}) {
-  const [local, setLocal] = useState(String(value));
-  useEffect(() => { setLocal(String(value)); }, [value]);
-
-  return (
-    <div className={`flex items-center gap-1 ${width}`}>
-      <input
-        type="number"
-        inputMode="decimal"
-        min={min}
-        max={max}
-        value={local}
-        className="w-full border rounded-lg px-2 py-1.5 text-sm text-right bg-background tabular-nums"
-        onChange={(e) => setLocal(e.target.value)}
-        onBlur={() => {
-          const n = Number(local);
-          if (Number.isFinite(n) && n >= min && n <= max) onChange(n);
-          else setLocal(String(value));
-        }}
-      />
-      <span className="text-xs opacity-40">{unit}</span>
-    </div>
-  );
-}
-
-// ─── Offline Sync Section ────────────────────────────────────────────────────
-
-function OfflineSyncSection() {
-  const [pendingCount, setPendingCount] = useState(0);
-  const [syncing, setSyncing] = useState(false);
-  const [clearConfirm, setClearConfirm] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    import("@/lib/offlineQueue").then(({ getPendingCount }) => {
-      getPendingCount().then((n) => { if (mounted) setPendingCount(n); });
-    });
-    return () => { mounted = false; };
-  }, []);
-
-  async function handleSyncNow() {
-    setSyncing(true);
-    try {
-      const { getPendingActions } = await import("@/lib/offlineQueue");
-      const { replayPendingActions } = await import("@/lib/offlineSync");
-      // replayPendingActions resolves its own action executor internally.
-      await replayPendingActions();
-      const remaining = await getPendingActions();
-      setPendingCount(remaining.length);
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  async function handleClearAll() {
-    if (!clearConfirm) { setClearConfirm(true); return; }
-    const { clearAll } = await import("@/lib/offlineQueue");
-    await clearAll();
-    setPendingCount(0);
-    setClearConfirm(false);
-  }
-
-  return (
-    <Section icon={Database} title="Offline Sync">
-      <SettingRow label="Queued transactions" description="Transactions saved offline, waiting to sync">
-        <span className="text-sm tabular-nums font-medium">{pendingCount}</span>
-      </SettingRow>
-      {pendingCount > 0 && (
-        <SettingRow label="Actions">
-          <div className="flex gap-2">
-            <button
-              onClick={handleSyncNow}
-              disabled={syncing}
-              className="text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40"
-              style={{ borderColor: "rgba(245,158,11,0.4)", color: "#fbbf24" }}
-            >
-              {syncing ? "Syncing…" : "Sync Now"}
-            </button>
-            <button
-              onClick={handleClearAll}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${clearConfirm ? "border-red-500/60 text-red-400" : "border-red-500/30 text-red-400 hover:bg-red-500/10"}`}
-            >
-              {clearConfirm ? "Confirm Clear?" : "Clear Queue"}
-            </button>
-          </div>
-        </SettingRow>
-      )}
-    </Section>
-  );
-}
-
-// ─── Image Cache Section ──────────────────────────────────────────────────────
-
-const IMAGE_CACHE_NAME = "ozone-card-images-v1";
-
-function ImageCacheSection() {
-  const [cacheSize, setCacheSize] = useState<number | null>(null);
-  const [clearing, setClearing] = useState(false);
-  const [clearConfirm, setClearConfirm] = useState(false);
-
-  useEffect(() => {
-    if (!("caches" in window)) return;
-    caches.open(IMAGE_CACHE_NAME)
-      .then((c) => c.keys())
-      .then((keys) => setCacheSize(keys.length))
-      .catch(() => {});
-  }, []);
-
-  async function handleClearCache() {
-    if (!clearConfirm) { setClearConfirm(true); return; }
-    setClearing(true);
-    try {
-      // Tell the SW to clear so it stays in sync.
-      if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: "clear-image-cache" });
-      }
-      // Also clear directly from this context.
-      await caches.delete(IMAGE_CACHE_NAME);
-      setCacheSize(0);
-      setClearConfirm(false);
-    } finally {
-      setClearing(false);
-    }
-  }
-
-  // If the Cache API isn't supported, don't render the section.
-  if (typeof window !== "undefined" && !("caches" in window)) return null;
-
-  return (
-    <Section icon={HardDrive} title="Image Cache">
-      <SettingRow
-        label="Cached card images"
-        description="Card images stored locally for offline use at shows"
-      >
-        <span className="text-sm tabular-nums font-medium">
-          {cacheSize === null ? "…" : cacheSize.toLocaleString()}
-        </span>
-      </SettingRow>
-      {(cacheSize ?? 0) > 0 && (
-        <SettingRow label="Actions">
-          <button
-            onClick={handleClearCache}
-            disabled={clearing}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 ${
-              clearConfirm
-                ? "border-red-500/60 text-red-400"
-                : "border-red-500/30 text-red-400 hover:bg-red-500/10"
-            }`}
-          >
-            {clearing ? "Clearing…" : clearConfirm ? "Confirm Clear?" : "Clear Image Cache"}
-          </button>
-        </SettingRow>
-      )}
-    </Section>
-  );
-}
-
-
-function HomeAddressSection({ initial }: { initial: string | null }) {
-  const [address, setAddress] = useState(initial ?? "");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const isDirty = address.trim() !== (initial ?? "").trim();
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await updateHomeAddress(address);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Section icon={MapPin} title="Home Address">
-      <div className="px-4 py-3 space-y-2">
-        <input
-          type="text"
-          value={address}
-          onChange={(e) => { setAddress(e.target.value); setSaved(false); }}
-          placeholder="123 Main St, Sacramento, CA"
-          className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background"
-        />
-        <p className="text-xs opacity-40 leading-relaxed">
-          Saved for quick reference when entering mileage. Only stored on your account — not shared.
-        </p>
-        <div className="flex items-center justify-between">
-          {saved ? (
-            <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-              <CheckCircle2 size={12} /> Saved
-            </span>
-          ) : <span />}
-          <button
-            onClick={handleSave}
-            disabled={!isDirty || saving}
-            className="text-xs px-4 py-1.5 rounded-lg font-semibold transition-colors duration-150 disabled:opacity-40"
-            style={{
-              background: isDirty && !saving ? "rgba(139,92,246,0.85)" : undefined,
-              color: isDirty && !saving ? "white" : undefined,
-              border: "1px solid rgba(139,92,246,0.4)",
-            }}
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
-    </Section>
-  );
-}
-
-// ─── Saved Locations Section ──────────────────────────────────────────────────
-
-function SavedLocationsSection({ initial }: { initial: SavedLocation[] }) {
-  const [locations, setLocations] = useState<SavedLocation[]>(initial);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editLabel, setEditLabel] = useState("");
-  const [saving, setSaving] = useState<string | null>(null);
-
-  function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  }
-
-  async function handleSaveLabel(id: string) {
-    if (!editLabel.trim()) return;
-    setSaving(id);
-    try {
-      await updateSavedLocationLabel(id, editLabel);
-      setLocations((prev) => prev.map((l) => l.id === id ? { ...l, label: editLabel.trim() } : l));
-      setEditingId(null);
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  async function handleDelete(id: string) {
-    setSaving(id);
-    try {
-      await deleteSavedLocation(id);
-      setLocations((prev) => prev.filter((l) => l.id !== id));
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  if (locations.length === 0) {
-    return (
-      <Section icon={MapPin} title="Saved Locations">
-        <div className="px-4 py-3 text-xs opacity-40">
-          Addresses you enter in mileage expenses are saved here automatically.
-        </div>
-      </Section>
-    );
-  }
-
-  return (
-    <Section icon={MapPin} title="Saved Locations">
-      <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-        {locations.map((loc) => (
-          <div key={loc.id} className="px-4 py-3 space-y-1.5">
-            {editingId === loc.id ? (
-              <div className="flex items-center gap-2">
-                <input
-                  autoFocus
-                  value={editLabel}
-                  onChange={(e) => setEditLabel(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleSaveLabel(loc.id); if (e.key === "Escape") setEditingId(null); }}
-                  className="flex-1 border rounded-lg px-2.5 py-1.5 text-sm bg-background"
-                  placeholder="Label"
-                />
-                <button
-                  onClick={() => handleSaveLabel(loc.id)}
-                  disabled={saving === loc.id}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 disabled:opacity-40 transition-colors"
-                >
-                  {saving === loc.id ? "…" : "Save"}
-                </button>
-                <button
-                  onClick={() => setEditingId(null)}
-                  className="text-xs opacity-40 hover:opacity-70 transition-opacity"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate">{loc.label}</div>
-                  <div className="text-xs opacity-40 truncate mt-0.5">{loc.address}</div>
-                  <div className="text-[11px] opacity-30 mt-0.5">
-                    Used {loc.use_count}× · Last {fmtDate(loc.last_used)}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => { setEditingId(loc.id); setEditLabel(loc.label); }}
-                    className="p-1.5 opacity-40 hover:opacity-80 transition-opacity rounded-lg hover:bg-white/5"
-                    title="Rename"
-                  >
-                    <Pencil size={12} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(loc.id)}
-                    disabled={saving === loc.id}
-                    className="p-1.5 text-rose-400/60 hover:text-rose-400 transition-colors rounded-lg hover:bg-rose-500/10 disabled:opacity-30"
-                    title="Delete"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-
+// ── Settings page ──
 export default function SettingsClient({
   email,
   settings: initialSettings,
@@ -465,546 +65,73 @@ export default function SettingsClient({
   apiStatus: ApiStatus;
   savedLocations?: SavedLocation[];
 }) {
-  const router = useRouter();
-  const { theme: currentTheme, setTheme } = useTheme();
-  const toast = useToast();
   const [settings, setSettings] = useState<UserSettings>(initialSettings);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ── Export state ──────────────────────────────────────────────────────────
-  const [exportingInv, setExportingInv] = useState(false);
-  const [exportingTx, setExportingTx] = useState(false);
+  // Debounced edits accumulate here so a fast switch between fields never drops one.
+  const pendingRef = useRef<Partial<UserSettings>>({});
+  const debounceRef = useRef<Timer | null>(null);
+  const statusRef = useRef<Timer | null>(null);
 
-  // ── Image cache ───────────────────────────────────────────────────────────
-  const [cacheClearing, setCacheClearing] = useState(false);
-  const [cacheCleared, setCacheCleared] = useState(false);
-
-  // ── Pending sync queue ────────────────────────────────────────────────────
-  const [pendingQueueCount, setPendingQueueCount] = useState<number | null>(null);
-  const [syncingQueue, setSyncingQueue] = useState(false);
-  const [syncQueueResult, setSyncQueueResult] = useState<string | null>(null);
-  const [clearQueueConfirm, setClearQueueConfirm] = useState(false);
-  const [clearingQueue, setClearingQueue] = useState(false);
-
-  async function clearImageCache() {
-    setCacheClearing(true);
-    try {
-      if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: "clear-image-cache" });
-      }
-      // Also clear via Cache API directly in case SW isn't active
-      if (typeof caches !== "undefined") {
-        await caches.delete("ozone-card-images-v1");
-      }
-      setCacheCleared(true);
-      setTimeout(() => setCacheCleared(false), 3000);
-    } finally {
-      setCacheClearing(false);
-    }
-  }
-
-  // ── Password reset ────────────────────────────────────────────────────────
-  const [resetSent, setResetSent] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-
-  useEffect(() => {
-    getPendingCount().then(setPendingQueueCount).catch(() => setPendingQueueCount(0));
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (statusRef.current) clearTimeout(statusRef.current);
   }, []);
 
-  async function syncQueue() {
-    setSyncingQueue(true);
-    setSyncQueueResult(null);
-    try {
-      const { synced, failed } = await replayPendingActions();
-      const count = await getPendingCount().catch(() => 0);
-      setPendingQueueCount(count);
-      if (synced > 0 && failed === 0) {
-        setSyncQueueResult(`Synced ${synced} transaction${synced !== 1 ? "s" : ""}`);
-      } else if (failed > 0) {
-        setSyncQueueResult(`${failed} failed, ${synced} synced`);
-      } else {
-        setSyncQueueResult("Nothing to sync");
-      }
-      setTimeout(() => setSyncQueueResult(null), 4000);
-    } finally {
-      setSyncingQueue(false);
-    }
-  }
-
-  async function clearQueue() {
-    setClearingQueue(true);
-    try {
-      await clearQueueAll();
-      setPendingQueueCount(0);
-      setClearQueueConfirm(false);
-    } finally {
-      setClearingQueue(false);
-    }
-  }
-
-  // ── Save helpers ──────────────────────────────────────────────────────────
-
   const persistSave = useCallback(async (patch: Partial<UserSettings>) => {
+    if (statusRef.current) clearTimeout(statusRef.current);
     setSaveStatus("saving");
     try {
       await saveSettings(patch);
       setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2000);
+      statusRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
     } catch {
       setSaveStatus("error");
-      setTimeout(() => setSaveStatus("idle"), 3000);
+      statusRef.current = setTimeout(() => setSaveStatus("idle"), 3000);
     }
   }, []);
 
-  function updateImmediate<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
-    const patch = { [key]: value } as Partial<UserSettings>;
-    setSettings((prev) => ({ ...prev, ...patch }));
+  function takePending(): Partial<UserSettings> {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = null;
+    const pending = pendingRef.current;
+    pendingRef.current = {};
+    return pending;
+  }
+
+  const updateImmediate: SettingsUpdate = (key, value) => {
+    const patch = { ...takePending(), [key]: value } as Partial<UserSettings>;
+    setSettings((prev) => ({ ...prev, ...patch }));
     persistSave(patch);
-  }
+  };
 
-  function updateDebounced<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
-    const patch = { [key]: value } as Partial<UserSettings>;
-    setSettings((prev) => ({ ...prev, ...patch }));
+  const updateDebounced: SettingsUpdate = (key, value) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+    pendingRef.current = { ...pendingRef.current, [key]: value };
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => persistSave(patch), 700);
-  }
-
-  // ── Export handlers ───────────────────────────────────────────────────────
-
-  async function handleExportInventory() {
-    setExportingInv(true);
-    try {
-      const csv = await exportInventoryCSV();
-      const date = new Date().toISOString().slice(0, 10);
-      downloadCSV(csv, `inventory-${date}.csv`);
-      toast.success("Inventory exported");
-    } catch {
-      toast.error("Export failed — try again");
-    } finally {
-      setExportingInv(false);
-    }
-  }
-
-  async function handleExportTransactions() {
-    setExportingTx(true);
-    try {
-      const csv = await exportTransactionsCSV();
-      const date = new Date().toISOString().slice(0, 10);
-      downloadCSV(csv, `transactions-${date}.csv`);
-      toast.success("Transactions exported");
-    } catch {
-      toast.error("Export failed — try again");
-    } finally {
-      setExportingTx(false);
-    }
-  }
-
-  // ── Logout ────────────────────────────────────────────────────────────────
-
-  async function handleLogout() {
-    const { createClient } = await import("@/lib/supabase/client");
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/auth/login");
-  }
-
-  // ─── Render ───────────────────────────────────────────────────────────────
+    debounceRef.current = setTimeout(() => persistSave(takePending()), DEBOUNCE_MS);
+  };
 
   return (
-    <div className="w-full max-w-2xl mx-auto py-6 space-y-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
+    <div className="mx-auto w-full max-w-2xl space-y-6 py-6">
+      <header className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold inv-label">Settings</h1>
-          <p className="text-xs opacity-40 mt-0.5">Configure your workspace and preferences</p>
+          <h1 className="text-xl font-bold text-foreground">Settings</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">Your workspace and preferences</p>
         </div>
-        {/* Save status indicator */}
-        <div className={`flex items-center gap-1.5 text-xs transition-all duration-300 ${
-          saveStatus === "idle" ? "opacity-0" : "opacity-100"
-        }`}>
-          {saveStatus === "saving" && <span className="opacity-50 animate-pulse">Saving…</span>}
-          {saveStatus === "saved" && <>
-            <CheckCircle2 size={13} className="text-green-500" />
-            <span className="text-green-500">Saved</span>
-          </>}
-          {saveStatus === "error" && <>
-            <AlertCircle size={13} className="text-red-500" />
-            <span className="text-red-500">Save failed</span>
-          </>}
-        </div>
-      </div>
+        <SaveIndicator status={saveStatus} />
+      </header>
 
-      {/* ── PROFILE ─────────────────────────────────────────────────────── */}
-      <Section icon={User} title="Profile">
-        <SettingRow label="Display name" description="Used in the nav greeting">
-          <input
-            type="text"
-            placeholder={email.split("@")[0]}
-            value={settings.display_name ?? ""}
-            onChange={(e) => updateDebounced("display_name", e.target.value || null)}
-            className="border rounded-lg px-3 py-1.5 text-sm bg-background w-44"
-          />
-        </SettingRow>
-        <SettingRow label="Email" description="Your sign-in email">
-          <span className="text-sm opacity-50 font-mono">{email}</span>
-        </SettingRow>
-        <SettingRow label="Business name" description="Shown in consigner portals">
-          <input
-            type="text"
-            placeholder="OzoneTCG"
-            value={settings.business_name ?? ""}
-            onChange={(e) => updateDebounced("business_name", e.target.value || null)}
-            className="border rounded-lg px-3 py-1.5 text-sm bg-background w-44"
-          />
-        </SettingRow>
-      </Section>
-
-      {/* ── PRICING DEFAULTS ─────────────────────────────────────────────── */}
-      <Section icon={TrendingUp} title="Pricing Defaults">
-        <SettingRow label="Default buy percentage" description="Pre-fills when recording buys">
-          <NumInput
-            value={settings.default_buy_pct}
-            onChange={(v) => updateImmediate("default_buy_pct", v)}
-          />
-        </SettingRow>
-        <SettingRow label="Default trade credit" description="Pre-fills when recording trades">
-          <NumInput
-            value={settings.default_trade_pct}
-            onChange={(v) => updateImmediate("default_trade_pct", v)}
-          />
-        </SettingRow>
-        <SettingRow label="Default consigner rate" description="Pre-fills when creating consigners">
-          <NumInput
-            value={settings.default_consigner_rate}
-            onChange={(v) => updateImmediate("default_consigner_rate", v)}
-          />
-        </SettingRow>
-        <SettingRow label="Grading cost per card" description="PSA standard service fee — used in grading ROI calculations">
-          <NumInput
-            value={settings.grading_cost}
-            onChange={(v) => updateImmediate("grading_cost", v)}
-            min={0}
-            max={500}
-            unit="$"
-            width="w-24"
-          />
-        </SettingRow>
-        <div className="px-4 py-2 bg-muted/10">
-          <div className="text-[11px] uppercase tracking-wider opacity-40 font-semibold mb-1">Price movement thresholds</div>
-        </div>
-        <SettingRow label="Dropping threshold" description="Below this % shows red badge">
-          <NumInput
-            value={settings.drop_threshold}
-            onChange={(v) => updateImmediate("drop_threshold", v)}
-            width="w-24"
-          />
-        </SettingRow>
-        <SettingRow label="Rising threshold" description="Above this % shows green badge">
-          <NumInput
-            value={settings.rise_threshold}
-            onChange={(v) => updateImmediate("rise_threshold", v)}
-            width="w-24"
-          />
-        </SettingRow>
-        <SettingRow label="Spiking threshold" description="Above this % shows gold badge">
-          <NumInput
-            value={settings.spike_threshold}
-            onChange={(v) => updateImmediate("spike_threshold", v)}
-            width="w-24"
-          />
-        </SettingRow>
-        <div className="px-4 py-2 bg-muted/10">
-          <div className="text-[11px] uppercase tracking-wider opacity-40 font-semibold mb-1">FMV strategy</div>
-        </div>
-        <SettingRow label="Slab pricing strategy" description="Which percentile to use as FMV for graded cards">
-          <div className="flex rounded-lg border overflow-hidden text-sm">
-            {([
-              { value: "auto", label: "Auto" },
-              { value: "q1", label: "Q1" },
-              { value: "median", label: "Median" },
-              { value: "q3", label: "Q3" },
-            ] as const).map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => updateImmediate("pricing_strategy", value)}
-                className={`px-3 py-1.5 transition-colors ${
-                  settings.pricing_strategy === value
-                    ? "bg-foreground text-background font-medium"
-                    : "hover:bg-muted"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
-      </Section>
-
-      {/* ── DISPLAY PREFERENCES ──────────────────────────────────────────── */}
-      <Section icon={Monitor} title="Display Preferences">
-        <SettingRow label="Default inventory view">
-          <div className="flex rounded-lg border overflow-hidden text-sm">
-            {(["list", "grid"] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => updateImmediate("default_view", v)}
-                className={`px-3 py-1.5 capitalize transition-colors ${
-                  settings.default_view === v
-                    ? "bg-foreground text-background font-medium"
-                    : "hover:bg-muted"
-                }`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
-        <SettingRow label="Theme">
-          <div className="flex rounded-lg border overflow-hidden text-sm">
-            {(["light", "dark", "system"] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => { setTheme(v); updateImmediate("theme", v); }}
-                className={`px-3 py-1.5 capitalize transition-colors ${
-                  (currentTheme ?? settings.theme) === v
-                    ? "bg-foreground text-background font-medium"
-                    : "hover:bg-muted"
-                }`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
-        <SettingRow label="Currency">
-          <select
-            value={settings.currency}
-            onChange={(e) => updateImmediate("currency", e.target.value)}
-            className="border rounded-lg px-3 py-1.5 text-sm bg-background"
-          >
-            <option value="USD">USD ($)</option>
-            <option value="CAD">CAD ($)</option>
-            <option value="EUR">EUR (€)</option>
-          </select>
-        </SettingRow>
-        <SettingRow label="Default sort">
-          <select
-            value={settings.default_sort}
-            onChange={(e) => updateImmediate("default_sort", e.target.value)}
-            className="border rounded-lg px-3 py-1.5 text-sm bg-background"
-          >
-            <option value="date-desc">Recently Added</option>
-            <option value="date-asc">Oldest First</option>
-            <option value="name-asc">Name A–Z</option>
-            <option value="name-desc">Name Z–A</option>
-            <option value="market-desc">Price High–Low</option>
-            <option value="market-asc">Price Low–High</option>
-          </select>
-        </SettingRow>
-      </Section>
-
-      {/* ── PRICING SOURCES ──────────────────────────────────────────────── */}
-      <Section icon={TrendingUp} title="Pricing Sources">
-        <SettingRow label="eBay Browse API" description="Used for slab comps and sold listings">
-          <StatusDot ok={apiStatus.ebay} label="Not configured" />
-        </SettingRow>
-        <SettingRow label="JustTCG / TCGPlayer" description="Used for raw card pricing">
-          <StatusDot ok={apiStatus.justtcg} label="Not configured" />
-        </SettingRow>
-        <SettingRow label="PSA Cert Lookup" description="Used for cert scanner">
-          <StatusDot ok={apiStatus.psa} label="Not configured" />
-        </SettingRow>
-        <SettingRow
-          label="Auto-refresh behavior"
-          description={
-            "High value (>$200): 2 hrs · Mid ($50–$200): 4 hrs · Low (<$50): 8 hrs"
-          }
-        >
-          <span className="text-xs opacity-40 italic">Informational</span>
-        </SettingRow>
-      </Section>
-
-      {/* ── NOTIFICATIONS ────────────────────────────────────────────────── */}
-      <Section icon={Bell} title="Notifications">
-        <SettingRow label="Price alert threshold" description="Coming soon — notify when price moves more than X%">
-          <div className="flex items-center gap-2">
-            <NumInput
-              value={settings.price_alert_threshold}
-              onChange={(v) => updateImmediate("price_alert_threshold", v)}
-              width="w-24"
-            />
-            <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-medium">Soon</span>
-          </div>
-        </SettingRow>
-      </Section>
-
-      {/* ── DATA MANAGEMENT ──────────────────────────────────────────────── */}
-      <Section icon={Database} title="Data Management">
-        <SettingRow label="Export inventory" description="Download all current inventory as CSV">
-          <button
-            onClick={handleExportInventory}
-            disabled={exportingInv}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors disabled:opacity-50"
-          >
-            <Download size={13} />
-            {exportingInv ? "Exporting…" : "Download CSV"}
-          </button>
-        </SettingRow>
-        <SettingRow label="Export transactions" description="Download all transactions as CSV">
-          <button
-            onClick={handleExportTransactions}
-            disabled={exportingTx}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors disabled:opacity-50"
-          >
-            <Download size={13} />
-            {exportingTx ? "Exporting…" : "Download CSV"}
-          </button>
-        </SettingRow>
-      </Section>
-
-      {/* ── STORAGE ──────────────────────────────────────────────────────── */}
-      <Section icon={HardDrive} title="Storage">
-        <SettingRow label="Card Image Cache" description="Cached images load instantly at shows with poor cell service">
-          <button
-            onClick={clearImageCache}
-            disabled={cacheClearing || cacheCleared}
-            className="btn-outline text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {cacheCleared ? (
-              <>
-                <CheckCircle2 size={13} />
-                Cleared
-              </>
-            ) : cacheClearing ? (
-              "Clearing…"
-            ) : (
-              "Clear Cache"
-            )}
-          </button>
-        </SettingRow>
-      </Section>
-
-      {/* ── PENDING SYNC ─────────────────────────────────────────────────── */}
-      <Section icon={HardDrive} title="Pending Sync">
-        <SettingRow
-          label="Offline Queue"
-          description={
-            pendingQueueCount === null ? "Loading…"
-            : pendingQueueCount === 0 ? "No pending transactions"
-            : `${pendingQueueCount} transaction${pendingQueueCount !== 1 ? "s" : ""} waiting to sync`
-          }
-        >
-          <div className="flex items-center gap-2">
-            {syncQueueResult && (
-              <span className="text-xs text-emerald-400">{syncQueueResult}</span>
-            )}
-            <button
-              onClick={syncQueue}
-              disabled={syncingQueue || pendingQueueCount === 0}
-              className="btn-outline text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
-            >
-              {syncingQueue ? "Syncing…" : "Sync Now"}
-            </button>
-          </div>
-        </SettingRow>
-        <SettingRow label="Clear Queue" description="Permanently discard all pending transactions — use only if you no longer need this data">
-          {clearQueueConfirm ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-red-400">Are you sure?</span>
-              <button
-                onClick={clearQueue}
-                disabled={clearingQueue}
-                className="text-xs px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-              >
-                {clearingQueue ? "Clearing…" : "Confirm"}
-              </button>
-              <button
-                onClick={() => setClearQueueConfirm(false)}
-                className="text-xs px-2 py-1 rounded-lg border opacity-50 hover:opacity-80"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setClearQueueConfirm(true)}
-              disabled={pendingQueueCount === 0}
-              className="btn-outline text-xs px-3 py-1.5 disabled:opacity-50"
-            >
-              Clear Queue
-            </button>
-          )}
-        </SettingRow>
-      </Section>
-
-      {/* ── API KEYS ─────────────────────────────────────────────────────── */}
-      <Section icon={KeyRound} title="API Keys">
-        <div className="px-4 py-3 text-xs opacity-50 space-y-1">
-          <p>API keys are configured via environment variables — not stored here for security.</p>
-          <p>To add or update a key, set it in your Vercel project environment variables and redeploy.</p>
-        </div>
-        <SettingRow label="EBAY_APP_ID + EBAY_CERT_ID">
-          <StatusDot ok={apiStatus.ebay} label="Not set" />
-        </SettingRow>
-        <SettingRow label="JUSTTCG_API_KEY">
-          <StatusDot ok={apiStatus.justtcg} label="Not set" />
-        </SettingRow>
-        <SettingRow label="PSA_API_KEY">
-          <StatusDot ok={apiStatus.psa} label="Not set" />
-        </SettingRow>
-      </Section>
-
-      {/* ── HOME ADDRESS ─────────────────────────────────────────────────── */}
-      <HomeAddressSection initial={workspaceData.home_address} />
-
-      {/* ── SAVED LOCATIONS ──────────────────────────────────────────────── */}
-      <SavedLocationsSection initial={savedLocations} />
-
-      {/* ── OFFLINE SYNC ─────────────────────────────────────────────────── */}
+      <ProfileSection email={email} settings={settings} onChange={updateDebounced} />
+      <PricingDefaultsSection settings={settings} onChange={updateImmediate} />
+      <DisplaySection settings={settings} onChange={updateImmediate} />
+      <NotificationsSection settings={settings} onChange={updateImmediate} />
+      <PricingSourcesSection apiStatus={apiStatus} />
+      <DataSection />
+      <StorageSection />
       <OfflineSyncSection />
-      <ImageCacheSection />
-
-      {/* ── ACCOUNT ──────────────────────────────────────────────────────── */}
-      <Section icon={ShieldCheck} title="Account">
-        <SettingRow label="Password" description="Send a reset link to your email">
-          {resetSent ? (
-            <div className="flex items-center gap-1.5 text-xs text-green-600">
-              <CheckCircle2 size={13} />
-              Reset email sent
-            </div>
-          ) : (
-            <button
-              onClick={async () => {
-                setResetLoading(true);
-                try {
-                  await sendPasswordResetEmail();
-                  setResetSent(true);
-                } catch {
-                  toast.error("Failed to send reset email");
-                } finally {
-                  setResetLoading(false);
-                }
-              }}
-              disabled={resetLoading}
-              className="text-xs px-3 py-1.5 rounded-lg border font-medium hover:bg-muted transition-colors disabled:opacity-50"
-            >
-              {resetLoading ? "Sending…" : "Send reset email"}
-            </button>
-          )}
-        </SettingRow>
-        <SettingRow label="Sign out" description="Sign out of this device">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-400/30 text-red-500 font-medium hover:bg-red-500/10 transition-colors"
-          >
-            <LogOut size={13} />
-            Logout
-          </button>
-        </SettingRow>
-      </Section>
-
+      <LocationsSection homeAddress={workspaceData.home_address} savedLocations={savedLocations} />
+      <AccountSection />
     </div>
   );
 }

@@ -1,0 +1,33 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { MoneyDisplay } from "@/components/ui";
+import type { ActiveShowInfo } from "@/app/protected/shows/actions";
+
+// ── Active show banner ──
+// Sits under the header on every page except Home and POS, which already
+// render the running show themselves. Tap goes to POS.
+
+const HIDDEN_ON = ["/protected/dashboard", "/protected/pos"];
+
+export default function ActiveShowBanner({ show }: { show: ActiveShowInfo | null }) {
+  const pathname = usePathname();
+  if (!show) return null;
+  if (HIDDEN_ON.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return null;
+
+  return (
+    <Link
+      href="/protected/pos"
+      className="flex h-11 w-full items-center justify-between gap-3 border-b border-accent-primary-border bg-accent-primary-soft px-4 text-sm font-medium transition-colors duration-150 hover:bg-accent-primary/20"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-primary" aria-hidden />
+        <span className="truncate text-foreground">{show.name}</span>
+      </span>
+      <span className="shrink-0 text-primary">
+        Cash <MoneyDisplay amount={show.expected_cash} tone="neutral" className="text-primary" />
+      </span>
+    </Link>
+  );
+}

@@ -27,20 +27,22 @@ export default function PhotoCapture({ photos, onChange }: { photos: Blob[]; onC
   }
 
   return (
-    <div className="flex gap-2 overflow-x-auto">
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      {/* The whole thumbnail is the remove target, so it's a full 80px tap */}
       {urls.map((url, i) => (
-        <div key={i} className="relative w-16 h-16 shrink-0">
+        <button key={i} type="button" aria-label="Remove photo" onClick={() => onChange(photos.filter((_, j) => j !== i))}
+          className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={url} alt="" className="w-16 h-16 rounded-lg object-cover border" />
-          <button type="button" aria-label="Remove photo" onClick={() => onChange(photos.filter((_, j) => j !== i))}
-            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center">
+          <img src={url} alt="" className="h-full w-full object-cover" />
+          <span className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background" aria-hidden>
             <X size={12} />
-          </button>
-        </div>
+          </span>
+        </button>
       ))}
       <button type="button" onClick={() => input.current?.click()}
-        className="w-16 h-16 shrink-0 rounded-lg border border-dashed flex flex-col items-center justify-center text-xs text-muted-foreground">
-        <Camera size={18} />Photo
+        className="flex h-20 w-20 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-xs text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground">
+        <Camera size={20} />
+        Photo
       </button>
       <input ref={input} type="file" accept="image/*" capture="environment" multiple hidden
         onChange={(e) => { add(e.target.files); e.target.value = ""; }} />

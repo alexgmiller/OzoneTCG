@@ -1,20 +1,13 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { cn } from "@/lib/cn";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-/**
- * Toast — non-blocking notification, bottom-center stacked.
- *
- * USE for transient results: "Saved", "Undone", "Connection lost".
- * DON'T use for blocking confirmations — use <Modal /> for those.
- * DON'T auto-dismiss errors — require manual dismissal so the user sees them.
- *
- * Wire the provider once at the app root, then call `useToast()` anywhere:
- *   const toast = useToast();
- *   toast.success("Batch saved");
- *   toast.error("Offline — we'll retry");
- */
+// ── Toast ──
+// Bottom-center stacked notifications, max 3. Errors never auto-dismiss.
+//   const toast = useToast();
+//   toast.success("Batch saved");
 
 export type ToastTone = "success" | "error" | "warning" | "info";
 
@@ -33,7 +26,7 @@ const DEFAULT_DISMISS: Record<ToastTone, number | null> = {
   success: 4000,
   warning: 6000,
   info: 4000,
-  error: null, // manual dismiss per §7
+  error: null,
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -51,11 +44,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ push }}>
       {children}
-      {/*
-        Clears the mobile tab bar (h-14, fixed bottom-0 in NavLinks) so toasts
-        aren't hidden behind it. The bar is md:hidden, so desktop sits lower.
-      */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-20 md:bottom-6 z-50 flex flex-col items-center gap-2">
+      {/* bottom-20 clears the h-16 mobile tab bar (AppNav); the bar is md:hidden */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex flex-col items-center gap-2 px-4 md:bottom-5">
         {toasts.map((t) => (
           <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
         ))}
@@ -71,30 +61,32 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
     return () => window.clearTimeout(id);
   }, [toast.autoDismissMs, onDismiss]);
 
+  // Opaque card surface so the toast reads over any page content in both themes.
   const toneClass = {
-    success: "bg-positive-soft border-positive-border text-positive",
-    error: "bg-negative-soft border-negative-border text-negative",
-    warning: "bg-warning-soft border-warning-border text-warning",
-    info: "bg-accent-primary-soft border-accent-primary-border text-accent-secondary",
+    success: "border-positive-border text-positive-strong dark:text-positive",
+    error: "border-negative-border text-negative-strong dark:text-negative",
+    warning: "border-warning-border text-warning-strong dark:text-warning",
+    info: "border-accent-primary-border text-accent-primary",
   }[toast.tone];
 
   return (
     <div
       role="status"
       className={cn(
-        "pointer-events-auto flex max-w-sm items-center gap-3 rounded-xl border px-4 py-3",
+        "pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-xl border bg-card py-2 pl-4 pr-2",
         "text-sm font-medium",
         "transition-opacity duration-150",
         toneClass,
       )}
     >
-      <span className="flex-1">{toast.message}</span>
+      <span className="flex-1 py-1">{toast.message}</span>
       <button
+        type="button"
         onClick={onDismiss}
-        className="font-mono text-xs uppercase tracking-wider text-neutral hover:text-white transition-colors duration-150"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
         aria-label="Dismiss"
       >
-        ✕
+        <X size={16} />
       </button>
     </div>
   );

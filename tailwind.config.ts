@@ -1,16 +1,9 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
-/**
- * Merged config: shadcn CSS-var tokens (original) + Ozone design-system tokens (added).
- * Read .claude/design-system.md before touching this file.
- *
- * Merge notes:
- *  - borderRadius.lg kept as "var(--radius)" (shadcn default) — shadcn components depend on it.
- *    The design bundle wanted "0.5rem" here, but that would break button/input/card rendering.
- *    xl + 2xl added from bundle; md + sm preserved from shadcn.
- *  - content paths: union of original (pages/, src/) + bundle (lib/).
- *  - plugins: tailwindcss-animate preserved; bundle had none.
- */
+// ── Tailwind config ──
+// shadcn CSS-var tokens + Ozone semantic tokens (see .claude/design-system.md).
+// borderRadius.lg stays "var(--radius)" — shadcn primitives depend on it.
 export default {
   darkMode: ["class"],
   content: [
@@ -141,5 +134,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;

@@ -1,16 +1,9 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
-import type { ShowSession } from "@/app/protected/shows/actions";
-import ShowsClient from "./ShowsClient";
-import ShowsPastList from "./ShowsPastList";
-
-function money(v: number) {
-  return `$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-function moneySign(v: number) {
-  return (v >= 0 ? "+" : "−") + money(v);
-}
+import { MoneyDisplay, StatCard } from "@/components/ui";
+import type { ShowSession } from "./actions";
+import NewShowForm from "./NewShowForm";
+import ShowsList from "./ShowsList";
 
 export default async function ShowsServer() {
   const supabase = await createClient();
@@ -20,90 +13,41 @@ export default async function ShowsServer() {
     .from("show_sessions")
     .select("*")
     .eq("workspace_id", workspaceId)
-    .order("started_at", { ascending: false });
-
+    .order("date", { ascending: false });
   if (error) throw new Error(error.message);
 
   const shows = (data ?? []) as ShowSession[];
-  const active = shows.find((s) => s.status === "active");
+  const hasActive = shows.some((s) => s.status === "active");
 
-  // Active show → jump straight into POS
-  if (active) {
-    redirect("/protected/pos");
-  }
-
+  // ── Lifetime stats ──
   const completed = shows.filter((s) => s.status === "completed");
-
-  const totalShows = completed.length;
-  const totalPL = completed.reduce((s, x) => s + (x.net_pl ?? 0), 0);
-  const avgPL = totalShows > 0 ? totalPL / totalShows : null;
-  const bestShow = completed.reduce(
-    (best, s) => (s.net_pl > (best?.net_pl ?? -Infinity) ? s : best),
-    null as ShowSession | null
-  );
-  const totalCardsBought = completed.reduce((s, x) => s + (x.cards_bought ?? 0), 0);
-  const totalCardsSold = completed.reduce((s, x) => s + (x.cards_sold ?? 0), 0);
+  const totalPL = completed.reduce((sum, s) => sum + (s.net_pl ?? 0), 0);
+  const avgPL = completed.length > 0 ? totalPL / completed.length : 0;
+  const cardsSold = completed.reduce((sum, s) => sum + (s.cards_sold ?? 0), 0);
 
   return (
-    <div className="p-4 space-y-5">
-      <h1 className="text-xl font-bold">Shows</h1>
+    <div className="w-full max-w-2xl mx-auto py-4 space-y-5">
+      <h1 className="text-xl font-bold tracking-tight text-foreground">Shows</h1>
 
-      {/* Start a Show */}
-      <ShowsClient />
+      <NewShowForm hasActive={hasActive} />
 
-      {/* Lifetime stats */}
-      {totalShows > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="border rounded-xl p-3">
-            <div className="text-xs opacity-50 uppercase tracking-wide">Total P&L</div>
-            <div className={`text-lg font-semibold mt-0.5 ${totalPL >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-              {moneySign(totalPL)}
-            </div>
-            <div className="text-xs opacity-40 mt-1">{totalShows} shows</div>
-          </div>
-          <div className="border rounded-xl p-3">
-            <div className="text-xs opacity-50 uppercase tracking-wide">Avg per show</div>
-            <div className={`text-lg font-semibold mt-0.5 ${(avgPL ?? 0) >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-              {avgPL != null ? moneySign(avgPL) : "—"}
-            </div>
-            <div className="text-xs opacity-40 mt-1">per show</div>
-          </div>
-          <div className="border rounded-xl p-3">
-            <div className="text-xs opacity-50 uppercase tracking-wide">Cards bought</div>
-            <div className="text-lg font-semibold mt-0.5">{totalCardsBought}</div>
-            <div className="text-xs opacity-40 mt-1">lifetime</div>
-          </div>
-          <div className="border rounded-xl p-3">
-            <div className="text-xs opacity-50 uppercase tracking-wide">Best show</div>
-            <div className={`text-lg font-semibold mt-0.5 ${(bestShow?.net_pl ?? 0) >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-              {bestShow ? moneySign(bestShow.net_pl) : "—"}
-            </div>
-            <div className="text-xs opacity-40 mt-1 truncate">{bestShow?.name ?? "—"}</div>
-          </div>
+      {completed.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <StatCard
+            label="Lifetime P&L"
+            value={<MoneyDisplay amount={totalPL} showSign />}
+            delta={`${completed.length} show${completed.length === 1 ? "" : "s"}`}
+            className="col-span-2 sm:col-span-1"
+          />
+          <StatCard label="Avg / show" value={<MoneyDisplay amount={avgPL} showSign />} />
+          <StatCard
+            label="Cards sold"
+            value={<span className="text-foreground">{cardsSold}</span>}
+          />
         </div>
       )}
 
-      {/* Past shows */}
-      {totalShows > 0 && (
-        <div>
-          <div className="text-xs font-medium mb-2 opacity-60 uppercase tracking-wide">Past Shows</div>
-          <ShowsPastList shows={completed} />
-        </div>
-      )}
-
-      {totalShows === 0 && (
-        <div className="text-center py-8 opacity-40">
-          <div className="text-sm">No completed shows yet.</div>
-          <div className="text-xs mt-1">Start your first show above.</div>
-        </div>
-      )}
-
-      {/* Total cards sold lifetime stat */}
-      {totalCardsSold > 0 && (
-        <div className="text-xs opacity-30 text-center pb-2">
-          {totalCardsBought} cards bought · {totalCardsSold} cards sold across all shows
-        </div>
-      )}
+      <ShowsList shows={shows} />
     </div>
   );
 }

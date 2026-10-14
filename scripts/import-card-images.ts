@@ -80,7 +80,6 @@ type PtcgCard = {
   number: string;
   set: { id: string; name: string };
   images: { small?: string; large?: string };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subtypes?: string[];
 };
 

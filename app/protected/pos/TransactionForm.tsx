@@ -6,6 +6,7 @@ import { useToast } from "@/components/ui";
 import type { OfflineResult } from "@/lib/offlineAwareActions";
 import { attachPhoto } from "./actions";
 import { METHOD_LABELS, PAYMENT_METHODS, type Mode, type Payer, type PaymentMethod } from "./ledger";
+import { INPUT, chip } from "./ui";
 import PhotoCapture from "./PhotoCapture";
 
 export type DealForm = {
@@ -16,8 +17,7 @@ export type DealForm = {
   paid_by: Payer;
 };
 
-const chip = (on: boolean) =>
-  `h-10 px-3 rounded-lg border text-sm whitespace-nowrap ${on ? "bg-primary text-primary-foreground border-primary" : ""}`;
+const PAYERS = ["shared", "alex", "mila"] as const;
 
 export default function TransactionForm({ mode, suggested, ready, submit, onDone }: {
   mode: Mode;
@@ -67,39 +67,48 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
   }
 
   return (
-    <div className="space-y-3 border-t pt-3">
+    <div className="space-y-3 border-t border-border pt-4">
       {mode === "trade" && (
-        <div className="flex gap-2">
-          <button type="button" className={chip(wePay)} onClick={() => setWePay(true)}>We pay cash</button>
-          <button type="button" className={chip(!wePay)} onClick={() => setWePay(false)}>They pay cash</button>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Cash direction">
+          <button type="button" role="radio" aria-checked={wePay} className={chip(wePay)} onClick={() => setWePay(true)}>We pay cash</button>
+          <button type="button" role="radio" aria-checked={!wePay} className={chip(!wePay)} onClick={() => setWePay(false)}>They pay cash</button>
         </div>
       )}
+
+      {/* ── Amount ── suggested value is the placeholder; blank means "use it" */}
       <input type="number" inputMode="decimal" min="0" step="0.01" value={amount}
         onChange={(e) => setAmount(e.target.value)} placeholder={suggested.toFixed(2)}
         aria-label={mode === "trade" ? "Cash difference" : "Amount"}
-        className="w-full h-12 border rounded-lg px-3 text-lg bg-background tabular-nums" />
-      <div className="flex gap-2 overflow-x-auto pb-1">
+        className={`${INPUT} h-14 w-full text-lg font-semibold tabular-nums`} />
+
+      <div className="flex gap-2 overflow-x-auto pb-1" role="radiogroup" aria-label="Payment method">
         {PAYMENT_METHODS.map((m) => (
-          <button key={m} type="button" className={chip(method === m)} onClick={() => setMethod(m)}>{METHOD_LABELS[m]}</button>
+          <button key={m} type="button" role="radio" aria-checked={method === m} className={chip(method === m)} onClick={() => setMethod(m)}>
+            {METHOD_LABELS[m]}
+          </button>
         ))}
       </div>
+
       {mode !== "sell" && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Paid by</span>
-          {(["shared", "alex", "mila"] as const).map((p) => (
-            <button key={p} type="button" className={chip(paidBy === p)} onClick={() => setPaidBy(p)}>
-              {p[0].toUpperCase() + p.slice(1)}
+        <div className="flex items-center gap-2 text-sm" role="radiogroup" aria-label="Paid by">
+          <span className="shrink-0 text-muted-foreground">Paid by</span>
+          {PAYERS.map((p) => (
+            <button key={p} type="button" role="radio" aria-checked={paidBy === p} className={`${chip(paidBy === p)} capitalize`} onClick={() => setPaidBy(p)}>
+              {p}
             </button>
           ))}
         </div>
       )}
+
       <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)}
-        placeholder="Who (name or handle)" className="w-full h-11 border rounded-lg px-3 text-sm bg-background" />
+        placeholder="Who (name or handle)" aria-label="Counterparty" className={`${INPUT} w-full`} />
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-        placeholder="Notes" className="w-full border rounded-lg px-3 py-2 text-sm bg-background resize-none" />
+        placeholder="Notes" aria-label="Notes"
+        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground" />
       <PhotoCapture photos={photos} onChange={setPhotos} />
+
       <button type="button" disabled={!ready || busy} onClick={confirm}
-        className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold disabled:opacity-40">
+        className="h-14 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40">
         {busy ? "Saving…" : `Confirm ${mode}`}
       </button>
     </div>

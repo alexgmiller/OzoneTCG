@@ -3,9 +3,11 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download } from "lucide-react";
+import { MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
 import type { ExpenseCategory } from "../actions";
 
-// IRS Schedule C line item mapping
+// ── IRS Schedule C line mapping ───────────────────────────────────────────────
+
 const SCHEDULE_C_LINES: Record<ExpenseCategory, string> = {
   booth_fee: "Line 20b — Rent or lease (other business property)",
   meals: "Line 24b — Meals (50%)",
@@ -29,6 +31,8 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   grading_fees: "Grading Fees",
   other: "Other",
 };
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export type CategoryRow = {
   category: ExpenseCategory;
@@ -61,6 +65,12 @@ type Props = {
   availableYears: number[];
   summary: TaxSummary;
 };
+
+const TH = "px-3 py-3 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground";
+const TD = "px-3 py-3";
+const NUM = "text-right tabular-nums";
+
+// ── Client ────────────────────────────────────────────────────────────────────
 
 export default function TaxReportClient({ year, availableYears, summary }: Props) {
   const router = useRouter();
@@ -98,13 +108,7 @@ export default function TaxReportClient({ year, availableYears, summary }: Props
     rows.push(["PER-SHOW P&L", "", "", "", ""]);
     rows.push(["Show", "Date", "Revenue", "Expenses", "Net P&L"]);
     for (const show of summary.shows) {
-      rows.push([
-        show.name,
-        show.date,
-        fmt(show.revenue),
-        fmt(show.expenses),
-        fmt(show.net),
-      ]);
+      rows.push([show.name, show.date, fmt(show.revenue), fmt(show.expenses), fmt(show.net)]);
     }
 
     const csv = rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
@@ -118,89 +122,87 @@ export default function TaxReportClient({ year, availableYears, summary }: Props
     setExporting(false);
   }
 
+  const totalCount = summary.categories.reduce((s, c) => s + c.count, 0);
+
   return (
     <div className="space-y-6">
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Tax Year</label>
+      {/* ── Header row ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          Tax year
           <select
             value={year}
             onChange={handleYearChange}
-            className="border rounded px-2 py-1 text-sm bg-white dark:bg-gray-800"
+            className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm tabular-nums text-foreground"
           >
             {availableYears.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-        </div>
+        </label>
         <button
           onClick={exportCSV}
           disabled={exporting}
-          className="flex items-center gap-1.5 text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded disabled:opacity-60"
+          className="inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
         >
-          <Download className="w-4 h-4" />
+          <Download size={16} />
           {exporting ? "Exporting…" : "Export Schedule C CSV"}
         </button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryCard label="Gross Expenses" value={fmt(summary.grossTotal)} />
-        <SummaryCard label="Total Deductible" value={fmt(summary.deductibleTotal)} highlight />
-        <SummaryCard label="Total Miles" value={`${summary.totalMiles.toFixed(1)} mi`} />
-        <SummaryCard label="Receipts on File" value={String(summary.receiptCount)} />
+      {/* ── Summary cards ── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Gross expenses" money={summary.grossTotal} />
+        <StatCard
+          label="Total deductible"
+          tone="positive"
+          value={<MoneyDisplay amount={summary.deductibleTotal} tone="positive" />}
+        />
+        <StatCard label="Total miles" value={`${summary.totalMiles.toFixed(1)} mi`} />
+        <StatCard label="Receipts on file" value={String(summary.receiptCount)} />
       </div>
 
-      {/* Category breakdown */}
-      <section>
-        <h2 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-          Schedule C Breakdown
-        </h2>
-        <div className="overflow-x-auto rounded border dark:border-gray-700">
+      {/* ── Category breakdown ── */}
+      <section className="space-y-2">
+        <SectionHeader>Schedule C breakdown</SectionHeader>
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-800">
+            <thead className="bg-muted">
               <tr>
-                <th className="text-left px-3 py-2">Category</th>
-                <th className="text-left px-3 py-2 hidden sm:table-cell">IRS Line</th>
-                <th className="text-right px-3 py-2">Count</th>
-                <th className="text-right px-3 py-2">Gross</th>
-                <th className="text-right px-3 py-2">Deductible</th>
+                <th className={`${TH} text-left`}>Category</th>
+                <th className={`${TH} hidden text-left sm:table-cell`}>IRS line</th>
+                <th className={`${TH} text-right`}>Count</th>
+                <th className={`${TH} text-right`}>Gross</th>
+                <th className={`${TH} text-right`}>Deductible</th>
               </tr>
             </thead>
-            <tbody className="divide-y dark:divide-gray-700">
+            <tbody className="divide-y divide-border">
               {summary.categories.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
+                  <td colSpan={5} className="px-3 py-5 text-center text-muted-foreground">
                     No expenses for {year}
                   </td>
                 </tr>
               )}
               {summary.categories.map((cat) => (
-                <tr key={cat.category} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <td className="px-3 py-2 font-medium">{CATEGORY_LABELS[cat.category]}</td>
-                  <td className="px-3 py-2 text-gray-500 text-xs hidden sm:table-cell">
+                <tr key={cat.category} className="transition-colors duration-150 hover:bg-muted">
+                  <td className={`${TD} font-medium`}>{CATEGORY_LABELS[cat.category]}</td>
+                  <td className={`${TD} hidden text-xs text-muted-foreground sm:table-cell`}>
                     {SCHEDULE_C_LINES[cat.category]}
                   </td>
-                  <td className="px-3 py-2 text-right">{cat.count}</td>
-                  <td className="px-3 py-2 text-right">{fmt(cat.gross)}</td>
-                  <td className="px-3 py-2 text-right font-medium text-green-700 dark:text-green-400">
-                    {fmt(cat.deductible)}
-                  </td>
+                  <td className={`${TD} ${NUM}`}>{cat.count}</td>
+                  <td className={`${TD} ${NUM}`}><MoneyDisplay amount={cat.gross} tone="neutral" /></td>
+                  <td className={`${TD} ${NUM} font-medium`}><MoneyDisplay amount={cat.deductible} tone="positive" /></td>
                 </tr>
               ))}
             </tbody>
             {summary.categories.length > 0 && (
-              <tfoot className="bg-gray-50 dark:bg-gray-800 font-semibold">
+              <tfoot className="bg-muted font-semibold">
                 <tr>
-                  <td className="px-3 py-2" colSpan={2}>Total</td>
-                  <td className="px-3 py-2 text-right">
-                    {summary.categories.reduce((s, c) => s + c.count, 0)}
-                  </td>
-                  <td className="px-3 py-2 text-right">{fmt(summary.grossTotal)}</td>
-                  <td className="px-3 py-2 text-right text-green-700 dark:text-green-400">
-                    {fmt(summary.deductibleTotal)}
-                  </td>
+                  <td className={TD} colSpan={2}>Total</td>
+                  <td className={`${TD} ${NUM}`}>{totalCount}</td>
+                  <td className={`${TD} ${NUM}`}><MoneyDisplay amount={summary.grossTotal} tone="neutral" /></td>
+                  <td className={`${TD} ${NUM}`}><MoneyDisplay amount={summary.deductibleTotal} tone="positive" /></td>
                 </tr>
               </tfoot>
             )}
@@ -208,47 +210,41 @@ export default function TaxReportClient({ year, availableYears, summary }: Props
         </div>
       </section>
 
-      {/* Per-show profitability */}
+      {/* ── Per-show profitability ── */}
       {summary.shows.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-            Per-Show Profitability
-          </h2>
-          <div className="overflow-x-auto rounded border dark:border-gray-700">
+        <section className="space-y-2">
+          <SectionHeader>Per-show profitability</SectionHeader>
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="text-left px-3 py-2">Show</th>
-                  <th className="text-left px-3 py-2">Date</th>
-                  <th className="text-right px-3 py-2">Revenue</th>
-                  <th className="text-right px-3 py-2">Expenses</th>
-                  <th className="text-right px-3 py-2">Net P&L</th>
+                  <th className={`${TH} text-left`}>Show</th>
+                  <th className={`${TH} text-left`}>Date</th>
+                  <th className={`${TH} text-right`}>Revenue</th>
+                  <th className={`${TH} text-right`}>Expenses</th>
+                  <th className={`${TH} text-right`}>Net P&amp;L</th>
                 </tr>
               </thead>
-              <tbody className="divide-y dark:divide-gray-700">
+              <tbody className="divide-y divide-border">
                 {summary.shows.map((show) => (
-                  <tr key={show.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-3 py-2 font-medium">{show.name}</td>
-                    <td className="px-3 py-2 text-gray-500">{show.date}</td>
-                    <td className="px-3 py-2 text-right">{fmt(show.revenue)}</td>
-                    <td className="px-3 py-2 text-right text-red-600 dark:text-red-400">
-                      {fmt(show.expenses)}
-                    </td>
-                    <td className={`px-3 py-2 text-right font-semibold ${show.net >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                      {show.net >= 0 ? "+" : ""}{fmt(show.net)}
-                    </td>
+                  <tr key={show.id} className="transition-colors duration-150 hover:bg-muted">
+                    <td className={`${TD} font-medium`}>{show.name}</td>
+                    <td className={`${TD} text-muted-foreground`}>{show.date}</td>
+                    <td className={`${TD} ${NUM}`}><MoneyDisplay amount={show.revenue} tone="neutral" /></td>
+                    <td className={`${TD} ${NUM}`}><MoneyDisplay amount={show.expenses} tone="negative" /></td>
+                    <td className={`${TD} ${NUM} font-semibold`}><MoneyDisplay amount={show.net} showSign /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-gray-500 mt-1.5">
+          <p className="text-xs text-muted-foreground">
             Revenue from show_sessions totals. Show expenses include all expense rows linked to that show.
           </p>
         </section>
       )}
 
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-muted-foreground">
         Consult a tax professional. Mileage deductible amount uses the IRS standard mileage rate
         recorded at time of entry. Meals are 50% deductible per IRS rules for business travel.
       </p>
@@ -256,16 +252,7 @@ export default function TaxReportClient({ year, availableYears, summary }: Props
   );
 }
 
-function SummaryCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="border dark:border-gray-700 rounded-lg p-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-lg font-semibold ${highlight ? "text-green-700 dark:text-green-400" : ""}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
+// ── CSV helpers ───────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
   return `$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

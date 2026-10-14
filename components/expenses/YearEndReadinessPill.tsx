@@ -2,16 +2,19 @@
 
 import { useState } from "react";
 import { CheckCircle2, TriangleAlert } from "lucide-react";
-import { Modal } from "@/components/ui/Modal";
+import { Modal } from "@/components/ui";
 import type { ExpenseRow } from "@/app/protected/expenses/ExpensesServer";
 
 const RECEIPT_THRESHOLD = 75;
+const PILL = "inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-sm";
 
 type Issue = {
   id: string;
   label: string;
   type: "receipt" | "mileage";
 };
+
+// ── Issue detection ───────────────────────────────────────────────────────────
 
 function getYearIssues(expenses: ExpenseRow[], year: number): Issue[] {
   const prefix = String(year);
@@ -40,6 +43,8 @@ function moneyFmt(n: number) {
   return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
+// ── Pill ──────────────────────────────────────────────────────────────────────
+
 export function YearEndReadinessPill({
   expenses,
   year = new Date().getFullYear(),
@@ -56,9 +61,7 @@ export function YearEndReadinessPill({
 
   if (yearExpenses.length === 0) {
     return (
-      <div className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border opacity-40"
-        style={{ borderColor: "rgba(255,255,255,0.12)" }}
-      >
+      <div className={`${PILL} border-border text-muted-foreground`}>
         No {year} expenses yet
       </div>
     );
@@ -66,10 +69,8 @@ export function YearEndReadinessPill({
 
   if (issues.length === 0) {
     return (
-      <div className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border"
-        style={{ borderColor: "rgba(52,211,153,0.30)", background: "rgba(52,211,153,0.08)", color: "#34d399" }}
-      >
-        <CheckCircle2 size={11} />
+      <div className={`${PILL} border-positive-border bg-positive-soft text-positive`}>
+        <CheckCircle2 size={14} />
         Ready to file
       </div>
     );
@@ -79,31 +80,30 @@ export function YearEndReadinessPill({
     <>
       <button
         onClick={() => setModalOpen(true)}
-        className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border transition-colors duration-150 hover:opacity-90"
-        style={{ borderColor: "rgba(245,158,11,0.35)", background: "rgba(245,158,11,0.09)", color: "#fbbf24" }}
+        className={`${PILL} border-warning-border bg-warning-soft text-warning transition-opacity duration-150 hover:opacity-90`}
       >
-        <TriangleAlert size={11} />
-        {issues.length} item{issues.length !== 1 ? "s" : ""} need review
+        <TriangleAlert size={14} />
+        <span className="tabular-nums">{issues.length}</span> item{issues.length !== 1 ? "s" : ""} need review
       </button>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={`${year} Tax Readiness`}>
-        <p className="text-xs opacity-50 mb-4">
+        <p className="mb-4 text-sm text-muted-foreground">
           Fix these before filing to avoid IRS issues.
         </p>
         <ul className="space-y-2">
           {issues.map((issue) => (
-            <li key={issue.id} className="flex items-start justify-between gap-3 text-xs">
-              <span className="opacity-70 leading-relaxed">{issue.label}</span>
+            <li key={issue.id} className="flex items-center justify-between gap-3 text-sm">
+              <span className="leading-relaxed text-muted-foreground">{issue.label}</span>
               <button
                 onClick={() => { setModalOpen(false); onEditExpense(issue.id); }}
-                className="shrink-0 px-2.5 py-1 rounded-lg border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 transition-colors"
+                className="inline-flex h-11 shrink-0 items-center rounded-lg border border-accent-primary-border px-4 text-sm text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
               >
                 Fix
               </button>
             </li>
           ))}
         </ul>
-        <p className="text-[10px] opacity-30 mt-4 leading-relaxed">
+        <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
           IRS requires documentation for expenses $75 or more.
         </p>
       </Modal>

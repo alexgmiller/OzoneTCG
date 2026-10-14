@@ -1,64 +1,50 @@
-import { AuthButton } from "@/components/auth-button";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import MobileBottomNav from "@/components/NavLinks";
 import Link from "next/link";
-import { Suspense } from "react";
+import AppNav from "@/components/AppNav";
+import ActiveShowBanner from "@/components/ActiveShowBanner";
+import { ThemeSwitcher } from "@/components/theme-switcher";
+import { createClient } from "@/lib/supabase/server";
 import { getActiveShow } from "@/app/protected/shows/actions";
 
-function money(v: number) {
-  return `$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// ── Signed-in handle for the sidebar footer ──
+async function getHandle(): Promise<string> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getClaims();
+    const email = data?.claims?.email as string | undefined;
+    return email?.split("@")[0] ?? "Account";
+  } catch {
+    return "Account";
+  }
 }
 
-export default async function ProtectedLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const activeShow = await getActiveShow().catch(() => null);
+export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  const [activeShow, handle] = await Promise.all([
+    getActiveShow().catch(() => null),
+    getHandle(),
+  ]);
 
   return (
-    <main className="min-h-screen flex flex-col">
-      <div className="flex-1 w-full flex flex-col">
-        <nav className="nav-glass w-full h-14 sticky top-0 z-40">
-          <div className="w-full h-full flex justify-between items-center px-4 text-sm">
-            <Link href="/protected/dashboard" className="font-bold text-base tracking-tight">
-              <span style={{ color: "var(--accent-primary)" }}>Ozone</span><span style={{ color: "var(--text-bright)" }}>TCG</span>
-            </Link>
+    <div className="min-h-dvh bg-background">
+      <AppNav handle={handle} hasActiveShow={!!activeShow} />
 
-            <div className="flex items-center gap-2">
-              <ThemeSwitcher />
-              <Suspense>
-                <AuthButton />
-              </Suspense>
-            </div>
-          </div>
-        </nav>
+      {/* Sidebar is fixed on md+, so content shifts right by its width */}
+      <div className="flex min-h-dvh flex-col md:pl-56">
+        {/* ── Mobile header ── */}
+        <header className="md:hidden sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-sm">
+          <Link href="/protected/dashboard" className="text-base font-bold tracking-tight text-foreground">
+            <span className="text-primary">Ozone</span>TCG
+          </Link>
+          <ThemeSwitcher />
+        </header>
 
-        {/* Active show banner — visible on all pages when a show is running */}
-        {activeShow && (
-          <a
-            href="/protected/pos"
-            className="w-full flex items-center justify-between px-4 py-1.5 text-xs font-medium gap-3 border-b border-amber-400/20 bg-amber-400/8 hover:bg-amber-400/12 transition-colors"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-              <span className="text-amber-700 dark:text-amber-300 font-semibold truncate">
-                Show active: {activeShow.name}
-              </span>
-            </div>
-            <span className="text-amber-600 dark:text-amber-400 shrink-0 tabular-nums">
-              Cash: {money(activeShow.expected_cash)} →
-            </span>
-          </a>
-        )}
+        {/* ── Active show banner ── hides itself on Home and POS */}
+        <ActiveShowBanner show={activeShow} />
 
-        {/* pb-16 leaves room for the mobile bottom tab bar */}
-        <div className="flex-1 flex flex-col px-4 sm:px-8 lg:px-14 pb-16 md:pb-0">
+        {/* pb-20 clears the h-16 mobile tab bar */}
+        <main className="flex w-full flex-1 flex-col px-4 pb-20 md:px-8 md:pb-5">
           {children}
-        </div>
+        </main>
       </div>
-      {/* Rendered outside the sticky/backdrop-blur nav to keep fixed positioning intact on Safari */}
-      <MobileBottomNav hasActiveShow={!!activeShow} />
-    </main>
+    </div>
   );
 }

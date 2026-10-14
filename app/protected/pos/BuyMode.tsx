@@ -4,8 +4,10 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import CardAutocomplete from "@/components/CardAutocomplete";
 import CertLookupWidget from "@/components/CertLookupWidget";
+import { EmptyState, MoneyDisplay } from "@/components/ui";
 import { offlineRecordBuy } from "@/lib/offlineAwareActions";
 import { round2, type NewCard } from "./ledger";
+import { BTN, ICON_BTN, INPUT, chip } from "./ui";
 import TransactionForm from "./TransactionForm";
 
 const CATEGORIES = ["single", "slab", "sealed"] as const;
@@ -24,10 +26,10 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
+      <div className="flex gap-2" role="radiogroup" aria-label="Category">
         {CATEGORIES.map((c) => (
-          <button key={c} type="button" onClick={() => setCategory(c)}
-            className={`h-9 px-3 rounded-lg border text-sm capitalize ${category === c ? "border-primary text-primary" : ""}`}>
+          <button key={c} type="button" role="radio" aria-checked={category === c} onClick={() => setCategory(c)}
+            className={`${chip(category === c)} capitalize`}>
             {c}
           </button>
         ))}
@@ -40,9 +42,9 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
         })} />
       )}
       <div className="flex gap-2">
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <CardAutocomplete value={name} placeholder="Card name"
-            className="w-full h-11 border rounded-lg px-3 text-sm bg-background"
+            className={`${INPUT} w-full`}
             onChange={(v) => { setName(v); setCard({}); }}
             onSelect={(c) => {
               setName(c.name);
@@ -51,8 +53,8 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
             }} />
         </div>
         <input type="number" inputMode="decimal" value={market} onChange={(e) => setMarket(e.target.value)}
-          placeholder="Market" aria-label="Market price" className="w-24 h-11 border rounded-lg px-2 text-sm bg-background" />
-        <button type="button" disabled={!name.trim()} className="h-11 px-4 rounded-lg border font-medium disabled:opacity-40"
+          placeholder="Market" aria-label="Market price" className={`${INPUT} w-24 tabular-nums`} />
+        <button type="button" disabled={!name.trim()} className={BTN}
           onClick={() => add({ ...card, name: name.trim(), category, market: market ? Number(market) : null })}>
           Add
         </button>
@@ -62,13 +64,18 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
 }
 
 export function CardList({ cards, onRemove }: { cards: NewCard[]; onRemove: (i: number) => void }) {
+  if (cards.length === 0) return null;
   return (
-    <div className="space-y-1">
+    <div className="divide-y divide-border rounded-xl border border-border bg-card">
       {cards.map((c, i) => (
-        <div key={i} className="flex items-center gap-2 text-sm border rounded-lg px-3 h-11">
-          <span className="flex-1 truncate">{c.name}{c.grade ? ` · ${c.grade}` : ""}</span>
-          <span className="tabular-nums">{c.market != null ? `$${c.market.toFixed(2)}` : "—"}</span>
-          <button type="button" aria-label="Remove" onClick={() => onRemove(i)}><X size={16} /></button>
+        <div key={i} className="flex min-h-14 items-center gap-3 py-1 pl-3 pr-1 text-sm">
+          <span className="min-w-0 flex-1 truncate text-foreground">{c.name}{c.grade ? ` · ${c.grade}` : ""}</span>
+          {c.market != null
+            ? <MoneyDisplay amount={c.market} tone="neutral" className="shrink-0 text-foreground" />
+            : <span className="shrink-0 text-muted-foreground">—</span>}
+          <button type="button" aria-label={`Remove ${c.name}`} onClick={() => onRemove(i)} className={ICON_BTN}>
+            <X size={16} />
+          </button>
         </div>
       ))}
     </div>
@@ -82,7 +89,11 @@ export default function BuyMode({ showId, buyPct }: { showId: string | null; buy
   return (
     <div className="space-y-3">
       <CardEntry onAdd={(c) => setCards((cs) => [...cs, c])} />
-      <CardList cards={cards} onRemove={(i) => setCards((cs) => cs.filter((_, j) => j !== i))} />
+      {cards.length === 0 ? (
+        <EmptyState title="No cards added" hint="Search a card above, or pick Slab to scan a cert." />
+      ) : (
+        <CardList cards={cards} onRemove={(i) => setCards((cs) => cs.filter((_, j) => j !== i))} />
+      )}
       <TransactionForm mode="buy" ready={cards.length > 0} suggested={round2((market * buyPct) / 100)}
         onDone={() => setCards([])}
         submit={(f) => offlineRecordBuy({

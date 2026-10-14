@@ -46,7 +46,7 @@ export default function RootLayout({
       <body className={`${lexend.variable} ${spaceMono.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="light"
           enableSystem
           disableTransitionOnChange
         >

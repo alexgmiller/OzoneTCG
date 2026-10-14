@@ -4,6 +4,7 @@ import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { getActiveShow, getScheduledShowToday } from "@/app/protected/shows/actions";
 import type { Mode, PickItem } from "./ledger";
 import PosClient from "./PosClient";
+import PosLoading from "./loading";
 
 type Params = Promise<{ mode?: string; items?: string }>;
 
@@ -37,7 +38,7 @@ async function PosLoader({ searchParams }: { searchParams: Params }) {
 
 export default function PosPage({ searchParams }: { searchParams: Params }) {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-sm opacity-40">Loading POS…</div>}>
+    <Suspense fallback={<PosLoading />}>
       <PosLoader searchParams={searchParams} />
     </Suspense>
   );

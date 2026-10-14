@@ -1,61 +1,58 @@
+import { Skeleton } from "@/components/ui";
+
+// ── Home skeleton ── mirrors DashboardServer's layout so nothing shifts on resolve
+
+function StatGrid({ count }: { count: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton key={i} className="h-24" />
+      ))}
+    </div>
+  );
+}
+
 export default function DashboardLoading() {
   return (
-    <div className="p-4 space-y-6">
-      {/* Header */}
-      <div className="space-y-1.5">
-        <div className="skeleton h-6 w-28 rounded-lg" />
-        <div className="skeleton h-3.5 w-44 rounded" />
+    <div className="mx-auto w-full max-w-2xl space-y-6 py-4">
+      {/* Active show chip */}
+      <Skeleton className="h-12" />
+
+      {/* Today */}
+      <div className="space-y-3">
+        <Skeleton variant="text" className="w-14" />
+        <StatGrid count={4} />
       </div>
 
-      {/* Metric cards row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="border rounded-xl p-4 space-y-2">
-            <div className="skeleton h-3 w-20 rounded" />
-            <div className="skeleton h-7 w-3/4 rounded-lg" />
-            <div className="skeleton h-3 w-1/2 rounded" />
-          </div>
+          <Skeleton key={i} className="h-16" />
         ))}
-      </div>
-
-      {/* Secondary metric row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="border rounded-xl p-4 space-y-2">
-            <div className="skeleton h-3 w-16 rounded" />
-            <div className="skeleton h-6 w-2/3 rounded-lg" />
-          </div>
-        ))}
-      </div>
-
-      {/* Chart area */}
-      <div className="border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <div className="skeleton h-4 w-32 rounded" />
-          <div className="skeleton h-7 w-24 rounded-lg" />
-        </div>
-        <div className="p-4">
-          <div className="skeleton h-48 w-full rounded-xl" />
-        </div>
       </div>
 
       {/* Recent activity */}
-      <div className="border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b">
-          <div className="skeleton h-4 w-36 rounded" />
-        </div>
-        <div className="divide-y">
+      <div className="space-y-3">
+        <Skeleton variant="text" className="w-32" />
+        <div className="divide-y divide-border rounded-xl border border-border bg-card">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-3">
-              <div className="skeleton w-8 h-8 rounded-lg flex-shrink-0" />
-              <div className="flex-1 space-y-1.5">
-                <div className="skeleton h-3.5 rounded" style={{ width: `${45 + (i % 3) * 20}%` }} />
-                <div className="skeleton h-3 w-24 rounded" />
+            <div key={i} className="flex min-h-14 items-center justify-between gap-3 px-4 py-3">
+              <div className="flex-1 space-y-2">
+                <Skeleton variant="text" className="w-24" />
+                <Skeleton variant="text" className="w-40" />
               </div>
-              <div className="skeleton h-4 w-16 rounded flex-shrink-0" />
+              <Skeleton variant="text" className="w-16" />
             </div>
           ))}
+          <Skeleton className="h-11 rounded-t-none" />
         </div>
+      </div>
+
+      {/* Lifetime */}
+      <div className="space-y-3">
+        <Skeleton variant="text" className="w-20" />
+        <StatGrid count={4} />
+        <Skeleton className="h-12" />
       </div>
     </div>
   );

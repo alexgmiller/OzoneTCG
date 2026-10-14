@@ -14,13 +14,10 @@ Canonical reference for visual decisions. Read this before adding UI. Tokens and
 | `negative`           | `rose-400/500`        | Buys (cash out), loss, destructive actions, error toasts |
 | `warning`            | `amber-400/500`       | Missing data, passes, flags, warning toasts              |
 | `neutral`            | `slate-400/500`       | Body text, muted UI, disabled states                     |
-| `surface`            | `slate-50`→`slate-950`| Background stack (light/dark scale below)                |
+| `surface`            | shadcn tokens         | Background stack (token classes below)                   |
 
-### Surface stack (dark)
-`slate-950` base → `slate-900` cards → `slate-800` inset → `white/5` hairline borders
-
-### Surface stack (light)
-`slate-50` base → `white` cards → `slate-100` inset → `slate-200` hairline borders
+### Surface stack (both themes)
+`bg-background` page → `bg-card` panels/cards → `bg-muted` inset/hover → `border-border` hairlines. Text: `text-foreground` (titles, values) / `text-muted-foreground` (labels, meta). The HSL values live in `app/globals.css` (`:root` / `.dark`); never spell them out as `slate-950`/`slate-900`/`white/5` literals — the token flips with the theme, a literal does not.
 
 ### Don'ts (read this section — it prevents drift)
 - **Don't use `text-red-*` or `bg-red-*` for anything.** Negative = rose. Destructive = rose. Red is reserved for system-level errors we don't raise in-app.
@@ -109,7 +106,7 @@ Gaps follow the same scale: `gap-2` for chip rows, `gap-3` for form fields, `gap
 ## 6. Depth & elevation
 
 We do NOT use box-shadows for depth. Depth comes from:
-1. **Border** — `border border-white/5` (dark) or `border-slate-200` (light)
+1. **Border** — `border border-border` (token; correct in both themes)
 2. **Background contrast** — step up one level in the surface stack
 3. **Position** — sticky/fixed panels get a subtle top border, never a shadow
 
@@ -125,7 +122,9 @@ The only shadow allowed: device-frame outer shadow in the mockup canvas. That's 
 
 **Sticky bottom panel.** Lives outside scroll container, `sticky bottom-0`, fades background into content with a linear gradient top. Height ~68–84px depending on content. Primary action right-aligned.
 
-**Modal layering.** Backdrop = `bg-slate-950/70 backdrop-blur-sm`. Panel = `rounded-xl` with `border border-white/10 bg-slate-900`. One modal at a time — no stacked modals. Use `<Modal />`.
+**Modal layering.** Backdrop = `bg-background/80 backdrop-blur-sm`. Panel = `rounded-xl border border-border bg-card p-5 text-foreground`; title = `text-lg font-semibold text-foreground`. One modal at a time — no stacked modals. Use `<Modal />`.
+
+**Control sizes (tap targets).** `Button` default / `sm` / `icon` are `h-11` (`lg` is `h-12`); `Input` is `h-11`. Don't shrink them — a show floor needs big targets. The mobile tab bar (`AppNav`) is a fixed `h-16` bottom bar, so bottom-anchored content needs `bottom-20` / `pb-20` on mobile.
 
 **Toast notifications.** Bottom-center, stacked, `rounded-xl`, max 3 visible. Auto-dismiss at 4s (success) / 6s (warning) / never (error, manual dismiss). Use `<Toast />`.
 
@@ -162,3 +161,5 @@ Before opening a PR, grep your diff for:
 - `text-\[` → swap to scale
 - `duration-300` · `duration-500` → 150 or 200
 - Raw money formatting → `<MoneyDisplay />`
+- `max-w-* mx-auto` inside a flex container needs `w-full` (otherwise it shrinks to content and won't center)
+- No inline `style` color/background props, no `var(--…)` in TSX → use token classes

@@ -1,22 +1,11 @@
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
 export type MoneyTone = "auto" | "positive" | "negative" | "neutral";
 
-/**
- * MoneyDisplay — canonical way to render a currency value.
- *
- * Handles:
- *  - Tabular nums (never skip this — columns jitter without it)
- *  - Sign prefix (–$240, +$185)
- *  - Tone color-coding (rose/emerald/neutral per design-system §1)
- *
- * USE for every money value in the app: stats, deal totals, P&L, receipts.
- * DON'T format money inline with `toFixed()` + string concat — always use this.
- *
- * `tone="auto"` (default): negative amounts → rose, positive → emerald, zero → neutral.
- * Pass an explicit tone when the semantic meaning differs (e.g. an "expected cash"
- * total that's positive but shouldn't be green).
- */
+// ── MoneyDisplay ──
+// Canonical currency value: tabular nums, sign prefix, tone colour.
+// tone="auto" (default): negative → rose, positive → emerald, zero → neutral.
+// Pass an explicit tone when the meaning differs (e.g. expected cash isn't "profit").
 export function MoneyDisplay({
   amount,
   tone = "auto",

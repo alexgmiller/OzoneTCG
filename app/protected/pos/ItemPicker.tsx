@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
+import { EmptyState, MoneyDisplay } from "@/components/ui";
 import type { PickItem } from "./ledger";
-
-const money = (n: number | null) => (n == null ? "—" : `$${n.toFixed(2)}`);
+import { INPUT } from "./ui";
 
 // Pick inventory by name, set, number or cert; selected items stay pinned on top
 export default function ItemPicker({ items, selected, onToggle }: {
@@ -21,20 +21,24 @@ export default function ItemPicker({ items, selected, onToggle }: {
     : [];
 
   const row = (it: PickItem, on: boolean) => (
-    <button key={it.id} type="button" onClick={() => onToggle(it)}
-      className={`w-full flex items-center gap-3 p-2 rounded-lg border text-left ${on ? "border-primary bg-primary/5" : ""}`}>
+    <button key={it.id} type="button" onClick={() => onToggle(it)} aria-pressed={on}
+      className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors duration-150 ${
+        on ? "border-accent-primary bg-accent-primary-soft" : "border-border bg-card hover:bg-muted"
+      }`}>
       {it.image_url
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={it.image_url} alt="" className="w-9 h-12 object-cover rounded" />
-        : <div className="w-9 h-12 rounded bg-muted" />}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{it.name}</div>
-        <div className="text-xs text-muted-foreground truncate">
+        ? <img src={it.image_url} alt="" className="h-12 w-9 shrink-0 rounded-lg object-cover" />
+        : <div className="h-12 w-9 shrink-0 rounded-lg bg-muted" aria-hidden />}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-foreground">{it.name}</div>
+        <div className="truncate text-xs text-muted-foreground">
           {[it.set_name, it.card_number && `#${it.card_number}`, it.grade].filter(Boolean).join(" · ")}
         </div>
       </div>
-      <div className="text-sm tabular-nums">{money(it.market)}</div>
-      {on && <Check size={16} className="text-primary" />}
+      {it.market != null
+        ? <MoneyDisplay amount={it.market} tone="neutral" className="shrink-0 text-sm text-foreground" />
+        : <span className="shrink-0 text-sm text-muted-foreground">—</span>}
+      {on && <Check size={18} className="shrink-0 text-primary" aria-hidden />}
     </button>
   );
 
@@ -42,7 +46,13 @@ export default function ItemPicker({ items, selected, onToggle }: {
     <div className="space-y-2">
       {selected.map((it) => row(it, true))}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search inventory or cert #"
-        className="w-full h-11 border rounded-lg px-3 text-sm bg-background" />
+        aria-label="Search inventory" className={`${INPUT} w-full`} />
+      {terms.length === 0 && selected.length === 0 && (
+        <EmptyState title="Pick cards from inventory" hint="Search by name, set, number or cert #." />
+      )}
+      {terms.length > 0 && matches.length === 0 && (
+        <EmptyState title="No cards match" hint="Try fewer words, or the cert number." />
+      )}
       {matches.slice(0, 25).map((it) => row(it, false))}
     </div>
   );

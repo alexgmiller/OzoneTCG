@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MoneyDisplay, SectionHeader } from "@/components/ui";
 import { offlineRecordTrade } from "@/lib/offlineAwareActions";
 import { round2, type NewCard, type PickItem } from "./ledger";
 import { CardEntry, CardList } from "./BuyMode";
@@ -19,20 +20,37 @@ export default function TradeMode({ showId, items, initial = [] }: {
   const [incoming, setIncoming] = useState<NewCard[]>([]);
   const gave = total(out.map((it) => it.market));
   const got = total(incoming.map((c) => c.market));
+  const diff = Math.abs(round2(got - gave));
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-xs font-semibold uppercase text-muted-foreground">Giving · ${gave.toFixed(2)}</h3>
-      <ItemPicker items={items} selected={out}
-        onToggle={(it) => setOut((s) => (s.some((x) => x.id === it.id) ? s.filter((x) => x.id !== it.id) : [...s, it]))} />
-      <h3 className="text-xs font-semibold uppercase text-muted-foreground">Getting · ${got.toFixed(2)}</h3>
-      <CardEntry onAdd={(c) => setIncoming((cs) => [...cs, c])} />
-      <CardList cards={incoming} onRemove={(i) => setIncoming((cs) => cs.filter((_, j) => j !== i))} />
+    <div className="space-y-4">
+      {/* ── Giving ── */}
+      <section className="space-y-3">
+        <SectionHeader action={<MoneyDisplay amount={gave} tone="neutral" className="text-sm text-foreground" />}>
+          Giving
+        </SectionHeader>
+        <ItemPicker items={items} selected={out}
+          onToggle={(it) => setOut((s) => (s.some((x) => x.id === it.id) ? s.filter((x) => x.id !== it.id) : [...s, it]))} />
+      </section>
+
+      {/* ── Getting ── */}
+      <section className="space-y-3">
+        <SectionHeader action={<MoneyDisplay amount={got} tone="neutral" className="text-sm text-foreground" />}>
+          Getting
+        </SectionHeader>
+        <CardEntry onAdd={(c) => setIncoming((cs) => [...cs, c])} />
+        <CardList cards={incoming} onRemove={(i) => setIncoming((cs) => cs.filter((_, j) => j !== i))} />
+      </section>
+
       {got !== gave && (
-        <p className="text-sm">At market, {got > gave ? "we owe them" : "they owe us"} ${Math.abs(round2(got - gave)).toFixed(2)}</p>
+        <p className="text-sm text-muted-foreground">
+          At market, {got > gave ? "we owe them" : "they owe us"}{" "}
+          <MoneyDisplay amount={diff} tone="neutral" className="font-semibold text-foreground" />
+        </p>
       )}
+
       <TransactionForm mode="trade" ready={out.length + incoming.length > 0}
-        suggested={Math.abs(round2(got - gave))}
+        suggested={diff}
         onDone={() => { setOut([]); setIncoming([]); }}
         submit={(f) => offlineRecordTrade({
           goingOut: out.map((it) => ({ itemId: it.id, value: it.market ?? 0 })),

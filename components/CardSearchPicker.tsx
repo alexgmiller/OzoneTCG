@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { X } from "lucide-react";
+import { Modal, MoneyDisplay } from "@/components/ui";
 
 export type CardSearchResult = {
   name: string;
@@ -20,6 +22,11 @@ type Props = {
   initialCardNumber?: string;
 };
 
+const fieldClass =
+  "h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground";
+
+// ── CardSearchPicker ──
+// Modal card search (name / set / number / year) → picks a CardSearchResult.
 export default function CardSearchPicker({
   open,
   onClose,
@@ -49,8 +56,6 @@ export default function CardSearchPicker({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  if (!open) return null;
 
   function handleClose() {
     setResults([]);
@@ -108,121 +113,131 @@ export default function CardSearchPicker({
     }
   }
 
+  const onEnter = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") search();
+  };
+
   return (
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center modal-backdrop p-4">
-      <div className="modal-panel w-full max-w-lg max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-          <h2 className="modal-title">Find Card</h2>
-          <button onClick={handleClose} className="modal-close-btn">✕</button>
-        </div>
+    <Modal open={open} onClose={handleClose} title="Find Card" className="flex max-h-full max-w-lg flex-col">
+      <button
+        type="button"
+        onClick={handleClose}
+        aria-label="Close"
+        className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+      >
+        <X size={18} />
+      </button>
 
-        {/* Search form */}
-        <div className="px-4 py-3 border-b shrink-0 space-y-2">
+      {/* Search form */}
+      <div className="shrink-0 space-y-2 border-b border-border pb-3">
+        <input
+          className={fieldClass}
+          placeholder="Card name *"
+          value={searchName}
+          onChange={(e) => setSearchName(e.target.value)}
+          onKeyDown={onEnter}
+          autoFocus
+        />
+        <div className="grid grid-cols-3 gap-2">
           <input
-            className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
-            placeholder="Card name *"
-            value={searchName}
-            onChange={(e) => setSearchName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && search()}
-            autoFocus
+            className={fieldClass}
+            placeholder="Set name"
+            value={searchSet}
+            onChange={(e) => setSearchSet(e.target.value)}
+            onKeyDown={onEnter}
           />
-          <div className="grid grid-cols-3 gap-2">
-            <input
-              className="border rounded-lg px-3 py-2 text-sm bg-background"
-              placeholder="Set name"
-              value={searchSet}
-              onChange={(e) => setSearchSet(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && search()}
-            />
-            <input
-              className="border rounded-lg px-3 py-2 text-sm bg-background"
-              placeholder="Card #"
-              value={searchNumber}
-              onChange={(e) => setSearchNumber(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && search()}
-            />
-            <input
-              className="border rounded-lg px-3 py-2 text-sm bg-background"
-              placeholder="Year (e.g. 2016)"
-              maxLength={4}
-              value={searchYear}
-              onChange={(e) => setSearchYear(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => e.key === "Enter" && search()}
-            />
-          </div>
-          <button
-            className="modal-btn-primary w-full"
-            onClick={search}
-            disabled={loading || !searchName.trim()}
-          >
-            {loading ? "Searching…" : "Search"}
-          </button>
+          <input
+            className={fieldClass}
+            placeholder="Card #"
+            value={searchNumber}
+            onChange={(e) => setSearchNumber(e.target.value)}
+            onKeyDown={onEnter}
+          />
+          <input
+            className={fieldClass}
+            placeholder="Year"
+            inputMode="numeric"
+            maxLength={4}
+            value={searchYear}
+            onChange={(e) => setSearchYear(e.target.value.replace(/\D/g, ""))}
+            onKeyDown={onEnter}
+          />
         </div>
-
-        {/* Results */}
-        <div className="overflow-y-auto flex-1 p-3">
-          {error && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
-            </div>
-          )}
-
-          {searched && results.length === 0 && !error && (
-            <div className="text-sm text-center text-muted-foreground py-10 space-y-1 px-4">
-              <div>No cards found.</div>
-              <div className="text-xs opacity-70">
-                Try a simpler name (e.g. "Dark Blastoise" not "dark blastoise from team rocket"), or leave the set and number fields empty for a broader search. Older or obscure sets may have limited coverage.
-              </div>
-            </div>
-          )}
-
-          {results.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {results.map((card, i) => (
-                <button
-                  key={i}
-                  className="flex flex-col gap-1.5 border rounded-xl p-2 hover:border-foreground hover:bg-muted/40 transition-colors text-left"
-                  onClick={() => handleSelect(card)}
-                >
-                  {card.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={card.imageUrl}
-                      alt={card.name}
-                      className="w-full h-auto rounded-lg object-contain"
-                    />
-                  ) : (
-                    <div className="w-full aspect-[5/7] rounded-lg bg-muted/30 flex items-center justify-center">
-                      <span className="text-xs opacity-30">No image</span>
-                    </div>
-                  )}
-                  <div className="space-y-0.5">
-                    <div className="text-xs font-semibold leading-tight line-clamp-2">{card.name}</div>
-                    {card.setName && (
-                      <div className="text-xs text-muted-foreground leading-tight line-clamp-1">{card.setName}</div>
-                    )}
-                    <div className="flex items-center justify-between gap-1">
-                      {card.cardNumber && (
-                        <span className="text-xs text-muted-foreground">#{card.cardNumber}</span>
-                      )}
-                      {card.market != null && (
-                        <span className="text-xs font-medium text-green-700">${card.market.toFixed(2)}</span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {!searched && !loading && !error && (
-            <div className="text-sm text-center text-muted-foreground py-10">
-              Enter a card name to search.
-            </div>
-          )}
-        </div>
+        <button
+          type="button"
+          className="h-11 w-full rounded-lg bg-accent-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+          onClick={search}
+          disabled={loading || !searchName.trim()}
+        >
+          {loading ? "Searching…" : "Search"}
+        </button>
       </div>
-    </div>
+
+      {/* Results */}
+      <div className="min-h-0 flex-1 overflow-y-auto pt-3">
+        {error && (
+          <div className="rounded-lg border border-negative-border bg-negative-soft px-3 py-2 text-sm text-negative-strong dark:text-negative">
+            {error}
+          </div>
+        )}
+
+        {searched && results.length === 0 && !error && (
+          <div className="space-y-2 px-4 py-10 text-center text-sm text-muted-foreground">
+            <div className="font-medium text-foreground">No cards found.</div>
+            <div className="text-xs">
+              Try a simpler name (e.g. &quot;Dark Blastoise&quot; rather than &quot;dark blastoise from team
+              rocket&quot;), or leave the set and number fields empty for a broader search. Older or obscure
+              sets may have limited coverage.
+            </div>
+          </div>
+        )}
+
+        {results.length > 0 && (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {results.map((card, i) => (
+              <button
+                key={i}
+                type="button"
+                className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 text-left transition-colors duration-150 hover:border-accent-primary-border hover:bg-muted"
+                onClick={() => handleSelect(card)}
+              >
+                {card.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={card.imageUrl}
+                    alt={card.name}
+                    className="h-auto w-full rounded-lg object-contain"
+                  />
+                ) : (
+                  <div className="flex aspect-[5/7] w-full items-center justify-center rounded-lg bg-muted">
+                    <span className="text-xs text-muted-foreground">No image</span>
+                  </div>
+                )}
+                <div className="space-y-0.5">
+                  <div className="line-clamp-2 text-xs font-semibold leading-tight text-foreground">{card.name}</div>
+                  {card.setName && (
+                    <div className="line-clamp-1 text-xs leading-tight text-muted-foreground">{card.setName}</div>
+                  )}
+                  <div className="flex items-center justify-between gap-1">
+                    {card.cardNumber && (
+                      <span className="font-mono text-xs text-muted-foreground">#{card.cardNumber}</span>
+                    )}
+                    {card.market != null && (
+                      <MoneyDisplay amount={card.market} tone="neutral" className="text-xs font-medium text-foreground" />
+                    )}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!searched && !loading && !error && (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            Enter a card name to search.
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }

@@ -1,9 +1,10 @@
 import { Suspense } from "react";
+import LoadingScreen from "@/components/LoadingScreen";
 import ProtectedIndexServer from "./ProtectedIndexServer";
 
 export default function ProtectedIndexPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-sm opacity-70">Loading…</div>}>
+    <Suspense fallback={<LoadingScreen />}>
       <ProtectedIndexServer />
     </Suspense>
   );

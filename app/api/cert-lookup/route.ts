@@ -67,7 +67,7 @@ function cleanPSABrand(brand: string): { setName: string; isJapanese: boolean } 
   const upper = brand.toUpperCase();
   const isJapanese = upper.includes("JAPANESE");
 
-  let cleaned = brand
+  const cleaned = brand
     .replace(/\bPOKEMON\b/gi, "")
     .replace(/\bJAPANESE\b/gi, "")
     .replace(/\bENGLISH\b/gi, "")
@@ -198,9 +198,9 @@ async function lookupPSA(certNumber: string): Promise<PSALookupResult | PSAError
 
 // ── BGS / CGC / TAG: no public API ────────────────────────────────────────────
 
-async function lookupBGS(_: string): Promise<null> { return null; }
-async function lookupCGC(_: string): Promise<null> { return null; }
-async function lookupTAG(_: string): Promise<null> { return null; }
+async function lookupBGS(): Promise<null> { return null; }
+async function lookupCGC(): Promise<null> { return null; }
+async function lookupTAG(): Promise<null> { return null; }
 
 // ── route handler ─────────────────────────────────────────────────────────────
 
@@ -227,13 +227,13 @@ export async function POST(req: NextRequest) {
         certDetails = result;
       }
     } else if (company === "BGS") {
-      await lookupBGS(certNumber);
+      await lookupBGS();
       lookupErrorMsg = "BGS cert lookup not supported yet — enter card details manually.";
     } else if (company === "CGC") {
-      await lookupCGC(certNumber);
+      await lookupCGC();
       lookupErrorMsg = "CGC cert lookup not supported yet — enter card details manually.";
     } else if (company === "TAG") {
-      await lookupTAG(certNumber);
+      await lookupTAG();
       lookupErrorMsg = "TAG does not have a public cert API — enter card details manually.";
     }
 

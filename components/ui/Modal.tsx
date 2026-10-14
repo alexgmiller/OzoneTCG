@@ -1,18 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
-/**
- * Modal — standard fixed-positioned overlay with backdrop + panel.
- *
- * USE for confirmations, detail sheets, focused tasks that need interruption.
- * DON'T stack modals. If you find yourself opening a modal from a modal,
- *   re-think the flow — use a multi-step in-panel stepper instead.
- * DON'T use for passive notifications — use <Toast /> instead.
- *
- * The backdrop fades; the panel slides up slightly. Both ≤ 200ms per §5.
- */
+// ── Modal ──
+// Fixed overlay: backdrop + panel. One modal at a time; use <Toast /> for
+// passive notifications. Backdrop and panel both transition ≤ 200ms.
 export function Modal({
   open,
   onClose,
@@ -40,10 +33,7 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className={cn(
-          "absolute inset-0 bg-slate-950/70 backdrop-blur-sm",
-          "transition-opacity duration-150",
-        )}
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity duration-150"
         onClick={onClose}
         aria-hidden
       />
@@ -52,13 +42,13 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "relative w-full max-w-md rounded-xl border border-white/10 bg-slate-900 p-5",
+          "relative w-full max-w-md rounded-xl border border-border bg-card p-5 text-foreground",
           "transition-all duration-150",
           className,
         )}
       >
         {title ? (
-          <h2 className="mb-3 text-lg font-semibold tracking-tight text-white">
+          <h2 className="mb-3 text-lg font-semibold tracking-tight text-foreground">
             {title}
           </h2>
         ) : null}

@@ -1,9 +1,12 @@
 "use client";
 
-import { parseGrade } from "@/lib/ebay-client";
-import type { SlabPrice } from "./InventoryServer";
-import type { Item, ItemForm } from "./types";
+import { makeSlabPriceKey, parseGrade } from "@/lib/ebay-client";
+import { makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
+import type { FMVResult } from "@/lib/fmv";
+import type { SlabPrice, RawCardPrice } from "./InventoryServer";
+import type { Condition, Item, ItemForm } from "./types";
 
+// ── Numbers ──
 export function toNum(v: string) {
   const t = v.trim();
   if (!t) return null;
@@ -16,10 +19,14 @@ export function fmt(v: number | null) {
   return `$${v.toFixed(2)}`;
 }
 
-/**
- * Returns the effective cost for an item: prefer cost_basis (trade chain cash invested)
- * over manual cost. Returns null if neither is set (item is uncosted).
- */
+export function nullLast(a: number | null, b: number | null, asc: boolean): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return asc ? a - b : b - a;
+}
+
+// Effective cost: prefer cost_basis (trade chain cash invested) over manual cost.
 export function effectiveCost(it: { cost: number | null; cost_basis: number | null }): number | null {
   if (it.cost_basis != null) return it.cost_basis;
   if (it.cost != null) return it.cost;
@@ -34,20 +41,36 @@ export function getMovement(current: number | null, acquired: number | null): nu
 export function MovementBadge({ pct }: { pct: number | null }) {
   if (pct == null) return null;
   const abs = Math.abs(pct);
-  if (pct > 25) return <span className="text-[10px] font-semibold text-amber-500 tabular-nums whitespace-nowrap">▲ +{abs.toFixed(0)}%</span>;
-  if (pct > 10) return <span className="text-[10px] font-semibold text-green-500 tabular-nums whitespace-nowrap">▲ +{abs.toFixed(0)}%</span>;
-  if (pct < -10) return <span className="text-[10px] font-semibold text-red-500 tabular-nums whitespace-nowrap">▼ -{abs.toFixed(0)}%</span>;
-  return <span className="text-[10px] opacity-35 tabular-nums whitespace-nowrap">— {pct >= 0 ? "+" : ""}{pct.toFixed(0)}%</span>;
+  if (pct > 10) return <span className="text-xs font-semibold text-positive tabular-nums whitespace-nowrap">▲ +{abs.toFixed(0)}%</span>;
+  if (pct < -10) return <span className="text-xs font-semibold text-negative tabular-nums whitespace-nowrap">▼ -{abs.toFixed(0)}%</span>;
+  return <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">— {pct >= 0 ? "+" : ""}{pct.toFixed(0)}%</span>;
 }
 
-export function MovementDot({ pct }: { pct: number | null }) {
-  if (pct == null) return null;
-  if (pct > 25) return <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title={`+${pct.toFixed(0)}% since acquired`} />;
-  if (pct > 10) return <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" title={`+${pct.toFixed(0)}% since acquired`} />;
-  if (pct < -10) return <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title={`${pct.toFixed(0)}% since acquired`} />;
-  return null;
+// ── Price lookups ──
+export function slabKeyFor(it: Item): string | null {
+  if (it.category !== "slab" || !it.grade) return null;
+  const parsed = parseGrade(it.grade);
+  return parsed ? makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade) : null;
 }
 
+export function rawConditionPrice(rcp: RawCardPrice | null | undefined, condition: Condition | null): number | null {
+  if (!rcp) return null;
+  return priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, condition);
+}
+
+// Market price shown for an item: slab FMV, TCGPlayer condition price, or the saved market.
+export function itemMarketPrice(
+  it: Item,
+  slabFMVData: Record<string, FMVResult>,
+  rawCardPrices: Record<string, RawCardPrice>,
+): number | null {
+  if (it.category === "slab" && it.grade) return slabFMVData[it.id]?.fmv ?? it.market;
+  if (it.category === "sealed") return it.market;
+  const rcp = rawCardPrices[makeRawCardPriceKey(it.name, it.set_name, it.card_number)];
+  return rawConditionPrice(rcp, it.condition) ?? it.market;
+}
+
+// ── Labels ──
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
   booster_box: "Booster Box",
   etb: "ETB",
@@ -64,144 +87,68 @@ export function sealedTypeLabel(productType: string | null): string {
   return PRODUCT_TYPE_LABELS[productType] ?? productType;
 }
 
+const CONDITION_SHORT: Record<string, string> = {
+  "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP", "Heavily Played": "HP", "Damaged": "Dmg",
+};
+
+export function conditionShort(condition: Condition | null): string {
+  if (!condition) return "";
+  return CONDITION_SHORT[condition] ?? condition;
+}
+
+export function statusLabel(it: Item): string {
+  if (it.status === "sold") return "Sold";
+  if (it.owner === "consigner") return "Consigned";
+  if (it.status === "grading") return "Grading";
+  return "Inventory";
+}
+
+export function setLine(it: { set_name: string | null; card_number: string | null }): string {
+  return [it.set_name, it.card_number ? `#${it.card_number}` : ""].filter(Boolean).join(" · ");
+}
+
+export function fmtDate(d: string | null | undefined) {
+  if (!d) return "—";
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return "—";
+  return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+// ── eBay / TCGPlayer search links ──
+function cleanCardName(name: string) {
+  return name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
+}
+
 export function buildSlabEbayQuery(name: string, grade: string | null, setName: string | null, cardNumber: string | null): string {
-  const cleanName = name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
   const num = cardNumber?.split("/")[0]?.trim() ?? "";
-  return [grade, cleanName, setName, num].filter(Boolean).join(" ");
+  return [grade, cleanCardName(name), setName, num].filter(Boolean).join(" ");
 }
 
 export function buildRawEbayQuery(name: string, setName: string | null, cardNumber: string | null): string {
-  const cleanName = name.replace(/\b(JP|JPN|EN|ENG|Japanese|English)\b\s*/gi, "").trim();
   const num = cardNumber?.split("/")[0]?.trim() ?? "";
-  return [cleanName, setName, num].filter(Boolean).join(" ");
+  return [cleanCardName(name), setName, num].filter(Boolean).join(" ");
 }
 
-// ── Year helpers (kept for reference / future use) ─────────────────────────
-
-const SET_YEAR_MAP: Record<string, number> = {
-  "Base Set": 1999, "Jungle": 1999, "Fossil": 1999, "Base Set 2": 2000,
-  "Team Rocket": 2000, "Gym Heroes": 2000, "Gym Challenge": 2000,
-  "Neo Genesis": 2000, "Neo Discovery": 2001, "Neo Revelation": 2001, "Neo Destiny": 2002,
-  "Expedition Base Set": 2002, "Aquapolis": 2003, "Skyridge": 2003,
-  "EX Ruby & Sapphire": 2003, "EX Sandstorm": 2003, "EX Dragon": 2003,
-  "EX Team Magma vs Team Aqua": 2004, "EX Hidden Legends": 2004,
-  "EX FireRed & LeafGreen": 2004, "EX Team Rocket Returns": 2004,
-  "EX Deoxys": 2005, "EX Emerald": 2005, "EX Unseen Forces": 2005,
-  "EX Delta Species": 2005, "EX Legend Maker": 2006, "EX Holon Phantoms": 2006,
-  "EX Crystal Guardians": 2006, "EX Dragon Frontiers": 2006, "EX Power Keepers": 2007,
-  "Diamond & Pearl": 2007, "Mysterious Treasures": 2007, "Secret Wonders": 2007,
-  "Great Encounters": 2008, "Majestic Dawn": 2008, "Legends Awakened": 2008,
-  "Stormfront": 2008, "Platinum": 2009, "Rising Rivals": 2009,
-  "Supreme Victors": 2009, "Arceus": 2009,
-  "HeartGold & SoulSilver": 2010, "Unleashed": 2010, "Undaunted": 2010, "Triumphant": 2010,
-  "Call of Legends": 2011,
-  "Black & White": 2011, "Emerging Powers": 2011, "Noble Victories": 2011,
-  "Next Destinies": 2012, "Dark Explorers": 2012, "Dragons Exalted": 2012,
-  "Dragon Vault": 2012, "Boundaries Crossed": 2012,
-  "Plasma Storm": 2013, "Plasma Freeze": 2013, "Plasma Blast": 2013,
-  "Legendary Treasures": 2013,
-  "XY": 2014, "Flashfire": 2014, "Furious Fists": 2014, "Phantom Forces": 2014,
-  "Primal Clash": 2015, "Roaring Skies": 2015, "Ancient Origins": 2015,
-  "BREAKthrough": 2015, "BREAKpoint": 2016, "Generations": 2016, "Fates Collide": 2016,
-  "Steam Siege": 2016, "Evolutions": 2016,
-  "Sun & Moon": 2017, "Guardians Rising": 2017, "Burning Shadows": 2017,
-  "Crimson Invasion": 2017, "Shining Legends": 2017,
-  "Ultra Prism": 2018, "Forbidden Light": 2018, "Celestial Storm": 2018,
-  "Dragon Majesty": 2018, "Lost Thunder": 2018,
-  "Team Up": 2019, "Detective Pikachu": 2019, "Unbroken Bonds": 2019,
-  "Unified Minds": 2019, "Hidden Fates": 2019, "Cosmic Eclipse": 2019,
-  "Sword & Shield": 2020, "Rebel Clash": 2020, "Darkness Ablaze": 2020,
-  "Champion's Path": 2020, "Vivid Voltage": 2020,
-  "Battle Styles": 2021, "Chilling Reign": 2021, "Evolving Skies": 2021,
-  "Celebrations": 2021, "Fusion Strike": 2021,
-  "Brilliant Stars": 2022, "Astral Radiance": 2022, "Pokémon GO": 2022,
-  "Lost Origin": 2022, "Silver Tempest": 2022,
-  "Crown Zenith": 2023, "Scarlet & Violet": 2023, "Paldea Evolved": 2023,
-  "Obsidian Flames": 2023, "151": 2023, "Paradox Rift": 2023,
-  "Paldean Fates": 2024, "Temporal Forces": 2024, "Twilight Masquerade": 2024,
-  "Shrouded Fable": 2024, "Stellar Crown": 2024, "Surging Sparks": 2024,
-  "Prismatic Evolutions": 2025, "Journey Together": 2025,
-};
-
-/** Extract a 4-digit year from a set name. */
-export function inferCardYear(setName: string | null | undefined): number | null {
-  if (!setName) return null;
-  const mapped = SET_YEAR_MAP[setName.trim()];
-  if (mapped) return mapped;
-  const m = setName.match(/\b(19[0-9]{2}|20[0-9]{2})\b/);
-  return m ? parseInt(m[1]) : null;
+export function ebayQueryFor(it: Item): string {
+  if (it.category === "slab") return buildSlabEbayQuery(it.name, it.grade, it.set_name, it.card_number);
+  if (it.category === "sealed") return [it.name, it.set_name].filter(Boolean).join(" ");
+  return buildRawEbayQuery(it.name, it.set_name, it.card_number);
 }
 
-/** Extract year from eBay listing titles (e.g. "2003 Pokemon EX Dragon ..."). */
-export function yearFromEbayTitles(titles: string[]): number | null {
-  for (const t of titles) {
-    const m = t.match(/\b(19[0-9]{2}|20[0-9]{2})\b/);
-    if (m) return parseInt(m[1]);
-  }
-  return null;
+export function tcgQueryFor(it: Item): string {
+  return [cleanCardName(it.name), it.set_name].filter(Boolean).join(" ");
 }
 
-export const categoryColors: Record<string, string> = {
-  single: "bg-blue-100 text-blue-800",
-  slab: "bg-purple-100 text-purple-800",
-  sealed: "bg-teal-100 text-teal-800",
-};
-
-export function gradeStyle(grade: string): string {
-  const parsed = parseGrade(grade);
-  const company = parsed?.company?.toUpperCase() ?? "";
-  const n = parsed ? parseFloat(parsed.grade) : 0;
-  const isBlack = parsed?.grade?.toLowerCase().includes("black") ?? false;
-
-  if (company === "PSA") {
-    if (n >= 10) return "grade-badge grade-psa grade-psa-10";
-    return "grade-badge grade-psa";
-  }
-  if (company === "BGS") {
-    if (isBlack || n >= 10) return "grade-badge grade-bgs grade-bgs-10";
-    return "grade-badge grade-bgs";
-  }
-  if (company === "CGC") {
-    if (n >= 10) return "grade-badge grade-cgc grade-cgc-10";
-    return "grade-badge grade-cgc";
-  }
-  if (company === "TAG") {
-    if (n >= 10) return "grade-badge grade-tag grade-tag-10";
-    return "grade-badge grade-tag";
-  }
-  return "grade-badge grade-other";
+export function ebayLinks(it: Item) {
+  const q = encodeURIComponent(ebayQueryFor(it));
+  return {
+    sold: `https://www.ebay.com/sch/i.html?_nkw=${q}&LH_Complete=1&LH_Sold=1&_sacat=183454`,
+    listed: `https://www.ebay.com/sch/i.html?_nkw=${q}&_sacat=183454`,
+    tcg: `https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(tcgQueryFor(it))}&view=grid`,
+  };
 }
 
-/** Maps a grade string to the slab label bar details for grid view rendering. */
-export function slabGradeLabel(grade: string | null): { company: string; companyKey: string; gradeNum: string; labelText: string } | null {
-  if (!grade) return null;
-  const parsed = parseGrade(grade);
-  if (!parsed) return null;
-  const gradeStr = parsed.grade;
-  const n = parseFloat(gradeStr);
-  const isBlack = gradeStr.toLowerCase().includes("black");
-  let labelText: string;
-  if (isBlack)   labelText = "PRISTINE";
-  else if (n >= 10)  labelText = "GEM MT";
-  else if (n >= 9.5) labelText = "GEM MT";
-  else if (n >= 9)   labelText = "MINT";
-  else if (n >= 8.5) labelText = "NM-MT+";
-  else if (n >= 8)   labelText = "NM-MT";
-  else if (n >= 7.5) labelText = "NM+";
-  else if (n >= 7)   labelText = "NM";
-  else if (n >= 6)   labelText = "EX-MT";
-  else if (n >= 5)   labelText = "EX";
-  else if (n >= 4)   labelText = "VG-EX";
-  else if (n >= 3)   labelText = "VG";
-  else if (n >= 2)   labelText = "GOOD";
-  else if (n >= 1)   labelText = "POOR";
-  else labelText = gradeStr.toUpperCase();
-  const company = parsed.company.toUpperCase();
-  const companyKey = ["PSA", "BGS", "CGC", "TAG"].includes(company) ? company.toLowerCase() : "other";
-  return { company, companyKey, gradeNum: isBlack ? "10" : gradeStr, labelText };
-}
-
-// ── Staleness tiers ────────────────────────────────────────────────────────
+// ── Staleness tiers ──
 const TIER_2H = 2 * 60 * 60 * 1000;
 const TIER_4H = 4 * 60 * 60 * 1000;
 const TIER_8H = 8 * 60 * 60 * 1000;
@@ -222,6 +169,7 @@ export function isSlabTierStale(sp: SlabPrice | null | undefined, fmv: number | 
   return Date.now() - new Date(sp.last_updated).getTime() > getSlabTierMs(fmv, compCount);
 }
 
+// ── Forms ──
 export const blankForm = (): ItemForm => ({
   category: "single",
   owner: "shared",
@@ -243,6 +191,29 @@ export const blankForm = (): ItemForm => ({
   quantity: "1",
   language: "english",
 });
+
+// Form → DB row
+export function formToInput(f: ItemForm) {
+  return {
+    category: f.category,
+    owner: f.owner,
+    status: f.status,
+    name: f.name,
+    condition: f.category === "single" ? f.condition : "Near Mint" as const,
+    cost: toNum(f.cost),
+    market: toNum(f.market),
+    notes: f.notes || null,
+    consigner_id: f.consignerId || null,
+    image_url: f.imageUrl || null,
+    set_name: f.setName || null,
+    card_number: f.cardNumber || null,
+    grade: f.grade || null,
+    sticker_price: toNum(f.stickerPrice),
+    product_type: f.category === "sealed" ? (f.productType || null) : null,
+    quantity: f.category === "sealed" ? (parseInt(f.quantity) || 1) : 1,
+    language: f.category === "sealed" ? (f.language || "english") : "english",
+  };
+}
 
 export function itemToForm(it: Item): ItemForm {
   return {
@@ -289,9 +260,12 @@ export const GRADE_OPTIONS: Record<string, { top: string[]; rest: string[] }> = 
 };
 export const GRADE_COMPANIES = ["PSA", "BGS", "CGC", "TAG"] as const;
 
-export function nullLast(a: number | null, b: number | null, asc: boolean): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return 1;
-  if (b == null) return -1;
-  return asc ? a - b : b - a;
-}
+// ── Shared class strings ──
+export const fieldClass = "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground";
+export const btnOutline = "inline-flex h-11 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted disabled:opacity-40";
+export const btnPrimary = "inline-flex h-11 items-center justify-center rounded-lg bg-accent-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40";
+export const btnDanger = "inline-flex h-11 items-center justify-center rounded-lg border border-negative-border bg-negative-soft px-4 text-sm font-semibold text-negative transition-colors duration-150 disabled:opacity-40";
+export const pillClass = "inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground";
+export const pillAccent = "inline-flex items-center rounded-full bg-accent-primary-soft px-2 py-0.5 text-xs font-medium text-accent-primary";
+export const pillWarning = "inline-flex items-center rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning-strong";
+export const pillPositive = "inline-flex items-center rounded-full bg-positive-soft px-2 py-0.5 text-xs font-medium text-positive-strong";

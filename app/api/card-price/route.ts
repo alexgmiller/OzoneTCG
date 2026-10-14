@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
-const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
 
 export async function POST(req: NextRequest) {
   const { cardId } = await req.json();

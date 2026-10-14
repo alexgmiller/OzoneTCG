@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Types ──
 
 type ActiveItem = {
   id: string;
@@ -37,37 +38,27 @@ type PayoutRecord = {
   notes: string | null;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmt(v: number | null) {
-  if (v == null) return "—";
-  return `$${v.toFixed(2)}`;
-}
+// ── Helpers ──
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function conditionAbbr(c: string): string {
-  const map: Record<string, string> = {
-    "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP",
-    "Heavily Played": "HP", "Damaged": "DMG",
-  };
-  return map[c] ?? c;
+const COND_ABBR: Record<string, string> = {
+  "Near Mint": "NM", "Lightly Played": "LP", "Moderately Played": "MP",
+  "Heavily Played": "HP", "Damaged": "DMG",
+};
+
+function initials(name: string) {
+  return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3 space-y-0.5">
-      <div className="text-[11px] opacity-50 font-medium uppercase tracking-wide">{label}</div>
-      <div className="text-lg font-bold">{value}</div>
-      {sub && <div className="text-xs opacity-50">{sub}</div>}
-    </div>
-  );
+function meta(parts: Array<string | null | undefined>) {
+  return parts.filter(Boolean).join(" · ");
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ── Page ──
 
 export default async function ConsignerPortalPage({
   params,
@@ -88,7 +79,6 @@ export default async function ConsignerPortalPage({
 
   const workspaceId = consigner.workspace_id;
 
-  // Fetch active items
   const { data: activeRows } = await admin
     .from("items")
     .select("id,name,set_name,card_number,condition,category,grade,market,image_url,consigned_date,created_at")
@@ -97,7 +87,6 @@ export default async function ConsignerPortalPage({
     .neq("status", "sold")
     .order("created_at", { ascending: false });
 
-  // Fetch sold items
   const { data: soldRows } = await admin
     .from("items")
     .select("id,name,set_name,card_number,grade,sold_price,consigner_payout,sold_at,consigner_payout_status")
@@ -106,7 +95,6 @@ export default async function ConsignerPortalPage({
     .eq("status", "sold")
     .order("sold_at", { ascending: false });
 
-  // Fetch payout history
   const { data: payoutRows } = await admin
     .from("consigner_payouts")
     .select("id,amount,payment_method,date,notes")
@@ -119,203 +107,182 @@ export default async function ConsignerPortalPage({
   const payouts = (payoutRows ?? []) as PayoutRecord[];
 
   const activeMarketValue = activeItems.reduce((s, it) => s + (it.market ?? 0), 0);
+  const soldRevenue = soldItems.reduce((s, it) => s + (it.sold_price ?? 0), 0);
   const totalEarned = soldItems.reduce((s, it) => s + (it.consigner_payout ?? 0), 0);
   const totalPaidOut = payouts.reduce((s, p) => s + p.amount, 0);
   const pendingPayout = Math.max(0, totalEarned - totalPaidOut);
   const rate = Math.round(consigner.rate * 100);
+  const hasAnything = activeItems.length > 0 || soldItems.length > 0;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-2xl mx-auto px-4 py-5">
+      {/* ── Header ── */}
+      <header className="border-b border-border bg-card">
+        <div className="mx-auto w-full max-w-2xl px-4 py-5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
-              {consigner.name.trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)}
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-primary-soft text-sm font-semibold text-accent-primary">
+              {initials(consigner.name)}
             </div>
-            <div>
-              <div className="text-xs opacity-50 font-medium">OzoneTCG Consignment Portal</div>
-              <h1 className="text-lg font-bold">{consigner.name}</h1>
-              <div className="text-xs opacity-60">Your rate: {rate}%</div>
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-muted-foreground">OzoneTCG Consignment Portal</div>
+              <h1 className="truncate text-lg font-semibold">{consigner.name}</h1>
+              <div className="text-xs tabular-nums text-muted-foreground">Your share: {rate}% of each sale</div>
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-8">
-
-        {/* Summary metrics */}
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider opacity-40 mb-3">Summary</h2>
+      <main className="mx-auto w-full max-w-2xl space-y-8 px-4 py-6">
+        {/* ── Summary ── */}
+        <section className="space-y-3">
+          <SectionHeader>Summary</SectionHeader>
           <div className="grid grid-cols-2 gap-3">
             <StatCard
-              label="Active Cards"
-              value={String(activeItems.length)}
-              sub={activeMarketValue > 0 ? `${fmt(activeMarketValue)} market value` : undefined}
+              label="Active cards"
+              value={activeItems.length}
+              delta={activeMarketValue > 0 ? <><MoneyDisplay amount={activeMarketValue} tone="neutral" /> listed value</> : undefined}
             />
             <StatCard
-              label="Sold Cards"
-              value={String(soldItems.length)}
-              sub={soldItems.length > 0 ? `${fmt(soldItems.reduce((s, it) => s + (it.sold_price ?? 0), 0))} revenue` : undefined}
+              label="Sold cards"
+              value={soldItems.length}
+              delta={soldRevenue > 0 ? <><MoneyDisplay amount={soldRevenue} tone="neutral" /> in sales</> : undefined}
             />
             <StatCard
-              label="Pending Payout"
-              value={pendingPayout > 0 ? fmt(pendingPayout) : "—"}
-              sub={pendingPayout > 0 ? "owed to you" : "all caught up"}
+              label="Owed to you"
+              tone={pendingPayout > 0 ? "positive" : "default"}
+              value={pendingPayout > 0 ? <MoneyDisplay amount={pendingPayout} tone="positive" /> : "—"}
+              delta={pendingPayout > 0 ? "pending payout" : "all caught up"}
             />
             <StatCard
-              label="Total Earned"
-              value={totalEarned > 0 ? fmt(totalEarned) : "—"}
-              sub={totalPaidOut > 0 ? `${fmt(totalPaidOut)} paid so far` : undefined}
+              label="Total earned"
+              value={totalEarned > 0 ? <MoneyDisplay amount={totalEarned} tone="neutral" /> : "—"}
+              delta={totalPaidOut > 0 ? <><MoneyDisplay amount={totalPaidOut} tone="neutral" /> paid so far</> : undefined}
             />
           </div>
-        </div>
+        </section>
 
-        {/* Active cards */}
+        {/* ── Active cards ── */}
         {activeItems.length > 0 && (
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-wider opacity-40 mb-3">
-              Active Cards ({activeItems.length})
-            </h2>
-            <div className="border border-border rounded-xl overflow-hidden">
-              {activeItems.map((it, i) => (
-                <div key={it.id} className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-border" : ""}`}>
-                  {/* Thumbnail */}
+          <section className="space-y-3">
+            <SectionHeader>Active cards ({activeItems.length})</SectionHeader>
+            <ul className="overflow-hidden rounded-xl border border-border bg-card">
+              {activeItems.map((it) => (
+                <li key={it.id} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
                   {it.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={it.image_url}
                       alt={it.name}
-                      className="w-10 h-14 rounded-md object-contain shrink-0 bg-muted"
+                      className="h-14 w-10 shrink-0 rounded-lg bg-muted object-contain"
                     />
                   ) : (
-                    <div className="w-10 h-14 rounded-md bg-muted shrink-0 flex items-center justify-center text-[10px] opacity-30 font-medium">
+                    <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-medium text-muted-foreground">
                       {it.category === "slab" ? "PSA" : "TCG"}
                     </div>
                   )}
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{it.name}</div>
-                    <div className="text-xs opacity-50 mt-0.5">
-                      {[it.set_name, it.card_number ? `#${it.card_number}` : null, it.grade ?? conditionAbbr(it.condition)].filter(Boolean).join(" · ")}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{it.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {meta([it.set_name, it.card_number ? `#${it.card_number}` : null, it.grade ?? COND_ABBR[it.condition] ?? it.condition])}
                     </div>
-                    <div className="text-xs opacity-40 mt-0.5">
+                    <div className="text-xs text-muted-foreground">
                       Received {fmtDate(it.consigned_date ?? it.created_at)}
                     </div>
                   </div>
 
-                  {/* Price + status */}
-                  <div className="shrink-0 text-right">
-                    {it.market != null && (
-                      <div className="text-sm font-semibold">{fmt(it.market)}</div>
-                    )}
-                    <div className="text-[11px] mt-0.5">
-                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">
-                        Active
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                  {it.market != null && (
+                    <MoneyDisplay amount={it.market} tone="neutral" className="shrink-0 text-sm font-semibold" />
+                  )}
+                </li>
               ))}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
 
-        {/* Sold cards */}
+        {/* ── Sold cards ── */}
         {soldItems.length > 0 && (
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-wider opacity-40 mb-3">
-              Sold Cards ({soldItems.length})
-            </h2>
-            <div className="border border-border rounded-xl overflow-hidden">
-              {soldItems.map((it, i) => {
+          <section className="space-y-3">
+            <SectionHeader>Sold cards ({soldItems.length})</SectionHeader>
+            <ul className="overflow-hidden rounded-xl border border-border bg-card">
+              {soldItems.map((it) => {
                 const isPaid = it.consigner_payout_status === "paid";
                 return (
-                  <div key={it.id} className={`px-4 py-3 ${i > 0 ? "border-t border-border" : ""}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium text-sm truncate">{it.name}</div>
-                        <div className="text-xs opacity-50 mt-0.5">
-                          {[it.set_name, it.card_number ? `#${it.card_number}` : null, it.grade].filter(Boolean).join(" · ")}
-                        </div>
-                        <div className="text-xs opacity-40 mt-0.5">{fmtDate(it.sold_at)}</div>
+                  <li key={it.id} className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{it.name}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {meta([it.set_name, it.card_number ? `#${it.card_number}` : null, it.grade])}
                       </div>
-                      <div className="shrink-0 text-right space-y-1">
-                        <div className="text-xs opacity-50">Sold {fmt(it.sold_price)}</div>
-                        <div className="text-sm font-semibold text-emerald-500">
-                          Your cut: {fmt(it.consigner_payout)}
-                        </div>
-                        <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${
-                          isPaid
-                            ? "bg-emerald-500/15 text-emerald-400"
-                            : "bg-amber-500/15 text-amber-400"
-                        }`}>
-                          {isPaid ? "Paid" : "Pending"}
-                        </span>
-                      </div>
+                      <div className="text-xs text-muted-foreground">{fmtDate(it.sold_at)}</div>
                     </div>
-                  </div>
+                    <div className="shrink-0 space-y-1 text-right">
+                      <div className="text-sm font-semibold">
+                        <MoneyDisplay amount={it.consigner_payout ?? 0} tone="positive" />
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        sold for <MoneyDisplay amount={it.sold_price ?? 0} tone="neutral" />
+                      </div>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        isPaid ? "bg-positive-soft text-positive" : "bg-warning-soft text-warning"
+                      }`}>
+                        {isPaid ? "Paid" : "Pending"}
+                      </span>
+                    </div>
+                  </li>
                 );
               })}
-
-              {/* Totals row */}
-              <div className="border-t border-border bg-muted/20 px-4 py-3 flex items-center justify-between text-sm font-semibold">
+              <li className="flex items-center justify-between bg-muted px-4 py-3 text-sm font-semibold">
                 <span>Total earned</span>
-                <span className="text-emerald-500">{fmt(totalEarned)}</span>
-              </div>
-            </div>
-          </div>
+                <MoneyDisplay amount={totalEarned} tone="positive" />
+              </li>
+            </ul>
+          </section>
         )}
 
-        {/* Payout history */}
+        {/* ── Payout history ── */}
         {payouts.length > 0 && (
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-wider opacity-40 mb-3">
-              Payout History
-            </h2>
-            <div className="border border-border rounded-xl overflow-hidden">
-              {payouts.map((p, i) => (
-                <div key={p.id} className={`flex items-center justify-between px-4 py-3 text-sm ${i > 0 ? "border-t border-border" : ""}`}>
+          <section className="space-y-3">
+            <SectionHeader>Payout history</SectionHeader>
+            <ul className="overflow-hidden rounded-xl border border-border bg-card">
+              {payouts.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 text-sm">
                   <div className="min-w-0">
-                    <div>{fmtDate(p.date)}</div>
-                    <div className="text-xs opacity-50 capitalize mt-0.5">
-                      {p.payment_method ?? "Payment"}
+                    <div className="tabular-nums">{fmtDate(p.date)}</div>
+                    <div className="truncate text-xs capitalize text-muted-foreground">
+                      {(p.payment_method ?? "payment").replace("_", " ")}
                       {p.notes && ` · ${p.notes}`}
                     </div>
                   </div>
-                  <div className="font-semibold text-emerald-500 shrink-0">{fmt(p.amount)}</div>
-                </div>
+                  <MoneyDisplay amount={p.amount} tone="positive" className="shrink-0 font-semibold" />
+                </li>
               ))}
-
-              {/* Running balance */}
-              <div className="border-t border-border bg-muted/20 px-4 py-3 flex items-center justify-between text-sm">
-                <span className="opacity-60">Total paid out</span>
-                <span className="font-semibold">{fmt(totalPaidOut)}</span>
-              </div>
+              <li className="flex items-center justify-between bg-muted px-4 py-3 text-sm">
+                <span className="text-muted-foreground">Total paid out</span>
+                <MoneyDisplay amount={totalPaidOut} tone="neutral" className="font-semibold" />
+              </li>
               {pendingPayout > 0 && (
-                <div className="border-t border-border px-4 py-3 flex items-center justify-between text-sm">
-                  <span className="opacity-60">Still pending</span>
-                  <span className="font-semibold text-amber-500">{fmt(pendingPayout)}</span>
-                </div>
+                <li className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
+                  <span className="text-muted-foreground">Still owed to you</span>
+                  <MoneyDisplay amount={pendingPayout} tone="positive" className="font-semibold" />
+                </li>
               )}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
 
-        {/* Empty state */}
-        {activeItems.length === 0 && soldItems.length === 0 && (
-          <div className="text-center py-12 text-sm opacity-50">
-            No cards on consignment yet.
-          </div>
+        {/* ── Empty state ── */}
+        {!hasAnything && (
+          <EmptyState
+            title="Nothing on consignment yet"
+            hint="Once your cards are checked in, they'll show up here with their listed prices, sales and payouts."
+          />
         )}
+      </main>
 
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-border mt-12 py-6 text-center text-xs opacity-30">
+      <footer className="mt-12 border-t border-border py-6 text-center text-xs text-muted-foreground">
         Powered by OzoneTCG
-      </div>
+      </footer>
     </div>
   );
 }

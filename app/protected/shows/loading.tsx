@@ -1,39 +1,38 @@
 import { Skeleton } from "@/components/ui";
 
-/** Mirrors ShowsServer: title, 4-up stat grid, then past-show rows. */
+// Mirrors ShowsServer: title, New show button, 3 stat cards, list rows
 export default function ShowsLoading() {
   return (
-    <div className="p-4 space-y-5">
+    <div className="w-full max-w-2xl mx-auto py-4 space-y-5">
       <Skeleton className="h-7 w-24 rounded-lg" />
+      <Skeleton className="h-11 w-full rounded-lg" />
 
-      {/* Stat grid — P&L, avg, best, count */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="border rounded-xl p-3 space-y-2">
-            <Skeleton className="h-2.5 w-20 rounded" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className={`space-y-2 rounded-xl border border-border p-4 ${i === 0 ? "col-span-2 sm:col-span-1" : ""}`}
+          >
+            <Skeleton className="h-3 w-20 rounded-lg" />
             <Skeleton className="h-6 w-24 rounded-lg" />
-            <Skeleton className="h-2.5 w-16 rounded" />
+            <Skeleton className="h-3 w-16 rounded-lg" />
           </div>
         ))}
       </div>
 
-      {/* Past shows */}
-      <div className="border rounded-xl overflow-hidden">
-        <div className="border-b px-4 py-3">
-          <Skeleton variant="text" className="w-28" />
-        </div>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0"
-          >
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <Skeleton className="h-3.5 rounded" style={{ width: `${40 + (i % 3) * 16}%` }} />
-              <Skeleton className="h-3 w-24 rounded" />
+      <div className="space-y-2">
+        <Skeleton className="h-3 w-16 rounded-lg" />
+        <div className="divide-y divide-border rounded-xl border border-border">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 p-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className={`h-3.5 rounded-lg ${i % 2 === 0 ? "w-2/3" : "w-1/2"}`} />
+                <Skeleton className="h-3 w-24 rounded-lg" />
+              </div>
+              <Skeleton className="h-5 w-16 shrink-0 rounded-lg" />
             </div>
-            <Skeleton className="h-5 w-16 rounded shrink-0" />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

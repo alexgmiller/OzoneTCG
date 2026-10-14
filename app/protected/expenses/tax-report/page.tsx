@@ -137,16 +137,16 @@ export default async function TaxReportPage({
   };
 
   return (
-    <div className="w-full p-4 sm:p-6 space-y-4 max-w-4xl mx-auto">
+    <div className="w-full py-4 sm:py-6 space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center gap-2">
         <Link
           href="/protected/expenses"
-          className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 flex items-center gap-1"
+          className="inline-flex h-11 items-center gap-1 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft size={16} />
           Expenses
         </Link>
-        <span className="text-gray-400">/</span>
+        <span className="text-muted-foreground">/</span>
         <h1 className="text-xl font-semibold">Tax Report</h1>
       </div>
       <TaxReportClient year={year} availableYears={availableYears} summary={summary} />

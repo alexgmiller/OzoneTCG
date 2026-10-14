@@ -149,8 +149,8 @@ export default async function PayoutServer() {
   const consignerSales = (consignerData ?? []) as ConsignerSaleEntry[];
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">Payout</h1>
+    <div className="mx-auto w-full max-w-2xl space-y-5 py-4">
+      <h1 className="text-xl font-bold tracking-tight text-foreground">Payout</h1>
       <PayoutClient
         alexExpenses={expenses.filter((e) => e.paid_by === "alex")}
         milaExpenses={expenses.filter((e) => e.paid_by === "mila")}
