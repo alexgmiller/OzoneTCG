@@ -164,6 +164,8 @@ All in `components/ui/`, exported from `components/ui/index.ts`.
 | `CardTile` | Card art tile with frosted overlay (name, meta, price ▲▼); consigned badge; no-image fallback |
 | `SearchBar` | Rounded-full field with a trailing camera icon that opens the cert scanner |
 | `IconButton` | 44px round surface button; `showLabel` for Home quick actions |
+| `Sheet` | Bottom sheet: drag handle, `rounded-3xl`, drag-down or X to close, `dirty` asks before discarding, `footer` pinned above the safe area |
+| `ContextMenu` + `useLongPress` | Long-press / right-click menu near the press point; destructive rows in `down` after a gap |
 | `StatCard` | Framed stat (legacy; prefer HeroValue / CountStat on new screens) |
 | `MoneyDisplay` | Formatted amount with sign, tone, tabular nums |
 | `SectionHeader` | Uppercase label above a list |

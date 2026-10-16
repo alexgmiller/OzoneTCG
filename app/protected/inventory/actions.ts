@@ -375,6 +375,26 @@ export async function massUpdateItems(
   revalidatePath("/protected/inventory");
 }
 
+// Per-item patches from the bulk edit sheet (sticker as % of FMV and notes
+// append differ per item, so each row carries its own patch). Also the undo.
+const PATCHABLE = new Set(["owner", "consigner_id", "condition", "status", "notes", "sticker_price"]);
+
+export async function bulkPatchItems(patches: { id: string; patch: Record<string, unknown> }[]) {
+  if (patches.length === 0) return;
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+
+  for (const { id, patch } of patches) {
+    const safe: Record<string, unknown> = { updated_by: auth.user.id };
+    for (const [k, v] of Object.entries(patch)) if (PATCHABLE.has(k)) safe[k] = v;
+    const { error } = await supabase.from("items").update(safe).eq("id", id).eq("workspace_id", workspaceId);
+    if (error) throw new Error(error.message);
+  }
+  revalidatePath("/protected/inventory");
+}
+
 export async function fetchCardData(
   name: string,
   setName?: string | null,

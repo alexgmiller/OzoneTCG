@@ -186,6 +186,7 @@ export const blankForm = (): ItemForm => ({
   setName: "",
   cardNumber: "",
   grade: "",
+  certNumber: "",
   stickerPrice: "",
   productType: "",
   quantity: "1",
@@ -208,6 +209,7 @@ export function formToInput(f: ItemForm) {
     set_name: f.setName || null,
     card_number: f.cardNumber || null,
     grade: f.grade || null,
+    cert_number: f.certNumber.trim() || null,
     sticker_price: toNum(f.stickerPrice),
     product_type: f.category === "sealed" ? (f.productType || null) : null,
     quantity: f.category === "sealed" ? (parseInt(f.quantity) || 1) : 1,
@@ -232,6 +234,7 @@ export function itemToForm(it: Item): ItemForm {
     setName: it.set_name ?? "",
     cardNumber: it.card_number ?? "",
     grade: it.grade ?? "",
+    certNumber: it.cert_number ?? "",
     stickerPrice: it.sticker_price != null ? String(it.sticker_price) : "",
     productType: it.product_type ?? "",
     quantity: it.quantity != null ? String(it.quantity) : "1",
@@ -257,8 +260,16 @@ export const GRADE_OPTIONS: Record<string, { top: string[]; rest: string[] }> = 
     top: ["10", "9.5", "9", "8.5", "8"],
     rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4", "3", "2", "1"],
   },
+  SGC: {
+    top: ["10", "9.5", "9", "8.5", "8"],
+    rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4", "3", "2", "1"],
+  },
+  ACE: {
+    top: ["10", "9.5", "9", "8.5", "8"],
+    rest: ["7.5", "7", "6.5", "6", "5.5", "5", "4", "3", "2", "1"],
+  },
 };
-export const GRADE_COMPANIES = ["PSA", "BGS", "CGC", "TAG"] as const;
+export const GRADE_COMPANIES = ["PSA", "BGS", "CGC", "TAG", "SGC", "ACE"] as const;
 
 // ── Shared class strings ──
 export const fieldClass = "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground";

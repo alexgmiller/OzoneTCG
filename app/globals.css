@@ -152,6 +152,10 @@ button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([dat
 /* Toasts, FABs and action bars pin here so they clear the floating bar. */
 .above-tabbar { bottom: calc(6rem + env(safe-area-inset-bottom, 0px)); }
 
+/* ── Bottom sheet ── never taller than the viewport minus a thumb's reach */
+.sheet-panel { max-height: calc(100dvh - 3rem); }
+.pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)); }
+
 /* ═══════════════════════════════════════════════════════════════════════════
    SKELETON LOADERS (components/ui/Skeleton.tsx)
    ═══════════════════════════════════════════════════════════════════════════ */

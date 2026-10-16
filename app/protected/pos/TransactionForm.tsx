@@ -19,12 +19,14 @@ export type DealForm = {
 
 const PAYERS = ["shared", "alex", "mila"] as const;
 
-export default function TransactionForm({ mode, suggested, ready, submit, onDone }: {
+export default function TransactionForm({ mode, suggested, ready, submit, onDone, onAmountChange }: {
   mode: Mode;
   suggested: number;
   ready: boolean;
   submit: (f: DealForm) => Promise<OfflineResult>;
   onDone: () => void;
+  // Live typed amount (null = blank, i.e. the suggested value); Sell uses it to allocate across lines
+  onAmountChange?: (v: number | null) => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -77,7 +79,7 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
 
       {/* ── Amount ── suggested value is the placeholder; blank means "use it" */}
       <input type="number" inputMode="decimal" min="0" step="0.01" value={amount}
-        onChange={(e) => setAmount(e.target.value)} placeholder={suggested.toFixed(2)}
+        onChange={(e) => { setAmount(e.target.value); onAmountChange?.(e.target.value === "" ? null : Number(e.target.value) || 0); }} placeholder={suggested.toFixed(2)}
         aria-label={mode === "trade" ? "Cash difference" : "Amount"}
         className={`${INPUT} h-14 w-full text-lg font-semibold tabular-nums`} />
 

@@ -28,6 +28,7 @@ export type Item = {
   set_name: string | null;
   card_number: string | null;
   grade: string | null;
+  cert_number: string | null;
   cost_basis: number | null;
   buy_percentage: number | null;
   acquisition_type: string | null;
@@ -61,6 +62,7 @@ export type ItemForm = {
   setName: string;
   cardNumber: string;
   grade: string;
+  certNumber: string;
   stickerPrice: string;
   // Sealed product metadata
   productType: string;

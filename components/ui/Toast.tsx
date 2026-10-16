@@ -10,12 +10,14 @@ import { cn } from "@/lib/utils";
 //   toast.success("Batch saved");
 
 export type ToastTone = "success" | "error" | "warning" | "info";
+export type ToastAction = { label: string; onClick: () => void };
 
 type Toast = {
   id: string;
   tone: ToastTone;
   message: string;
   autoDismissMs: number | null;
+  action?: ToastAction;
 };
 
 const Ctx = createContext<{
@@ -80,6 +82,15 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       )}
     >
       <span className="flex-1 py-1">{toast.message}</span>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={() => { toast.action!.onClick(); onDismiss(); }}
+          className="h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-accent transition-colors duration-150 hover:bg-surface-2"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={onDismiss}
@@ -95,14 +106,16 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
 export function useToast() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useToast must be used inside <ToastProvider>");
+  // A toast with an action (Undo) stays longer so the button can be reached
+  const ACTION_DISMISS_MS = 8000;
   return {
-    success: (message: string) =>
-      ctx.push({ tone: "success", message, autoDismissMs: DEFAULT_DISMISS.success }),
+    success: (message: string, opts?: { action?: ToastAction }) =>
+      ctx.push({ tone: "success", message, action: opts?.action, autoDismissMs: opts?.action ? ACTION_DISMISS_MS : DEFAULT_DISMISS.success }),
     error: (message: string) =>
       ctx.push({ tone: "error", message, autoDismissMs: DEFAULT_DISMISS.error }),
     warning: (message: string) =>
       ctx.push({ tone: "warning", message, autoDismissMs: DEFAULT_DISMISS.warning }),
-    info: (message: string) =>
-      ctx.push({ tone: "info", message, autoDismissMs: DEFAULT_DISMISS.info }),
+    info: (message: string, opts?: { action?: ToastAction }) =>
+      ctx.push({ tone: "info", message, action: opts?.action, autoDismissMs: opts?.action ? ACTION_DISMISS_MS : DEFAULT_DISMISS.info }),
   };
 }

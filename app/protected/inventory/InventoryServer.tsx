@@ -46,7 +46,7 @@ export type SlabPrice = {
   sold_items: SlabSale[] | null;
 };
 
-const ITEM_COLS = "id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested,sticker_price,acquired_market_price,acquired_date,product_type,quantity,language";
+const ITEM_COLS = "id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cert_number,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested,sticker_price,acquired_market_price,acquired_date,product_type,quantity,language";
 // Most recent sales only — the Transactions ledger holds the full history
 const SOLD_LIMIT = 500;
 

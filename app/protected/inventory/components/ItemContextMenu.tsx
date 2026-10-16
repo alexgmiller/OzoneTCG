@@ -29,7 +29,7 @@ export function ItemContextMenu({ target, onClose, onEdit, onSelect, onDelete }:
       title={it?.name}
       items={it ? [
         { label: "Edit Item", icon: Pencil, onSelect: () => onEdit(it) },
-        { label: "Sell", icon: DollarSign, disabled: sold, onSelect: () => router.push(`/protected/pos?mode=sell&item=${it.id}`) },
+        { label: "Sell", icon: DollarSign, disabled: sold, onSelect: () => router.push(`/protected/pos?mode=sell&items=${it.id}`) },
         { label: "Select", icon: CheckCircle2, onSelect: () => onSelect(it) },
         // The catalog arrives in Phase 3B; until then this lands on the search stub with the name filled in
         { label: "Open in Catalog", icon: BookOpen, onSelect: () => router.push(`/protected/search?q=${encodeURIComponent(it.name)}`) },

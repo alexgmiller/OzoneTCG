@@ -69,3 +69,35 @@ export function allocate(total: number, weights: number[]): number[] {
   shares[shares.length - 1] = round2(shares[shares.length - 1] + drift);
   return shares;
 }
+
+// ── Bundle allocation ──
+// One total across several items, in proportion to FMV and rounded to cents.
+// Any rounding remainder goes to the highest-FMV auto item. Overridden lines
+// are fixed; the rest re-balance over what is left. The result always sums
+// to `total` exactly.
+export type BundleLine = { id: string; market: number | null };
+
+export function allocateBundle(total: number, lines: BundleLine[], overrides: Record<string, number> = {}): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (lines.length === 0) return out;
+
+  const fixed = lines.filter((l) => overrides[l.id] != null);
+  const auto = lines.filter((l) => overrides[l.id] == null);
+  for (const l of fixed) out[l.id] = round2(Math.max(0, overrides[l.id]));
+
+  if (auto.length === 0) return out;
+  const remaining = round2(total - fixed.reduce((s, l) => s + out[l.id], 0));
+
+  const weights = auto.map((l) => Math.max(0, l.market ?? 0));
+  const sum = weights.reduce((s, w) => s + w, 0);
+  for (const [i, l] of auto.entries()) {
+    out[l.id] = round2(sum > 0 ? (remaining * weights[i]) / sum : remaining / auto.length);
+  }
+
+  const drift = round2(remaining - auto.reduce((s, l) => s + out[l.id], 0));
+  if (drift !== 0) {
+    const top = auto.reduce((best, l) => ((l.market ?? 0) > (best.market ?? 0) ? l : best), auto[0]);
+    out[top.id] = round2(out[top.id] + drift);
+  }
+  return out;
+}

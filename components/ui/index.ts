@@ -26,5 +26,6 @@ export { SearchBar } from "./SearchBar";
 export { IconButton } from "./IconButton";
 export { ContextMenu } from "./ContextMenu";
 export type { ContextMenuItem } from "./ContextMenu";
+export { Sheet } from "./Sheet";
 export { useLongPress } from "./useLongPress";
 export type { PressPoint } from "./useLongPress";

@@ -9,7 +9,7 @@ const NOW = new Date("2026-10-16T12:00:00Z");
 const item = (over: Partial<Item>): Item => ({
   id: "x", name: "Charizard", category: "single", owner: "shared", status: "inventory",
   market: 100, cost: 60, condition: "Near Mint", notes: null, created_at: "2026-10-01T00:00:00Z",
-  consigner_id: null, image_url: null, set_name: "Base Set", card_number: "4", grade: null,
+  consigner_id: null, image_url: null, set_name: "Base Set", card_number: "4", grade: null, cert_number: null,
   cost_basis: null, buy_percentage: null, acquisition_type: null, chain_depth: 0,
   original_cash_invested: null, sticker_price: null, acquired_market_price: null, acquired_date: null,
   product_type: null, quantity: 1, language: "english",
