@@ -8,7 +8,7 @@ import type { Item } from "./types";
 import { EBAY_DAILY_BUDGET, EBAY_BUDGET_WARN_PCT, getSlabTierMs, isSlabTierStale, slabKeyFor, itemMarketPrice } from "./utils";
 import { refreshSlabPrice, refreshSealedPrice, getEbayDailyCallCount, type RefreshedSlabPrice } from "./pricingActions";
 import { refreshRawCardPrice } from "./rawPricingActions";
-import type { BgStatus } from "./components/InventorySummary";
+import type { BgStatus } from "./components/PricingStatus";
 
 // ── Pricing state: cached prices, FMV, per-item refresh and the background slab loop ──
 export function usePricing(items: Item[], slabPrices: Record<string, SlabPrice>, rawCardPrices: Record<string, RawCardPrice>) {

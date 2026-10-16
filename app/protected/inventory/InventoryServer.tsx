@@ -50,7 +50,7 @@ const ITEM_COLS = "id,name,category,owner,status,market,cost,condition,notes,cre
 // Most recent sales only — the Transactions ledger holds the full history
 const SOLD_LIMIT = 500;
 
-export default async function InventoryServer() {
+export default async function InventoryServer({ focusId = null }: { focusId?: string | null }) {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
@@ -135,26 +135,9 @@ export default async function InventoryServer() {
     console.warn("[InventoryServer] Admin client unavailable (build time?), skipping price fetch:", e instanceof Error ? e.message : e);
   }
 
-  const totalItems = (data ?? []).length;
-  const slabCount = (data ?? []).filter((i) => i.category === "slab").length;
-  const sealedCount = (data ?? []).filter((i) => i.category === "sealed").length;
-  const singleCount = (data ?? []).filter((i) => i.category === "single").length;
-
   return (
-    <div className="w-full space-y-4 py-4">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Inventory</h1>
-        <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-          {totalItems === 0
-            ? "Nothing here yet — let's change that"
-            : [
-                slabCount > 0 ? `${slabCount} slab${slabCount !== 1 ? "s" : ""}` : null,
-                sealedCount > 0 ? `${sealedCount} sealed` : null,
-                singleCount > 0 ? `${singleCount} single${singleCount !== 1 ? "s" : ""}` : null,
-              ].filter(Boolean).join(" · ")}
-        </p>
-      </div>
-
+    <div className="w-full py-4">
+      <h1 className="sr-only">Inventory</h1>
       <InventoryClient
         items={[...(data ?? []), ...soldRows] as Item[]}
         consigners={(consignerRows ?? []) as ConsignerOption[]}
@@ -162,6 +145,7 @@ export default async function InventoryServer() {
         slabPrices={slabPriceMap}
         rawCardPrices={rawCardPriceMap}
         gradingCost={settings?.grading_cost ?? 20}
+        focusId={focusId}
       />
     </div>
   );

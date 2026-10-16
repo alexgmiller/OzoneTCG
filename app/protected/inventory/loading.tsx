@@ -1,40 +1,32 @@
 import { Skeleton } from "@/components/ui";
 
+// ── Inventory skeleton ── mirrors the header, filter row and a tile grid
+
 export default function InventoryLoading() {
   return (
     <div className="w-full space-y-4 py-4">
-      {/* ── Page header ── */}
-      <div className="space-y-2">
-        <Skeleton className="h-6 w-28" />
-        <Skeleton variant="text" className="w-40" />
+      {/* Search + icon buttons */}
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-11 flex-1 rounded-full" />
+        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} variant="circle" className="h-11 w-11" />)}
       </div>
 
-      {/* ── Add panel + search ── */}
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-11 w-full rounded-lg" />
-
-      {/* ── Summary ── */}
-      <div className="grid grid-cols-2 gap-3">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-24 w-full" />
+      {/* Hero + count */}
+      <div className="flex items-end justify-between">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton variant="text" className="w-24" />
       </div>
 
-      {/* ── Item cards ── */}
-      <div className="space-y-3">
+      {/* In stock | Sold + chips */}
+      <Skeleton className="h-10 rounded-full" />
+      <div className="flex gap-2">
+        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-20 rounded-full" />)}
+      </div>
+
+      {/* Tiles */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-            <Skeleton className="h-5 w-5 rounded-lg" />
-            <Skeleton className="h-20 w-14 rounded-lg" />
-            <div className="min-w-0 flex-1 space-y-2">
-              <Skeleton variant="text" className={i % 2 === 0 ? "w-3/4" : "w-1/2"} />
-              <Skeleton variant="text" className="w-2/5" />
-              <Skeleton className="h-5 w-20 rounded-full" />
-            </div>
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-16 rounded-lg" />
-              <Skeleton variant="text" className="w-12" />
-            </div>
-          </div>
+          <Skeleton key={i} className="aspect-[63/88] rounded-2xl" />
         ))}
       </div>
     </div>

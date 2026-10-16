@@ -24,3 +24,7 @@ export { CardTile } from "./CardTile";
 export type { CardTileDelta } from "./CardTile";
 export { SearchBar } from "./SearchBar";
 export { IconButton } from "./IconButton";
+export { ContextMenu } from "./ContextMenu";
+export type { ContextMenuItem } from "./ContextMenu";
+export { useLongPress } from "./useLongPress";
+export type { PressPoint } from "./useLongPress";

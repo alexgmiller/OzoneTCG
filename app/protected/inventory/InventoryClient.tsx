@@ -1,35 +1,39 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
-import { useToast, useConfirm } from "@/components/ui";
+import { useToast, useConfirm, type PressPoint } from "@/components/ui";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
 import { createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, fetchCardData } from "./actions";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
 import type { Status, ConsignerOption, Item, ItemForm, StagedItem, Psa10Entry, HistoryDuration } from "./types";
-import { toNum, effectiveCost, blankForm, itemToForm, formToInput, nullLast } from "./utils";
+import { toNum, effectiveCost, blankForm, itemToForm, formToInput } from "./utils";
 import { usePricing } from "./usePricing";
+import { useViewMode } from "./useViewMode";
+import { useInventoryView } from "./useInventoryView";
+import { useSelection } from "./useSelection";
+import { defaultFilters, countActiveFilters, type Filters } from "./inventoryView";
+import { InventoryHeader } from "./components/InventoryHeader";
+import { InventoryFilters } from "./components/InventoryFilters";
+import { InventoryGrid } from "./components/InventoryGrid";
+import { InventoryListView } from "./components/InventoryListView";
+import { InventoryEmpty } from "./components/InventoryEmpty";
+import { ItemContextMenu } from "./components/ItemContextMenu";
+import { PricingStatus } from "./components/PricingStatus";
 import { PricingDetailModal } from "./components/PricingDetailModal";
 import { RawPricingModal } from "./components/RawPricingModal";
 import { ItemDetailModal } from "./components/ItemDetailModal";
 import { EditItemModal, MassEditModal, SellModal, BulkCostModal } from "./components/InventoryModals";
-import { InventoryFilters, defaultFilters, countActiveFilters, type Filters } from "./components/InventoryFilters";
-import { InventorySummary } from "./components/InventorySummary";
-import { InventoryList } from "./components/InventoryList";
 import { SelectionBar } from "./components/SelectionBar";
 import GradingSection from "./components/GradingSection";
 import AddItemPanel from "./components/AddItemPanel";
 
-// `items` holds active rows plus the most recent sold rows; sold rows only render under the Sold filter.
+// `items` holds in-stock rows plus the most recent sold rows; sold rows only render under the Sold filter.
+// `focusId` (from ?focus=) opens that item's detail on arrival.
 export default function InventoryClient({
-  items,
-  consigners,
-  workspaceId,
-  slabPrices,
-  rawCardPrices,
-  gradingCost = 20,
+  items, consigners, workspaceId, slabPrices, rawCardPrices, gradingCost = 20, focusId = null,
 }: {
   items: Item[];
   consigners: ConsignerOption[];
@@ -37,29 +41,36 @@ export default function InventoryClient({
   slabPrices: Record<string, SlabPrice>;
   rawCardPrices: Record<string, RawCardPrice>;
   gradingCost?: number;
+  focusId?: string | null;
 }) {
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
-  // Pricing (FMV, refresh, background loop) only ever runs over active rows
+  // Pricing (FMV, refresh, background loop) only ever runs over in-stock rows
   const activeItems = useMemo(() => items.filter((it) => it.status !== "sold"), [items]);
   const pricing = usePricing(activeItems, slabPrices, rawCardPrices);
   const { priceFor } = pricing;
   const [busy, setBusy] = useState(false);
 
-  // ── Panels / pickers ──
-  const [addOpen, setAddOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  // ── View, filters ──
+  const [view, setView, viewReady] = useViewMode();
   const [filters, setFiltersState] = useState<Filters>(defaultFilters);
-  const soldFilter = filters.status === "sold";
+  const sel = useSelection(items);
   const setFilters = (patch: Partial<Filters>) => {
-    // Switching between active and sold pools drops the selection so bulk actions never mix them
-    if (patch.status !== undefined && (patch.status === "sold") !== soldFilter) clearSelection();
+    // Switching pools drops the selection so bulk actions never mix sold and in-stock
+    if (patch.status !== undefined && (patch.status === "sold") !== (filters.status === "sold")) sel.clearSelection();
     setFiltersState((f) => ({ ...f, ...patch }));
   };
+  // Sold rows show what they sold for; everything else shows live market
+  const priceOf = useCallback((it: Item) => (it.status === "sold" ? it.sold_price ?? null : priceFor(it)), [priceFor]);
+  const { displayedItems, summary, sold: soldFilter } = useInventoryView(items, filters, priceOf);
+
+  // ── Panels / pickers ──
+  const [addOpen, setAddOpen] = useState(false);
   const [cardSearchOpen, setCardSearchOpen] = useState(false);
   const [editImagePickerOpen, setEditImagePickerOpen] = useState(false);
   const [findConfirmed, setFindConfirmed] = useState<string | null>(null);
+  const [contextTarget, setContextTarget] = useState<{ item: Item; at: PressPoint } | null>(null);
 
   // ── Forms ──
   const [addForm, setAddForm] = useState<ItemForm>(blankForm());
@@ -78,11 +89,7 @@ export default function InventoryClient({
   const [rawCardDetailItem, setRawCardDetailItem] = useState<Item | null>(null);
   const [historyDuration, setHistoryDuration] = useState<HistoryDuration>("90d");
 
-  // ── Selection + bulk actions ──
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [sellOpen, setSellOpen] = useState(false);
-  const [salePrice, setSalePrice] = useState("");
-  const [manualPrices, setManualPrices] = useState<Record<string, string>>({});
+  // ── Bulk edit / cost ──
   const [massEditOpen, setMassEditOpen] = useState(false);
   const [massOwner, setMassOwner] = useState("");
   const [massStatus, setMassStatus] = useState("");
@@ -120,111 +127,39 @@ export default function InventoryClient({
     return () => { supabase.removeChannel(channel); };
   }, [router, workspaceId]);
 
+  // ── Arrive on an item (Home's MOST VALUABLE tiles link here) ──
+  useEffect(() => {
+    if (!focusId) return;
+    const it = items.find((i) => i.id === focusId);
+    if (!it) return;
+    setDetailItem(it);
+    document.querySelector(`[data-item-id="${focusId}"]`)?.scrollIntoView({ block: "center" });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
+
+  // ── Keep the same item in view when switching grid ↔ list ──
+  const anchorId = useRef<string | null>(null);
+  const switchView = (v: typeof view) => {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-item-id]"));
+    const first = rows.find((el) => el.getBoundingClientRect().bottom > 0);
+    anchorId.current = first?.dataset.itemId ?? null;
+    setView(v);
+  };
+  useLayoutEffect(() => {
+    if (!anchorId.current) return;
+    document.querySelector(`[data-item-id="${anchorId.current}"]`)?.scrollIntoView({ block: "start" });
+    anchorId.current = null;
+  }, [view]);
+
   const consignerMap = useMemo(() => new Map(consigners.map((c) => [c.id, c])), [consigners]);
-
-  // Sold rows show what they sold for; everything else shows live market
-  const priceOf = useCallback((it: Item) => (it.status === "sold" ? it.sold_price ?? null : priceFor(it)), [priceFor]);
-
-  // ── Filter + sort ──
-  // "active" lists inventory rows here; grading rows get their own section below.
-  const displayedItems = useMemo(() => {
-    const q = filters.search.trim().toLowerCase();
-    const sold = filters.status === "sold";
-    const dateOf = (it: Item) => (sold ? it.sold_at ?? it.created_at : it.created_at);
-    const result = items.filter((it) => {
-      if (filters.status === "active" ? it.status !== "inventory" : it.status !== filters.status) return false;
-      if (q && !it.name.toLowerCase().includes(q) && !(it.set_name ?? "").toLowerCase().includes(q)) return false;
-      if (filters.category !== "all" && it.category !== filters.category) return false;
-      if (filters.consigner === "none" && it.owner === "consigner") return false;
-      if (filters.consigner !== "all" && filters.consigner !== "none" && it.consigner_id !== filters.consigner) return false;
-      return true;
-    });
-    result.sort((a, b) => {
-      switch (filters.sort) {
-        case "name-asc":    return a.name.localeCompare(b.name);
-        case "name-desc":   return b.name.localeCompare(a.name);
-        case "market-asc":  return nullLast(priceOf(a), priceOf(b), true);
-        case "market-desc": return nullLast(priceOf(a), priceOf(b), false);
-        case "cost-asc":    return nullLast(effectiveCost(a), effectiveCost(b), true);
-        case "cost-desc":   return nullLast(effectiveCost(a), effectiveCost(b), false);
-        case "date-asc":    return dateOf(a).localeCompare(dateOf(b));
-        default:            return dateOf(b).localeCompare(dateOf(a));
-      }
-    });
-    return result;
-  }, [items, filters, priceOf]);
-
-  // ── Value summary (profit only over items with a known cost) ──
-  const summary = useMemo(() => {
-    let total = 0, totalCost = 0, costedCount = 0, costedValue = 0;
-    for (const it of displayedItems) {
-      const price = priceFor(it) ?? 0;
-      const value = it.category === "sealed" ? price * (it.quantity ?? 1) : price;
-      total += value;
-      const ec = effectiveCost(it);
-      if (ec != null) { totalCost += ec; costedCount++; costedValue += value; }
-    }
-    const profit = costedValue - totalCost;
-    return { total, totalCost, costedCount, totalCount: displayedItems.length, profit, profitPct: totalCost > 0 ? (profit / totalCost) * 100 : null };
-  }, [displayedItems, priceFor]);
-
+  const costOf = useCallback((it: Item) => effectiveCost(it), []);
   const activeCount = activeItems.filter((i) => i.status !== "grading").length;
   const soldCount = items.length - activeItems.length;
-  const listLabel = soldFilter
-    ? (displayedItems.length < soldCount ? `${displayedItems.length} of ${soldCount} sold` : `${soldCount} sold`)
-    : countActiveFilters(filters) > 0 ? `${displayedItems.length} of ${activeCount} items` : `${activeCount} items`;
-  const selectedItems = useMemo(() => items.filter((it) => selectedIds.has(it.id)), [items, selectedIds]);
-  const hasSoldSelected = selectedItems.some((it) => it.status === "sold");
-  const totalMarket = selectedItems.reduce((s, it) => s + (it.market ?? 0), 0);
-  const salePriceNum = parseFloat(salePrice) || 0;
-
-  // ── Sell pricing: manual locks + proportional auto-fill ──
-  function autoPrices(total: number, manual: Record<string, string>) {
-    const manualSum = selectedItems.reduce((s, it) => s + (manual[it.id] !== undefined ? parseFloat(manual[it.id]) || 0 : 0), 0);
-    const autoItems = selectedItems.filter((it) => manual[it.id] === undefined);
-    const autoMarketSum = autoItems.reduce((s, it) => s + (it.market ?? 0), 0);
-    const remaining = total - manualSum;
-    const priceOf = (it: Item) => autoMarketSum > 0
-      ? Math.round(((it.market ?? 0) / autoMarketSum) * remaining * 100) / 100
-      : autoItems.length > 0 ? Math.round((remaining / autoItems.length) * 100) / 100 : 0;
-    return { manualSum, autoItems, priceOf };
-  }
-  function getCardPrice(it: Item): number {
-    if (manualPrices[it.id] !== undefined) return parseFloat(manualPrices[it.id]) || 0;
-    return autoPrices(salePriceNum, manualPrices).priceOf(it);
-  }
-  function updateCardPrice(id: string, value: string) {
-    const next = { ...manualPrices, [id]: value };
-    setManualPrices(next);
-    const { manualSum, autoItems, priceOf } = autoPrices(parseFloat(salePrice) || 0, next);
-    setSalePrice((manualSum + autoItems.reduce((s, it) => s + priceOf(it), 0)).toFixed(2));
-  }
-  function resetCardPrice(id: string) {
-    const next = { ...manualPrices };
-    delete next[id];
-    setManualPrices(next);
-  }
-
-  // ── Selection ──
-  function toggleSelect(id: string) {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setSelectedIds(next);
-  }
-  function clearSelection() {
-    setSelectedIds(new Set());
-    setSellOpen(false);
-    setSalePrice("");
-    setManualPrices({});
-  }
-  function selectAll() {
-    if (selectedIds.size === displayedItems.length && displayedItems.length > 0) clearSelection();
-    else setSelectedIds(new Set(displayedItems.map((it) => it.id)));
-  }
 
   // ── Add / edit ──
   function openEdit(it: Item) { setEditingItem(it); setEditForm(itemToForm(it)); }
   function closeEdit() { setEditingItem(null); setDeleteConfirm(false); }
+  const openAdd = () => { setAddForm(blankForm()); setAddOpen(true); };
 
   async function onCardSearchResult(data: CardSearchResult) {
     setAddForm((prev) => ({
@@ -266,17 +201,14 @@ export default function InventoryClient({
     setAddForm(blankForm());
     setFindConfirmed(null);
   }
-
   async function onSaveAll() {
     if (stagedItems.length === 0) return;
     if (await run(() => createItems(stagedItems.map(formToInput)), `Added ${stagedItems.length} item${stagedItems.length !== 1 ? "s" : ""}`)) setStagedItems([]);
   }
-
   async function onSaveEdit() {
     if (!editingItem || !editForm.name.trim()) return;
     if (await run(() => updateItem(editingItem.id, formToInput(editForm)), "Saved")) closeEdit();
   }
-
   async function onQuickStatus(id: string, status: Status) { await run(() => updateItem(id, { status })); }
   async function handleGradeItem() {
     if (!editingItem) return;
@@ -295,51 +227,51 @@ export default function InventoryClient({
 
   // ── Bulk actions ──
   async function onMassEdit() {
-    if (hasSoldSelected) return; // sold rows are undone from Transactions, never re-statused here
+    if (sel.hasSoldSelected) return; // sold rows are undone from Transactions, never re-statused here
     const patch: Record<string, string | null> = {};
     if (massOwner.startsWith("consigner:")) { patch.owner = "consigner"; patch.consigner_id = massOwner.slice("consigner:".length); }
     else if (massOwner) { patch.owner = massOwner; patch.consigner_id = null; }
     if (massStatus) patch.status = massStatus;
     if (massCategory) patch.category = massCategory;
     if (Object.keys(patch).length === 0) return;
-    if (await run(() => massUpdateItems(Array.from(selectedIds), patch), `Updated ${selectedIds.size} items`)) {
+    if (await run(() => massUpdateItems(Array.from(sel.selectedIds), patch), `Updated ${sel.selectedIds.size} items`)) {
       setMassEditOpen(false); setMassOwner(""); setMassStatus(""); setMassCategory("");
     }
   }
-
   async function onConfirmSale() {
-    if (selectedIds.size === 0 || salePriceNum <= 0 || hasSoldSelected) return;
+    if (sel.selectedIds.size === 0 || sel.salePriceNum <= 0 || sel.hasSoldSelected) return;
     const perCardPrices: Record<string, number> = {};
-    for (const it of selectedItems) perCardPrices[it.id] = getCardPrice(it);
-    if (await run(() => markItemsAsSold(Array.from(selectedIds), salePriceNum, perCardPrices), `Sold ${selectedIds.size} item${selectedIds.size !== 1 ? "s" : ""}`)) clearSelection();
+    for (const it of sel.selectedItems) perCardPrices[it.id] = sel.getCardPrice(it);
+    if (await run(() => markItemsAsSold(Array.from(sel.selectedIds), sel.salePriceNum, perCardPrices), `Sold ${sel.selectedIds.size} item${sel.selectedIds.size !== 1 ? "s" : ""}`)) sel.clearSelection();
   }
-
   async function onBulkDelete() {
-    const n = selectedIds.size;
+    const n = sel.selectedIds.size;
     const ok = await confirm({ title: `Delete ${n} item${n !== 1 ? "s" : ""}?`, description: "This cannot be undone.", confirmLabel: "Delete", destructive: true });
     if (!ok) return;
-    if (await run(() => deleteItems(Array.from(selectedIds)), `Deleted ${n} item${n !== 1 ? "s" : ""}`)) clearSelection();
+    if (await run(() => deleteItems(Array.from(sel.selectedIds)), `Deleted ${n} item${n !== 1 ? "s" : ""}`)) sel.clearSelection();
   }
-
   async function onBulkSetCost() {
     const n = toNum(bulkCostVal);
-    if (n === null || n < 0 || selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds);
+    if (n === null || n < 0 || sel.selectedIds.size === 0) return;
+    const ids = Array.from(sel.selectedIds);
     const costEach = bulkCostSplit ? Math.round((n / ids.length) * 100) / 100 : n;
     if (await run(() => Promise.all(ids.map((id) => updateItem(id, { cost: costEach }))), "Costs updated")) {
       setBulkCostOpen(false); setBulkCostVal(""); setBulkCostSplit(false);
     }
   }
-
   async function onBulkRefresh() {
-    if (hasSoldSelected) return;
-    await run(() => pricing.refreshMany(selectedItems), "Prices refreshed");
+    if (sel.hasSoldSelected) return;
+    await run(() => pricing.refreshMany(sel.selectedItems), "Prices refreshed");
   }
 
-  const openAdd = () => { setAddForm(blankForm()); setAddOpen(true); };
+  const listProps = {
+    items: displayedItems, priceOf, costOf, selecting: sel.selecting, selectedIds: sel.selectedIds,
+    onOpen: setDetailItem, onToggle: sel.toggleSelect,
+    onContext: (item: Item, at: PressPoint) => setContextTarget({ item, at }),
+  };
 
   return (
-    <div className={`w-full space-y-4 ${selectedIds.size > 0 ? "pb-48" : ""}`}>
+    <div className={`w-full space-y-4 ${sel.selectedIds.size > 0 ? "pb-48" : ""}`}>
       <CardSearchPicker
         open={cardSearchOpen || editImagePickerOpen}
         onClose={() => { setCardSearchOpen(false); setEditImagePickerOpen(false); }}
@@ -349,58 +281,55 @@ export default function InventoryClient({
         initialCardNumber={editImagePickerOpen ? editForm.cardNumber : addForm.cardNumber}
       />
 
-      <AddItemPanel
-        addOpen={addOpen}
-        setAddOpen={setAddOpen}
-        consigners={consigners}
-        addForm={addForm}
-        setAddForm={setAddForm}
-        setFindConfirmed={setFindConfirmed}
-        findConfirmed={findConfirmed}
-        handleAddFormFind={() => { setAddOpen(true); setCardSearchOpen(true); }}
-        onAddToList={onAddToList}
-        stagedItems={stagedItems}
-        setStagedItems={setStagedItems}
-        onSaveAll={onSaveAll}
-        busy={busy}
+      <InventoryHeader
+        search={filters.search} setSearch={(v) => setFilters({ search: v })}
+        onScan={() => router.push("/protected/scan")}
+        view={view} setView={switchView}
+        sort={filters.sort} setSort={(k) => setFilters({ sort: k })}
+        onSelect={() => sel.startSelecting()} onAdd={openAdd}
+        total={summary.total} count={displayedItems.length}
       />
 
-      <InventoryFilters filters={filters} setFilters={setFilters} open={filtersOpen} setOpen={setFiltersOpen} consigners={consigners} />
+      <AddItemPanel
+        addOpen={addOpen} setAddOpen={setAddOpen} consigners={consigners}
+        addForm={addForm} setAddForm={setAddForm} setFindConfirmed={setFindConfirmed} findConfirmed={findConfirmed}
+        handleAddFormFind={() => { setAddOpen(true); setCardSearchOpen(true); }}
+        onAddToList={onAddToList} stagedItems={stagedItems} setStagedItems={setStagedItems} onSaveAll={onSaveAll} busy={busy}
+      />
 
-      {activeCount > 0 && !soldFilter && (
-        <InventorySummary summary={summary} bgStatus={pricing.bgStatus} bgStaleCount={pricing.bgStaleCount} dailyCallCount={pricing.dailyCallCount} />
+      <InventoryFilters filters={filters} setFilters={setFilters} consigners={consigners} />
+
+      {!soldFilter && <PricingStatus bgStatus={pricing.bgStatus} bgStaleCount={pricing.bgStaleCount} dailyCallCount={pricing.dailyCallCount} />}
+
+      {sel.selecting && (
+        <div className="flex h-11 items-center justify-between text-sm">
+          <span className="tabular-nums text-muted-foreground">{sel.selectedIds.size} selected</span>
+          <div className="flex gap-3">
+            <button className="font-medium text-accent" onClick={() => sel.selectAll(displayedItems.map((it) => it.id))}>
+              {sel.selectedIds.size === displayedItems.length && displayedItems.length > 0 ? "Deselect all" : "Select all"}
+            </button>
+            <button className="text-muted-foreground" onClick={sel.clearSelection}>Done</button>
+          </div>
+        </div>
       )}
 
-      {/* ── List header ── */}
-      <div className="flex min-h-11 items-center justify-between">
-        <span className="font-mono text-xs uppercase tracking-[0.18em] text-neutral tabular-nums">{listLabel}</span>
-        {displayedItems.length > 0 && (
-          <button className="h-11 px-2 text-sm font-medium text-accent-primary" onClick={selectAll}>
-            {selectedIds.size === displayedItems.length ? "Deselect all" : "Select all"}
-          </button>
-        )}
-      </div>
+      {(soldFilter ? soldCount : activeCount) === 0 || displayedItems.length === 0 ? (
+        <InventoryEmpty
+          totalCount={soldFilter ? soldCount : activeCount} soldFilter={soldFilter}
+          onAdd={openAdd} onClearFilters={() => setFilters({ ...defaultFilters, sort: filters.sort })}
+        />
+      ) : !viewReady ? null : view === "grid" ? (
+        <InventoryGrid {...listProps} />
+      ) : (
+        <InventoryListView {...listProps} sort={filters.sort} setSort={(k) => setFilters({ sort: k })} />
+      )}
 
-      <InventoryList
-        items={displayedItems}
-        totalCount={soldFilter ? soldCount : activeCount}
-        soldFilter={soldFilter}
-        priceFor={priceOf}
-        consignerMap={consignerMap}
-        selectedIds={selectedIds}
-        refreshingIds={pricing.refreshing}
-        toggleSelect={toggleSelect}
-        openDetail={setDetailItem}
-        onAdd={openAdd}
-        onClearFilters={() => setFilters({ ...defaultFilters, sort: filters.sort })}
-      />
-
-      {gradingItems.length > 0 && !soldFilter && (
+      {gradingItems.length > 0 && !soldFilter && countActiveFilters(filters) === 0 && (
         <GradingSection gradingItems={gradingItems} gradingCost={gradingCost} psa10Data={psa10Data} fetchPsa10={fetchPsa10} onQuickStatus={onQuickStatus} openEdit={openEdit} busy={busy} />
       )}
 
       {/* ── Mobile add FAB ── */}
-      {selectedIds.size === 0 && !addOpen && (
+      {sel.selectedIds.size === 0 && !addOpen && (
         <button
           className="above-tabbar fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-bg transition-colors duration-150 hover:bg-accent-tint hover:text-accent md:hidden"
           onClick={() => { openAdd(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
@@ -410,41 +339,34 @@ export default function InventoryClient({
         </button>
       )}
 
-      {selectedIds.size > 0 && (
+      {sel.selectedIds.size > 0 && (
         <SelectionBar
-          count={selectedIds.size}
-          busy={busy}
-          soldSelected={hasSoldSelected}
-          onSell={() => setSellOpen(true)}
-          onRefresh={onBulkRefresh}
-          onSetCost={() => setBulkCostOpen(true)}
-          onEdit={() => setMassEditOpen(true)}
-          onDelete={onBulkDelete}
-          onClear={clearSelection}
+          count={sel.selectedIds.size} busy={busy} soldSelected={sel.hasSoldSelected}
+          onSell={() => sel.setSellOpen(true)} onRefresh={onBulkRefresh} onSetCost={() => setBulkCostOpen(true)}
+          onEdit={() => setMassEditOpen(true)} onDelete={onBulkDelete} onClear={sel.clearSelection}
         />
       )}
+
+      <ItemContextMenu
+        target={contextTarget} onClose={() => setContextTarget(null)}
+        onEdit={openEdit} onSelect={(it) => sel.startSelecting(it.id)}
+        onDelete={async (it) => { await run(() => deleteItem(it.id), "Item deleted"); }}
+      />
 
       {/* ── Modals ── */}
       {detailItem && (
         <ItemDetailModal
           item={detailItem}
           consigner={detailItem.consigner_id ? consignerMap.get(detailItem.consigner_id) ?? null : null}
-          selected={selectedIds.has(detailItem.id)}
+          selected={sel.selectedIds.has(detailItem.id)}
           onClose={() => setDetailItem(null)}
-          mergedSlabPrices={pricing.mergedSlabPrices}
-          mergedRawCardPrices={pricing.mergedRawCardPrices}
-          slabFMVData={pricing.slabFMVData}
+          mergedSlabPrices={pricing.mergedSlabPrices} mergedRawCardPrices={pricing.mergedRawCardPrices} slabFMVData={pricing.slabFMVData}
           refreshing={!!pricing.refreshing[detailItem.id]}
-          inlineCostId={inlineCostId}
-          inlineCostVal={inlineCostVal}
-          setInlineCostId={setInlineCostId}
-          setInlineCostVal={setInlineCostVal}
-          handleSaveInlineCost={handleSaveInlineCost}
-          handleRefresh={pricing.refreshItem}
+          inlineCostId={inlineCostId} inlineCostVal={inlineCostVal} setInlineCostId={setInlineCostId} setInlineCostVal={setInlineCostVal}
+          handleSaveInlineCost={handleSaveInlineCost} handleRefresh={pricing.refreshItem}
           openSlabComps={(it, slabKey) => { setPricingDetailItem({ item: it, slabKey }); setSoldExpanded(false); setActiveExpanded(false); }}
           openRawCardModal={(it) => { setRawCardDetailItem(it); setHistoryDuration("90d"); }}
-          openEdit={openEdit}
-          toggleSelect={toggleSelect}
+          openEdit={openEdit} toggleSelect={sel.toggleSelect}
         />
       )}
       {editingItem && (
@@ -456,22 +378,22 @@ export default function InventoryClient({
       )}
       {massEditOpen && (
         <MassEditModal
-          selectedIds={selectedIds} setMassEditOpen={setMassEditOpen} massOwner={massOwner} setMassOwner={setMassOwner}
+          selectedIds={sel.selectedIds} setMassEditOpen={setMassEditOpen} massOwner={massOwner} setMassOwner={setMassOwner}
           massStatus={massStatus} setMassStatus={setMassStatus} massCategory={massCategory} setMassCategory={setMassCategory}
           consigners={consigners} busy={busy} onMassEdit={onMassEdit}
         />
       )}
-      {sellOpen && (
+      {sel.sellOpen && (
         <SellModal
-          selectedItems={selectedItems} consignerMap={consignerMap} manualPrices={manualPrices} getCardPrice={getCardPrice}
-          salePrice={salePrice} salePriceNum={salePriceNum} totalMarket={totalMarket} setSellOpen={setSellOpen}
-          resetCardPrice={resetCardPrice} updateCardPrice={updateCardPrice} setSalePrice={setSalePrice} setManualPrices={setManualPrices}
+          selectedItems={sel.selectedItems} consignerMap={consignerMap} manualPrices={sel.manualPrices} getCardPrice={sel.getCardPrice}
+          salePrice={sel.salePrice} salePriceNum={sel.salePriceNum} totalMarket={sel.totalMarket} setSellOpen={sel.setSellOpen}
+          resetCardPrice={sel.resetCardPrice} updateCardPrice={sel.updateCardPrice} setSalePrice={sel.setSalePrice} setManualPrices={sel.setManualPrices}
           busy={busy} onConfirmSale={onConfirmSale}
         />
       )}
       {bulkCostOpen && (
         <BulkCostModal
-          selectedIds={selectedIds} setBulkCostOpen={setBulkCostOpen} bulkCostVal={bulkCostVal} setBulkCostVal={setBulkCostVal}
+          selectedIds={sel.selectedIds} setBulkCostOpen={setBulkCostOpen} bulkCostVal={bulkCostVal} setBulkCostVal={setBulkCostVal}
           bulkCostSplit={bulkCostSplit} setBulkCostSplit={setBulkCostSplit} busy={busy} onBulkSetCost={onBulkSetCost}
         />
       )}

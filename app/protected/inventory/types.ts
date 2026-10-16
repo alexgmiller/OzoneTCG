@@ -6,7 +6,9 @@ export type SortKey =
   | "date-desc" | "date-asc"
   | "name-asc"  | "name-desc"
   | "market-desc" | "market-asc"
-  | "cost-desc"   | "cost-asc";
+  | "cost-desc"   | "cost-asc"
+  | "sticker-desc" | "sticker-asc"
+  | "days-desc"    | "days-asc";
 
 export type ConsignerOption = { id: string; name: string; rate: number };
 

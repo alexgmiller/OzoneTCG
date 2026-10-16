@@ -89,6 +89,7 @@ Gaps follow the same scale: `gap-2` chip rows, `gap-3` form fields and tile grid
 | `rounded-xl` | 12 | Chips, inputs, list thumbnails |
 | `rounded-2xl` | 16 | Cards, tiles, sheets, More rows, context menus |
 | `rounded-3xl` | 24 | Bottom-sheet top corners only |
+| `rounded-thumb` | 6 | The 40×56 list-row thumbnail only — the one small-radius exception |
 | `rounded-full` | — | Pills, tab bar, IconButton, SearchBar, SegmentedControl |
 
 ### Don'ts

@@ -110,6 +110,7 @@ export default {
         xl:   "var(--radius-chip)",
         "2xl": "var(--radius-card)",
         "3xl": "1.5rem",                                 // sheet top corners
+        thumb: "6px",                                    // 40×56 list thumbnails only
       },
 
       boxShadow: {

@@ -1,109 +1,77 @@
 "use client";
 
-import { Search, SlidersHorizontal, X } from "lucide-react";
-import type { Category, Status, SortKey, ConsignerOption, ConsignerFilter } from "../types";
-import { fieldClass, btnOutline } from "../utils";
+import { ChevronDown } from "lucide-react";
+import { Chip, ChipRow, SegmentedControl } from "@/components/ui";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { Category, ConsignerOption } from "../types";
+import type { Filters } from "../inventoryView";
 
-// "active" = inventory + grading (the default); sold rows only show when "sold" is picked
-export type StatusFilter = Status | "active";
+export { defaultFilters, countActiveFilters } from "../inventoryView";
+export type { Filters, StatusFilter } from "../inventoryView";
 
-export type Filters = {
-  search: string;
-  category: Category | "all";
-  status: StatusFilter;
-  consigner: ConsignerFilter;
-  sort: SortKey;
-};
+// ── Filter row ──
+// In stock | Sold, then a scrolling chip rail: All, Slabs, Singles, Sealed,
+// Consigned, and a consigner dropdown chip.
+const STOCK = [{ value: "active", label: "In stock" }, { value: "sold", label: "Sold" }] as const;
+const CATEGORIES: readonly { value: Category | "all"; label: string }[] = [
+  { value: "all", label: "All" }, { value: "slab", label: "Slabs" }, { value: "single", label: "Singles" }, { value: "sealed", label: "Sealed" },
+];
 
-export const defaultFilters: Filters = { search: "", category: "all", status: "active", consigner: "all", sort: "date-desc" };
-
-export function countActiveFilters(f: Filters): number {
-  return (f.search.trim() ? 1 : 0) + (f.category !== "all" ? 1 : 0) + (f.status !== "active" ? 1 : 0) + (f.consigner !== "all" ? 1 : 0);
-}
-
-// ── Search + filter row ──
 export function InventoryFilters({
-  filters,
-  setFilters,
-  open,
-  setOpen,
-  consigners,
+  filters, setFilters, consigners,
 }: {
   filters: Filters;
   setFilters: (patch: Partial<Filters>) => void;
-  open: boolean;
-  setOpen: (v: boolean) => void;
   consigners: ConsignerOption[];
 }) {
-  const active = countActiveFilters(filters);
-  return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            className={`${fieldClass} pl-9 pr-10`}
-            placeholder="Search inventory…"
-            value={filters.search}
-            onChange={(e) => setFilters({ search: e.target.value })}
-          />
-          {filters.search && (
-            <button className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-muted-foreground" onClick={() => setFilters({ search: "" })} aria-label="Clear search">
-              <X size={16} />
-            </button>
-          )}
-        </div>
-        <button
-          className={`${btnOutline} gap-2 ${open || active > 0 ? "border-accent-primary-border bg-accent-primary-soft text-accent-primary" : ""}`}
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-        >
-          <SlidersHorizontal size={16} />
-          <span className="hidden sm:inline">Filters</span>
-          {active > 0 && <span className="rounded-full bg-accent-primary px-2 text-xs font-semibold text-primary-foreground tabular-nums">{active}</span>}
-        </button>
-      </div>
+  const pool = filters.status === "sold" ? "sold" : "active";
+  const consignedChip = filters.consigner === "any";
+  const pickedConsigner = consigners.find((c) => c.id === filters.consigner);
 
-      {open && (
-        <div className="rounded-xl border border-border bg-card p-3">
-          <div className="grid grid-cols-2 gap-2">
-            <select className={fieldClass} value={filters.category} onChange={(e) => setFilters({ category: e.target.value as Category | "all" })}>
-              <option value="all">All types</option>
-              <option value="single">Singles</option>
-              <option value="slab">Slabs</option>
-              <option value="sealed">Sealed</option>
-            </select>
-            <select className={fieldClass} value={filters.status} onChange={(e) => setFilters({ status: e.target.value as StatusFilter })}>
-              <option value="active">Active</option>
-              <option value="inventory">Inventory</option>
-              <option value="grading">Grading</option>
-              <option value="sold">Sold</option>
-            </select>
-            <select className={fieldClass} value={filters.consigner} onChange={(e) => setFilters({ consigner: e.target.value })}>
-              <option value="all">Any owner</option>
-              <option value="none">Not consigned</option>
-              {consigners.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-            <select className={fieldClass} value={filters.sort} onChange={(e) => setFilters({ sort: e.target.value as SortKey })}>
-              <option value="date-desc">Newest first</option>
-              <option value="date-asc">Oldest first</option>
-              <option value="name-asc">Name A→Z</option>
-              <option value="name-desc">Name Z→A</option>
-              <option value="market-desc">Value high→low</option>
-              <option value="market-asc">Value low→high</option>
-              <option value="cost-desc">Cost high→low</option>
-              <option value="cost-asc">Cost low→high</option>
-            </select>
-          </div>
-          {active > 0 && (
-            <button className="mt-2 h-11 text-sm font-medium text-accent-primary" onClick={() => setFilters({ ...defaultFilters, sort: filters.sort })}>
-              Clear filters
-            </button>
-          )}
-        </div>
-      )}
+  return (
+    <div className="space-y-3">
+      <SegmentedControl
+        value={pool}
+        onChange={(v) => setFilters({ status: v })}
+        options={STOCK}
+        size="sm"
+        aria-label="In stock or sold"
+      />
+
+      <ChipRow>
+        {CATEGORIES.map((c) => (
+          <Chip key={c.value} selected={filters.category === c.value && !consignedChip} onClick={() => setFilters({ category: c.value })}>
+            {c.label}
+          </Chip>
+        ))}
+        <Chip selected={consignedChip} onClick={() => setFilters({ consigner: consignedChip ? "all" : "any" })}>
+          Consigned
+        </Chip>
+
+        {consigners.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Chip selected={!!pickedConsigner || filters.consigner === "none"} icon={<ChevronDown size={14} />}>
+                {pickedConsigner?.name ?? (filters.consigner === "none" ? "Not consigned" : "Consigner")}
+              </Chip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup
+                value={pickedConsigner || filters.consigner === "none" ? filters.consigner : "all"}
+                onValueChange={(v) => setFilters({ consigner: v })}
+              >
+                <DropdownMenuRadioItem value="all">Any owner</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="none">Not consigned</DropdownMenuRadioItem>
+                {consigners.map((c) => (
+                  <DropdownMenuRadioItem key={c.id} value={c.id}>{c.name}</DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </ChipRow>
     </div>
   );
 }
