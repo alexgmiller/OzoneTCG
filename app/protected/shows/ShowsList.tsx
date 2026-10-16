@@ -4,67 +4,64 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { EmptyState, MoneyDisplay, SectionHeader, useToast } from "@/components/ui";
+import { EmptyState, MoneyDisplay, useToast } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { startShow, type ShowSession } from "./actions";
-import ActiveShowCard from "./ActiveShowCard";
-import { btnPrimary, fmtDate, showVenue, todayLocalISO } from "./shared";
+import { btnPrimary, fmtDate, pillCls, showVenue, STATUS_PILL, todayLocalISO } from "./shared";
 
-// One list: live show pinned, then upcoming soonest-first, then past most-recent-first
+// ── Shows list ──
+// Live show pinned on top, then UPCOMING soonest-first, then PAST most-recent-
+// first. Each card: name, date, venue, and net P&L in up/down. Tap opens detail.
 export default function ShowsList({ shows }: { shows: ShowSession[] }) {
   const active = shows.find((s) => s.status === "active") ?? null;
-  const scheduled = shows
-    .filter((s) => s.status === "scheduled")
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const completed = shows
-    .filter((s) => s.status === "completed")
-    .sort((a, b) => b.date.localeCompare(a.date));
+  const scheduled = shows.filter((s) => s.status === "scheduled").sort((a, b) => a.date.localeCompare(b.date));
+  const completed = shows.filter((s) => s.status === "completed").sort((a, b) => b.date.localeCompare(a.date));
 
   if (shows.length === 0) {
     return (
       <EmptyState
         title="No shows yet"
-        hint="Schedule your next card show or start one right now with the button above."
+        hint="Schedule your next card show above, or start one from POS."
+        preview={<div className="space-y-2">{Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-16 rounded-2xl bg-surface-2" />)}</div>}
       />
     );
   }
 
   return (
     <div className="space-y-5">
-      {active && <ActiveShowCard show={active} />}
+      {active && <ShowCard show={active} live />}
 
       {scheduled.length > 0 && (
         <section className="space-y-2">
-          <SectionHeader>Upcoming</SectionHeader>
-          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-            {scheduled.map((s) => (
-              <ScheduledRow key={s.id} show={s} hasActive={active !== null} />
-            ))}
-          </ul>
+          <h2 className="section-label">Upcoming</h2>
+          <div className="space-y-2">
+            {scheduled.map((s) => <ShowCard key={s.id} show={s} canStart={!active} />)}
+          </div>
         </section>
       )}
 
       {completed.length > 0 && (
         <section className="space-y-2">
-          <SectionHeader>Past</SectionHeader>
-          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-            {completed.map((s) => (
-              <CompletedRow key={s.id} show={s} />
-            ))}
-          </ul>
+          <h2 className="section-label">Past</h2>
+          <div className="space-y-2">
+            {completed.map((s) => <ShowCard key={s.id} show={s} />)}
+          </div>
         </section>
       )}
     </div>
   );
 }
 
-// ── Scheduled row ─────────────────────────────────────────────────────────────
-
-function ScheduledRow({ show, hasActive }: { show: ShowSession; hasActive: boolean }) {
+// ── Show card ──
+function ShowCard({ show, live = false, canStart = false }: { show: ShowSession; live?: boolean; canStart?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const isToday = show.date === todayLocalISO();
   const venue = showVenue(show);
+  const isToday = show.date === todayLocalISO();
+  const scheduled = show.status === "scheduled";
+  const completed = show.status === "completed";
+  const net = show.net_pl ?? 0;
 
   async function start() {
     setBusy(true);
@@ -78,64 +75,43 @@ function ScheduledRow({ show, hasActive }: { show: ShowSession; hasActive: boole
   }
 
   return (
-    <li className="flex items-center gap-3 p-3">
-      <Link
-        href={`/protected/shows/${show.id}`}
-        className="flex min-h-11 min-w-0 flex-1 items-center gap-3"
-      >
+    <div className={cn("flex items-center gap-3 rounded-2xl p-4", live ? "bg-accent-tint" : "bg-surface")}>
+      <Link href={live ? "/protected/pos" : `/protected/shows/${show.id}`} className="flex min-w-0 flex-1 items-center gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-foreground">{show.name}</div>
-          <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-            <span className={isToday ? "font-semibold text-accent-primary" : undefined}>
-              {isToday ? "Today" : fmtDate(show.date, true)}
+          <div className="flex items-center gap-2">
+            {live && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden />}
+            <span className={cn("truncate text-base font-semibold", live ? "text-accent" : "text-foreground")}>{show.name}</span>
+            {live && <span className={cn(pillCls, STATUS_PILL.active.cls)}>Live</span>}
+          </div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+            <span className={cn("shrink-0 tabular-nums", scheduled && isToday && "font-semibold text-accent")}>
+              {scheduled && isToday ? "Today" : fmtDate(show.date, scheduled)}
             </span>
             {venue && <span className="truncate">· {venue}</span>}
           </div>
+          {completed && (
+            <div className="mt-1 text-xs tabular-nums text-muted-foreground">
+              {show.cards_bought ?? 0} bought · {show.cards_sold ?? 0} sold
+              {(show.trades_count ?? 0) > 0 && ` · ${show.trades_count} trade${show.trades_count === 1 ? "" : "s"}`}
+            </div>
+          )}
         </div>
-        <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
+
+        {(completed || live) && (
+          <MoneyDisplay
+            amount={live ? (show.total_revenue ?? 0) - (show.total_spent ?? 0) : net}
+            showSign
+            className={cn("shrink-0 text-base font-bold tabular-nums", net >= 0 ? "text-up" : "text-down")}
+          />
+        )}
+        {!scheduled && <ChevronRight size={18} className="shrink-0 text-muted-foreground" />}
       </Link>
-      <button
-        type="button"
-        onClick={start}
-        disabled={busy || hasActive}
-        className={`${btnPrimary} shrink-0`}
-      >
-        {busy ? "Starting…" : "Start"}
-      </button>
-    </li>
-  );
-}
 
-// ── Completed row ─────────────────────────────────────────────────────────────
-
-function CompletedRow({ show }: { show: ShowSession }) {
-  const venue = showVenue(show);
-  const trades = show.trades_count ?? 0;
-
-  return (
-    <li>
-      <Link
-        href={`/protected/shows/${show.id}`}
-        className="flex min-h-11 items-center gap-3 p-3 transition-colors duration-150 hover:bg-muted"
-      >
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-foreground">{show.name}</div>
-          <div className="mt-0.5 truncate text-xs text-muted-foreground tabular-nums">
-            {fmtDate(show.date)}
-            {venue && ` · ${venue}`}
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-            {show.cards_bought ?? 0} bought · {show.cards_sold ?? 0} sold
-            {trades > 0 && ` · ${trades} trade${trades === 1 ? "" : "s"}`}
-          </div>
-        </div>
-        <MoneyDisplay
-          amount={show.net_pl ?? 0}
-          showSign
-          className="shrink-0 text-base font-semibold"
-        />
-        <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
-      </Link>
-    </li>
+      {scheduled && (
+        <button type="button" onClick={start} disabled={busy || !canStart} className={cn(btnPrimary, "shrink-0")}>
+          {busy ? "Starting…" : "Start"}
+        </button>
+      )}
+    </div>
   );
 }

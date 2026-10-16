@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/components/ui";
+import { Chip, ChipRow, useToast } from "@/components/ui";
 import type { OfflineResult } from "@/lib/offlineAwareActions";
 import { attachPhoto } from "./actions";
 import { METHOD_LABELS, PAYMENT_METHODS, type Mode, type Payer, type PaymentMethod } from "./ledger";
-import { INPUT, chip } from "./ui";
+import { CARD, INPUT } from "./ui";
 import PhotoCapture from "./PhotoCapture";
 
 export type DealForm = {
@@ -19,6 +19,9 @@ export type DealForm = {
 
 const PAYERS = ["shared", "alex", "mila"] as const;
 
+// ── Transaction form ──
+// Big numeric amount, payment method chips, counterparty + notes, photo
+// thumbnails, and a full-width accent confirm pinned above the tab bar.
 export default function TransactionForm({ mode, suggested, ready, submit, onDone, onAmountChange }: {
   mode: Mode;
   suggested: number;
@@ -69,50 +72,57 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
   }
 
   return (
-    <div className="space-y-3 border-t border-border pt-4">
-      {mode === "trade" && (
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Cash direction">
-          <button type="button" role="radio" aria-checked={wePay} className={chip(wePay)} onClick={() => setWePay(true)}>We pay cash</button>
-          <button type="button" role="radio" aria-checked={!wePay} className={chip(!wePay)} onClick={() => setWePay(false)}>They pay cash</button>
+    <div className="space-y-3">
+      <div className={CARD}>
+        {mode === "trade" && (
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Cash direction">
+            <Chip selected={wePay} onClick={() => setWePay(true)} className="justify-center">We pay cash</Chip>
+            <Chip selected={!wePay} onClick={() => setWePay(false)} className="justify-center">They pay cash</Chip>
+          </div>
+        )}
+
+        {/* ── Amount ── suggested value is the placeholder; blank means "use it" */}
+        <div className="flex h-16 items-center rounded-xl bg-surface-2 px-4">
+          <span className="text-xl font-bold text-muted-foreground">$</span>
+          <input type="number" inputMode="decimal" min="0" step="0.01" value={amount}
+            onChange={(e) => { setAmount(e.target.value); onAmountChange?.(e.target.value === "" ? null : Number(e.target.value) || 0); }}
+            placeholder={suggested.toFixed(2)}
+            aria-label={mode === "trade" ? "Cash difference" : "Amount"}
+            className="h-full w-full bg-transparent pl-1 text-2xl font-bold tabular-nums text-foreground placeholder:text-muted-foreground focus:outline-none" />
         </div>
-      )}
 
-      {/* ── Amount ── suggested value is the placeholder; blank means "use it" */}
-      <input type="number" inputMode="decimal" min="0" step="0.01" value={amount}
-        onChange={(e) => { setAmount(e.target.value); onAmountChange?.(e.target.value === "" ? null : Number(e.target.value) || 0); }} placeholder={suggested.toFixed(2)}
-        aria-label={mode === "trade" ? "Cash difference" : "Amount"}
-        className={`${INPUT} h-14 w-full text-lg font-semibold tabular-nums`} />
+        <ChipRow>
+          {PAYMENT_METHODS.map((m) => (
+            <Chip key={m} selected={method === m} onClick={() => setMethod(m)}>{METHOD_LABELS[m]}</Chip>
+          ))}
+        </ChipRow>
 
-      <div className="flex gap-2 overflow-x-auto pb-1" role="radiogroup" aria-label="Payment method">
-        {PAYMENT_METHODS.map((m) => (
-          <button key={m} type="button" role="radio" aria-checked={method === m} className={chip(method === m)} onClick={() => setMethod(m)}>
-            {METHOD_LABELS[m]}
-          </button>
-        ))}
+        {mode !== "sell" && (
+          <div className="flex items-center gap-2 text-sm" role="radiogroup" aria-label="Paid by">
+            <span className="shrink-0 text-muted-foreground">Paid by</span>
+            {PAYERS.map((p) => (
+              <Chip key={p} selected={paidBy === p} onClick={() => setPaidBy(p)} className="capitalize">{p}</Chip>
+            ))}
+          </div>
+        )}
       </div>
 
-      {mode !== "sell" && (
-        <div className="flex items-center gap-2 text-sm" role="radiogroup" aria-label="Paid by">
-          <span className="shrink-0 text-muted-foreground">Paid by</span>
-          {PAYERS.map((p) => (
-            <button key={p} type="button" role="radio" aria-checked={paidBy === p} className={`${chip(paidBy === p)} capitalize`} onClick={() => setPaidBy(p)}>
-              {p}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className={CARD}>
+        <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)}
+          placeholder="Who (name or handle)" aria-label="Counterparty" className={`${INPUT} w-full`} />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+          placeholder="Notes" aria-label="Notes"
+          className={`${INPUT} h-auto w-full resize-none py-3`} />
+        <PhotoCapture photos={photos} onChange={setPhotos} />
+      </div>
 
-      <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)}
-        placeholder="Who (name or handle)" aria-label="Counterparty" className={`${INPUT} w-full`} />
-      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-        placeholder="Notes" aria-label="Notes"
-        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground" />
-      <PhotoCapture photos={photos} onChange={setPhotos} />
-
-      <button type="button" disabled={!ready || busy} onClick={confirm}
-        className="h-14 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40">
-        {busy ? "Saving…" : `Confirm ${mode}`}
-      </button>
+      {/* ── Confirm ── pinned above the floating tab bar on phones */}
+      <div className="above-tabbar fixed inset-x-4 z-30 md:static md:inset-auto">
+        <button type="button" disabled={!ready || busy} onClick={confirm}
+          className="h-14 w-full rounded-full bg-accent text-base font-semibold text-bg shadow-tabbar transition-colors duration-150 disabled:opacity-40 md:shadow-none">
+          {busy ? "Saving…" : `Confirm ${mode}`}
+        </button>
+      </div>
     </div>
   );
 }

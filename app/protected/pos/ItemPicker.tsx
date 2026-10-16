@@ -22,23 +22,25 @@ export default function ItemPicker({ items, selected, onToggle }: {
 
   const row = (it: PickItem, on: boolean) => (
     <button key={it.id} type="button" onClick={() => onToggle(it)} aria-pressed={on}
-      className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors duration-150 ${
-        on ? "border-accent-primary bg-accent-primary-soft" : "border-border bg-card hover:bg-muted"
+      className={`flex h-16 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors duration-150 ${
+        on ? "bg-accent-tint" : "bg-surface hover:bg-surface-2"
       }`}>
-      {it.image_url
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={it.image_url} alt="" className="h-12 w-9 shrink-0 rounded-lg object-cover" />
-        : <div className="h-12 w-9 shrink-0 rounded-lg bg-muted" aria-hidden />}
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-foreground">{it.name}</div>
-        <div className="truncate text-xs text-muted-foreground">
+      <span className="h-14 w-10 shrink-0 overflow-hidden rounded-thumb bg-surface-2">
+        {it.image_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={it.image_url} alt="" className="h-full w-full object-cover" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-foreground">{it.name}</span>
+        <span className="block truncate font-mono text-xs text-muted-foreground">
           {[it.set_name, it.card_number && `#${it.card_number}`, it.grade].filter(Boolean).join(" · ")}
-        </div>
-      </div>
+        </span>
+      </span>
       {it.market != null
-        ? <MoneyDisplay amount={it.market} tone="neutral" className="shrink-0 text-sm text-foreground" />
+        ? <MoneyDisplay amount={it.market} tone="neutral" className="shrink-0 text-sm font-bold text-foreground" />
         : <span className="shrink-0 text-sm text-muted-foreground">—</span>}
-      {on && <Check size={18} className="shrink-0 text-primary" aria-hidden />}
+      {on && <Check size={18} className="shrink-0 text-accent" aria-hidden />}
     </button>
   );
 

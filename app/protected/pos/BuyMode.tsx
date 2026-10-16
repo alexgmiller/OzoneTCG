@@ -4,10 +4,10 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import CardAutocomplete from "@/components/CardAutocomplete";
 import CertLookupWidget from "@/components/CertLookupWidget";
-import { EmptyState, MoneyDisplay } from "@/components/ui";
+import { Chip, EmptyState, MoneyDisplay } from "@/components/ui";
 import { offlineRecordBuy } from "@/lib/offlineAwareActions";
 import { round2, type NewCard } from "./ledger";
-import { BTN, ICON_BTN, INPUT, chip } from "./ui";
+import { BTN, ICON_BTN, INPUT } from "./ui";
 import TransactionForm from "./TransactionForm";
 
 const CATEGORIES = ["single", "slab", "sealed"] as const;
@@ -28,10 +28,7 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
     <div className="space-y-2">
       <div className="flex gap-2" role="radiogroup" aria-label="Category">
         {CATEGORIES.map((c) => (
-          <button key={c} type="button" role="radio" aria-checked={category === c} onClick={() => setCategory(c)}
-            className={`${chip(category === c)} capitalize`}>
-            {c}
-          </button>
+          <Chip key={c} selected={category === c} onClick={() => setCategory(c)} className="capitalize">{c}</Chip>
         ))}
       </div>
       {category === "slab" && (
@@ -66,9 +63,9 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
 export function CardList({ cards, onRemove }: { cards: NewCard[]; onRemove: (i: number) => void }) {
   if (cards.length === 0) return null;
   return (
-    <div className="divide-y divide-border rounded-xl border border-border bg-card">
+    <div className="overflow-hidden rounded-2xl bg-surface">
       {cards.map((c, i) => (
-        <div key={i} className="flex min-h-14 items-center gap-3 py-1 pl-3 pr-1 text-sm">
+        <div key={i} className="flex min-h-14 items-center gap-3 border-b border-border py-1 pl-3 pr-1 text-sm last:border-b-0">
           <span className="min-w-0 flex-1 truncate text-foreground">{c.name}{c.grade ? ` · ${c.grade}` : ""}</span>
           {c.market != null
             ? <MoneyDisplay amount={c.market} tone="neutral" className="shrink-0 text-foreground" />

@@ -33,31 +33,26 @@ export function showVenue(s: Pick<ShowSession, "location" | "venue_address">): s
 }
 
 export const STATUS_PILL: Record<ShowStatus, { label: string; cls: string }> = {
-  scheduled: { label: "Scheduled", cls: "border-accent-primary-border bg-accent-primary-soft text-accent-primary" },
-  active: { label: "Live", cls: "border-warning-border bg-warning-soft text-warning-strong" },
-  completed: { label: "Completed", cls: "border-border bg-muted text-muted-foreground" },
+  scheduled: { label: "Scheduled", cls: "bg-surface-2 text-muted-foreground" },
+  active: { label: "Live", cls: "bg-accent-tint text-accent" },
+  completed: { label: "Completed", cls: "bg-surface-2 text-muted-foreground" },
 };
 
 // ── Classes ───────────────────────────────────────────────────────────────────
 
-export const pillCls =
-  "inline-flex h-6 items-center rounded-full border px-2.5 font-mono text-xs uppercase tracking-wide";
+export const pillCls = "inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium";
 
 const btnBase =
-  "inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm whitespace-nowrap " +
+  "inline-flex h-11 items-center justify-center gap-2 rounded-full px-4 text-sm whitespace-nowrap " +
   "transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none";
 
-export const btnPrimary =
-  `${btnBase} bg-primary font-semibold text-primary-foreground hover:bg-accent-primary-hover`;
-export const btnSecondary =
-  `${btnBase} border border-border bg-card font-medium text-foreground hover:bg-muted`;
-export const btnDanger =
-  `${btnBase} border border-negative-border bg-negative-soft font-semibold text-negative hover:bg-negative/20`;
-export const btnGhostDanger =
-  `${btnBase} w-full font-medium text-negative hover:bg-negative-soft`;
+export const btnPrimary = `${btnBase} bg-accent font-semibold text-bg`;
+export const btnSecondary = `${btnBase} bg-surface-2 font-medium text-foreground hover:bg-surface`;
+export const btnDanger = `${btnBase} bg-down-tint font-semibold text-down`;
+export const btnGhostDanger = `${btnBase} w-full font-medium text-down hover:bg-down-tint`;
 
 export const inputCls =
-  "h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground " +
-  "placeholder:text-muted-foreground focus:border-accent-primary focus:outline-none disabled:opacity-40";
+  "h-11 w-full min-w-0 rounded-xl bg-surface-2 px-3 text-sm text-foreground " +
+  "placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-40";
 
-export const labelCls = "mb-1 block text-xs font-medium text-muted-foreground";
+export const labelCls = "section-label mb-1 block";
