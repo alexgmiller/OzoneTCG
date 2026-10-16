@@ -58,7 +58,7 @@ export function RawPricingModal({
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   const filtered = allHistory.filter((p) => p.date >= cutoffStr);
   const pctChange = filtered.length >= 2 ? ((filtered[filtered.length - 1].price - filtered[0].price) / filtered[0].price) * 100 : null;
-  const lineTone = pctChange == null ? "text-accent-primary" : pctChange >= 0 ? "text-positive" : "text-negative";
+  const lineTone = pctChange == null ? "text-accent" : pctChange >= 0 ? "text-positive" : "text-negative";
   const histMin = filtered.length ? Math.min(...filtered.map((p) => p.price)) : null;
   const histMax = filtered.length ? Math.max(...filtered.map((p) => p.price)) : null;
   const close = () => setRawCardDetailItem(null);
@@ -102,8 +102,8 @@ export function RawPricingModal({
               const price = priceByKey[key];
               const mine = key === itemCondKey;
               return (
-                <div key={key} className={`flex min-h-11 items-center justify-between rounded-lg px-3 ${mine ? "bg-accent-primary-soft" : ""}`}>
-                  <span className={`text-sm ${mine ? "font-semibold text-accent-primary" : "text-muted-foreground"}`}>
+                <div key={key} className={`flex min-h-11 items-center justify-between rounded-lg px-3 ${mine ? "bg-accent-tint" : ""}`}>
+                  <span className={`text-sm ${mine ? "font-semibold text-accent" : "text-muted-foreground"}`}>
                     {label}{mine && <span className="ml-2 text-xs text-muted-foreground">this card</span>}
                   </span>
                   {price != null ? (
@@ -131,7 +131,7 @@ export function RawPricingModal({
             {DURATIONS.map((d) => (
               <button
                 key={d.key}
-                className={`h-11 min-w-11 rounded-lg px-2 text-xs font-medium transition-colors duration-150 ${historyDuration === d.key ? "bg-accent-primary-soft text-accent-primary" : "text-muted-foreground hover:bg-muted"}`}
+                className={`h-11 min-w-11 rounded-lg px-2 text-xs font-medium transition-colors duration-150 ${historyDuration === d.key ? "bg-accent-tint text-accent" : "text-muted-foreground hover:bg-muted"}`}
                 onClick={() => setHistoryDuration(d.key)}
               >{d.key}</button>
             ))}

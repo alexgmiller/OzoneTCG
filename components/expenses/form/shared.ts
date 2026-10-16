@@ -89,11 +89,11 @@ export const MILEAGE_RATE_TOOLTIP = "IRS standard mileage rate for 2026 is $0.70
 
 export const FIELD_CLASS =
   "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground " +
-  "placeholder:text-muted-foreground focus:border-accent-primary focus:outline-none";
+  "placeholder:text-muted-foreground focus:border-accent focus:outline-none";
 export const LABEL_CLASS = "mb-1.5 block text-xs text-muted-foreground";
 export const CHIP_CLASS =
   "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm transition-colors duration-150";
-export const CHIP_ACTIVE = "border-accent-primary bg-accent-primary-soft text-accent-primary";
+export const CHIP_ACTIVE = "border-accent bg-accent-tint text-accent";
 export const CHIP_IDLE = "border-border text-muted-foreground hover:bg-muted";
 export const GHOST_BTN =
   "inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-border px-3 text-sm " +

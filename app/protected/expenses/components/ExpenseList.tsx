@@ -44,7 +44,7 @@ export function ExpenseList({
           hasActiveFilters ? undefined : (
             <button
               onClick={onLogFirst}
-              className="h-11 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover"
+              className="h-11 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent"
             >
               Log first expense
             </button>

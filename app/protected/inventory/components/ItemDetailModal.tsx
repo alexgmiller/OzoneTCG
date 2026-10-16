@@ -132,7 +132,7 @@ export function ItemDetailModal({
               {it.cost_basis != null && <span className="text-xs text-muted-foreground">trade chain</span>}
             </button>
           ) : (
-            <button className="h-11 text-sm font-medium text-accent-primary" onClick={() => { setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
+            <button className="h-11 text-sm font-medium text-accent" onClick={() => { setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
           )}
         </div>
 

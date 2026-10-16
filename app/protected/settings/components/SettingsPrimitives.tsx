@@ -99,7 +99,7 @@ export function Toggle({
       <span
         className={cn(
           "relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-150",
-          checked ? "bg-primary" : "bg-neutral/50",
+          checked ? "bg-accent" : "bg-surface-2",
         )}
       >
         <span
@@ -204,7 +204,7 @@ export function ActionButton({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "default" | "primary" | "danger" }) {
   const toneClass = {
     default: "border border-border bg-background text-foreground hover:bg-muted",
-    primary: "bg-primary text-primary-foreground hover:bg-accent-primary-hover",
+    primary: "bg-primary text-primary-foreground hover:bg-accent",
     danger: "border border-negative-border text-negative-strong hover:bg-negative-soft",
   }[tone];
 

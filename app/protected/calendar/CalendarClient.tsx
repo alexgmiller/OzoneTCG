@@ -222,7 +222,7 @@ export default function CalendarClient({
           <button
             type="button"
             onClick={() => openScheduleModal(selectedDate ?? todayStr)}
-            className="flex h-11 items-center gap-1 rounded-lg bg-accent-primary-soft px-3 text-sm font-semibold text-accent-primary transition-colors duration-150 hover:bg-accent-primary-border"
+            className="flex h-11 items-center gap-1 rounded-lg bg-accent-tint px-3 text-sm font-semibold text-accent transition-colors duration-150 hover:bg-accent-tint"
           >
             <Plus size={16} />
             Show

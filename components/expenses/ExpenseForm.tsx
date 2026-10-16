@@ -328,7 +328,7 @@ export function ExpenseForm({
           <div className="flex gap-2 pt-1">
             <button
               type="button"
-              className="h-11 flex-1 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+              className="h-11 flex-1 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-40"
               onClick={handleSaveClick}
               disabled={!canSave}
             >

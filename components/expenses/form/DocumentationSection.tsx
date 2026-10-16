@@ -55,7 +55,7 @@ export function DocumentationSection({
       </SectionHeader>
 
       {category === "mileage" ? (
-        <div className="flex items-start gap-2 rounded-lg border border-accent-primary-border bg-accent-primary-soft px-3 py-2.5 text-xs">
+        <div className="flex items-start gap-2 rounded-lg border border-accent-tint bg-accent-tint px-3 py-2.5 text-xs">
           <Info size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
           <span className="leading-relaxed text-muted-foreground">
             Mileage expenses are documented by your mileage log — no receipt needed.
@@ -96,7 +96,7 @@ export function DocumentationSection({
               <button
                 type="button"
                 onClick={() => onSkip(false)}
-                className="h-11 px-2 text-accent-primary transition-colors duration-150 hover:text-accent-primary-hover"
+                className="h-11 px-2 text-accent transition-colors duration-150 hover:text-accent"
               >
                 Undo
               </button>
@@ -155,7 +155,7 @@ export function DocumentationSection({
                 </div>
               )}
               <textarea
-                className={`min-h-24 w-full resize-none rounded-lg border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-accent-primary focus:outline-none ${
+                className={`min-h-24 w-full resize-none rounded-lg border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none ${
                   hasNote ? "border-positive-border" : "border-border"
                 }`}
                 placeholder="What happened? Who did you pay? Example: 'Paid John Smith $150 cash at Sacramento show for shared booth space. His phone: 555-1234.'"

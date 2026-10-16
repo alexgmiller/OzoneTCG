@@ -15,7 +15,7 @@ export type ActivityKind = "buy" | "sell" | "trade" | "show" | "expense";
 export const DOT_BG: Record<ActivityKind, string> = {
   buy: "bg-negative",
   sell: "bg-positive",
-  trade: "bg-accent-primary",
+  trade: "bg-accent",
   show: "bg-warning",
   expense: "bg-neutral",
 };
@@ -23,7 +23,7 @@ export const DOT_BG: Record<ActivityKind, string> = {
 export const KIND_TEXT: Record<ActivityKind, string> = {
   buy: "text-negative",
   sell: "text-positive",
-  trade: "text-accent-primary",
+  trade: "text-accent",
   show: "text-warning",
   expense: "text-muted-foreground",
 };

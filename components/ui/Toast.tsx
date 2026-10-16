@@ -68,7 +68,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
     success: "border-positive-border text-positive-strong dark:text-positive",
     error: "border-negative-border text-negative-strong dark:text-negative",
     warning: "border-warning-border text-warning-strong dark:text-warning",
-    info: "border-accent-primary-border text-accent-primary",
+    info: "border-accent-tint text-accent",
   }[toast.tone];
 
   return (

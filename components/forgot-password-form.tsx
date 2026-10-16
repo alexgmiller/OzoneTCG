@@ -93,7 +93,7 @@ export function ForgotPasswordForm({
                 {isLoading ? "Sending…" : "Send reset email"}
               </Button>
               <p className="text-center text-sm text-muted-foreground">
-                <Link href="/auth/login" className="text-accent-primary underline-offset-4 hover:underline">
+                <Link href="/auth/login" className="text-accent underline-offset-4 hover:underline">
                   Back to login
                 </Link>
               </p>

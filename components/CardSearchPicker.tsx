@@ -165,7 +165,7 @@ export default function CardSearchPicker({
         </div>
         <button
           type="button"
-          className="h-11 w-full rounded-lg bg-accent-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+          className="h-11 w-full rounded-lg bg-accent text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-40"
           onClick={search}
           disabled={loading || !searchName.trim()}
         >
@@ -198,7 +198,7 @@ export default function CardSearchPicker({
               <button
                 key={i}
                 type="button"
-                className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 text-left transition-colors duration-150 hover:border-accent-primary-border hover:bg-muted"
+                className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 text-left transition-colors duration-150 hover:border-accent-tint hover:bg-muted"
                 onClick={() => handleSelect(card)}
               >
                 {card.imageUrl ? (

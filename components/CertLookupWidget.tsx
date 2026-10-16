@@ -218,7 +218,7 @@ export default function CertLookupWidget({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-accent-primary-border px-3 text-sm font-medium text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
+        className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-accent-tint px-3 text-sm font-medium text-accent transition-colors duration-150 hover:bg-accent-tint"
       >
         <ScanLine size={16} />
         {label ?? "Scan cert"}
@@ -233,10 +233,10 @@ export default function CertLookupWidget({
       <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay />
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="relative h-12 w-40">
-          <div className="absolute left-0 top-0 h-5 w-5 border-l-2 border-t-2 border-accent-primary" />
-          <div className="absolute right-0 top-0 h-5 w-5 border-r-2 border-t-2 border-accent-primary" />
-          <div className="absolute bottom-0 left-0 h-5 w-5 border-b-2 border-l-2 border-accent-primary" />
-          <div className="absolute bottom-0 right-0 h-5 w-5 border-b-2 border-r-2 border-accent-primary" />
+          <div className="absolute left-0 top-0 h-5 w-5 border-l-2 border-t-2 border-accent" />
+          <div className="absolute right-0 top-0 h-5 w-5 border-r-2 border-t-2 border-accent" />
+          <div className="absolute bottom-0 left-0 h-5 w-5 border-b-2 border-l-2 border-accent" />
+          <div className="absolute bottom-0 right-0 h-5 w-5 border-b-2 border-r-2 border-accent" />
         </div>
       </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
@@ -266,7 +266,7 @@ export default function CertLookupWidget({
         className={cn(
           "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150",
           cameraOn
-            ? "border-accent-primary bg-accent-primary text-primary-foreground"
+            ? "border-accent bg-accent text-primary-foreground"
             : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
         )}
         title="Toggle camera"
@@ -279,7 +279,7 @@ export default function CertLookupWidget({
         type="button"
         onClick={handleSubmit}
         disabled={loading || certInput.length < 5}
-        className="flex h-11 shrink-0 items-center gap-1 rounded-lg bg-accent-primary px-3 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+        className="flex h-11 shrink-0 items-center gap-1 rounded-lg bg-accent px-3 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-40"
       >
         {loading ? <Loader2 size={16} className="animate-spin" /> : "Look up"}
       </button>
@@ -311,7 +311,7 @@ export default function CertLookupWidget({
   // ── Standard panel mode ──
 
   return (
-    <div className="space-y-3 rounded-xl border border-accent-primary-border bg-card p-3">
+    <div className="space-y-3 rounded-xl border border-accent-tint bg-card p-3">
       {/* Header row — company selector only shown when not controlled */}
       <div className="flex items-center justify-between gap-2">
         {!controlledCompany ? (
@@ -325,7 +325,7 @@ export default function CertLookupWidget({
                 className={cn(
                   "h-11 rounded-lg border px-3 text-xs font-semibold transition-colors duration-150",
                   internalCompany === c
-                    ? "border-accent-primary-border bg-accent-primary-soft text-accent-primary"
+                    ? "border-accent-tint bg-accent-tint text-accent"
                     : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >

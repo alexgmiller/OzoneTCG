@@ -46,7 +46,7 @@ export function ScanIdle({
         />
         {/* Target rectangle — wide for 1D barcodes */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-14 w-64 rounded-lg border-2 border-accent-primary" />
+          <div className="h-14 w-64 rounded-lg border-2 border-accent" />
         </div>
         {cameraError && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">

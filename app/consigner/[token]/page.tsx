@@ -120,7 +120,7 @@ export default async function ConsignerPortalPage({
       <header className="border-b border-border bg-card">
         <div className="mx-auto w-full max-w-2xl px-4 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-primary-soft text-sm font-semibold text-accent-primary">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-tint text-sm font-semibold text-accent">
               {initials(consigner.name)}
             </div>
             <div className="min-w-0">

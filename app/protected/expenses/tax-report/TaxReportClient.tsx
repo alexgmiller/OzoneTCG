@@ -143,7 +143,7 @@ export default function TaxReportClient({ year, availableYears, summary }: Props
         <button
           onClick={exportCSV}
           disabled={exporting}
-          className="inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+          className="inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-40"
         >
           <Download size={16} />
           {exporting ? "Exporting…" : "Export Schedule C CSV"}

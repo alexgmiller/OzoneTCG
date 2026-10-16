@@ -43,13 +43,13 @@ export const BTN =
   "inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium " +
   "transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50";
 
-export const BTN_PRIMARY = `${BTN} bg-primary text-primary-foreground hover:bg-accent-primary-hover`;
+export const BTN_PRIMARY = `${BTN} bg-primary text-primary-foreground hover:bg-accent`;
 export const BTN_SOFT =
-  `${BTN} border border-accent-primary-border bg-accent-primary-soft text-accent-primary hover:bg-accent-primary/20`;
+  `${BTN} border border-accent-tint bg-accent-tint text-accent hover:bg-accent-tint`;
 export const BTN_OUTLINE =
   `${BTN} border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground`;
 
 export const TEXTAREA =
   "w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground " +
-  "placeholder:text-muted-foreground outline-none transition-colors duration-150 focus:border-accent-primary " +
+  "placeholder:text-muted-foreground outline-none transition-colors duration-150 focus:border-accent " +
   "disabled:opacity-50";

@@ -277,7 +277,7 @@ export default function ExpensesClient({
         <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/protected/expenses/tax-report"
-            className="inline-flex h-11 items-center rounded-lg border border-accent-primary-border px-3 text-sm text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
+            className="inline-flex h-11 items-center rounded-lg border border-accent-tint px-3 text-sm text-accent transition-colors duration-150 hover:bg-accent-tint"
           >
             Tax Report →
           </Link>

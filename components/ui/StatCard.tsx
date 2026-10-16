@@ -23,7 +23,7 @@ export function StatCard({
 }) {
   const toneBg =
     tone === "accent"
-      ? "bg-accent-primary-soft border-accent-primary-border"
+      ? "bg-accent-tint border-accent-tint"
       : tone === "warning"
         ? "bg-warning-soft border-warning-border"
         : tone === "positive"

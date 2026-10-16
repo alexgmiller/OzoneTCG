@@ -35,11 +35,11 @@ function DayCell({
         "flex min-h-20 w-full select-none flex-col items-start gap-0.5 rounded-lg border p-1 text-left",
         "transition-colors duration-150",
         isSelected
-          ? "border-accent-primary-border bg-accent-primary-soft"
+          ? "border-accent-tint bg-accent-tint"
           : hasShows
             ? "border-warning-border bg-warning-soft hover:bg-muted"
             : "border-transparent hover:bg-muted",
-        isToday && !isSelected && !hasShows && "bg-accent-primary-soft",
+        isToday && !isSelected && !hasShows && "bg-accent-tint",
         !isCurrentMonth && "opacity-30",
       )}
     >

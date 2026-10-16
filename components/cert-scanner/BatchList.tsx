@@ -90,7 +90,7 @@ export function BatchList({
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total at offer %</span>
-              <span className="font-semibold text-accent-primary"><MoneyOrDash amount={totalOffer} /></span>
+              <span className="font-semibold text-accent"><MoneyOrDash amount={totalOffer} /></span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <button type="button" onClick={onAddAll} disabled={actionLoading} className={btnOutline}>

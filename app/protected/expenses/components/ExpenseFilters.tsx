@@ -8,7 +8,7 @@ const SELECT_CLASS =
   "h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground sm:w-auto";
 const PILL_CLASS =
   "inline-flex h-11 shrink-0 items-center rounded-full border px-4 text-sm transition-colors duration-150";
-const PILL_ACTIVE = "border-accent-primary bg-accent-primary-soft text-accent-primary";
+const PILL_ACTIVE = "border-accent bg-accent-tint text-accent";
 const PILL_IDLE = "border-border text-muted-foreground hover:bg-muted";
 
 const QUICK_ADD: { cat: ExpenseCategory; label: string }[] = [
@@ -59,7 +59,7 @@ export function ExpenseFilters({
   return (
     <div className="space-y-3">
       {/* ── Quick-add row ── */}
-      <div className="flex items-center gap-2 rounded-xl border border-accent-primary-border bg-accent-primary-soft px-3 py-2">
+      <div className="flex items-center gap-2 rounded-xl border border-accent-tint bg-accent-tint px-3 py-2">
         <span className="shrink-0 font-mono text-xs uppercase tracking-wide text-muted-foreground">+ Add</span>
         <ScrollRow>
           {QUICK_ADD.map(({ cat, label }) => (

@@ -11,12 +11,12 @@ import type {
 import { DOT_BG, fmtLongDate, fmtTime, isFuture, type ActivityKind } from "./helpers";
 
 const softBtn =
-  "flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent-primary-soft px-4 text-sm font-semibold text-accent-primary transition-colors duration-150 hover:bg-accent-primary-border";
+  "flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent-tint px-4 text-sm font-semibold text-accent transition-colors duration-150 hover:bg-accent-tint";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 const STATUS_CLS: Record<string, string> = {
-  scheduled: "bg-accent-primary-soft text-accent-primary border-accent-primary-border",
+  scheduled: "bg-accent-tint text-accent border-accent-tint",
   active: "bg-warning-soft text-warning border-warning-border",
   completed: "bg-positive-soft text-positive border-positive-border",
 };
@@ -180,7 +180,7 @@ function TradeRow({ t, onOpen }: { t: TradeEntry; onOpen: (url: string) => void 
       {t.deal_photo_url ? (
         <Thumb url={t.deal_photo_url} alt="Deal photo" onOpen={onOpen} />
       ) : (
-        <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-primary-soft text-accent-primary">
+        <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-tint text-accent">
           <ArrowLeftRight size={16} />
         </div>
       )}

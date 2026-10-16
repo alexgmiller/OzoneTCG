@@ -89,8 +89,8 @@ export function ExpenseStats({
 
       {/* ── Annual mileage motivator ── */}
       {yearMileage > 0 && (
-        <div className="flex items-center justify-between rounded-xl border border-accent-primary-border bg-accent-primary-soft px-4 py-2.5 text-xs">
-          <span className="font-mono tabular-nums text-accent-primary">
+        <div className="flex items-center justify-between rounded-xl border border-accent-tint bg-accent-tint px-4 py-2.5 text-xs">
+          <span className="font-mono tabular-nums text-accent">
             {yearMileage.toFixed(0)} mi logged this year
           </span>
           <span className="text-muted-foreground">

@@ -27,11 +27,11 @@ function WeekCell({
         "flex min-h-11 min-w-0 flex-1 flex-col items-center gap-1 rounded-xl border px-0.5 py-2",
         "transition-colors duration-150",
         isSelected
-          ? "border-accent-primary-border bg-accent-primary-soft"
+          ? "border-accent-tint bg-accent-tint"
           : hasShows
             ? "border-warning-border bg-warning-soft hover:bg-muted"
             : "border-transparent hover:bg-muted",
-        isToday && !isSelected && !hasShows && "bg-accent-primary-soft",
+        isToday && !isSelected && !hasShows && "bg-accent-tint",
       )}
     >
       <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

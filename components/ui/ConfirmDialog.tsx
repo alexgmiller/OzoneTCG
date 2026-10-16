@@ -123,8 +123,8 @@ export function ConfirmPanel({
             "h-11 rounded-lg border px-4 text-sm font-semibold transition-colors duration-150",
             "disabled:opacity-30",
             destructive
-              ? "border-negative-border bg-negative-soft text-negative-strong hover:bg-negative/20 dark:text-negative"
-              : "border-transparent bg-accent-primary text-primary-foreground hover:bg-accent-primary-hover",
+              ? "border-negative-border bg-negative-soft text-negative-strong hover:bg-down-tint dark:text-negative"
+              : "border-transparent bg-accent text-primary-foreground hover:bg-accent",
           )}
         >
           {loading ? "…" : confirmLabel}

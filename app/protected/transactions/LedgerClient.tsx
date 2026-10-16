@@ -153,7 +153,7 @@ export default function LedgerClient({ deals, shows }: { deals: Deal[]; shows: S
               </div>
             )}
             <button type="button" disabled={busy} onClick={() => revert(open)}
-              className="h-11 w-full rounded-lg border border-negative-border bg-negative-soft font-medium text-negative-strong transition-colors duration-150 hover:bg-negative/20 disabled:opacity-40 dark:text-negative">
+              className="h-11 w-full rounded-lg border border-negative-border bg-negative-soft font-medium text-negative-strong transition-colors duration-150 hover:bg-down-tint disabled:opacity-40 dark:text-negative">
               {busy ? "Reverting…" : "Revert"}
             </button>
           </div>

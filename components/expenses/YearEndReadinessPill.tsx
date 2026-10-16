@@ -96,7 +96,7 @@ export function YearEndReadinessPill({
               <span className="leading-relaxed text-muted-foreground">{issue.label}</span>
               <button
                 onClick={() => { setModalOpen(false); onEditExpense(issue.id); }}
-                className="inline-flex h-11 shrink-0 items-center rounded-lg border border-accent-primary-border px-4 text-sm text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
+                className="inline-flex h-11 shrink-0 items-center rounded-lg border border-accent-tint px-4 text-sm text-accent transition-colors duration-150 hover:bg-accent-tint"
               >
                 Fix
               </button>

@@ -40,7 +40,7 @@ export function DocWarningPanel({
       <div className="flex flex-col gap-2">
         <button
           type="button"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent"
           onClick={onAddPhoto}
         >
           <Camera size={16} /> Add photo

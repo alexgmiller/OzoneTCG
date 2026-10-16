@@ -88,20 +88,20 @@ export function shortDate(iso: string | null | undefined): string {
 
 export const inputClass =
   "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground " +
-  "focus:outline-none focus:ring-2 focus:ring-accent-primary";
+  "focus:outline-none focus:ring-2 focus:ring-accent";
 
 const btnBase =
   "flex h-12 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium " +
   "transition-colors duration-150 disabled:opacity-40";
 
 export const btnPrimary =
-  `${btnBase} bg-primary text-primary-foreground hover:bg-accent-primary-hover`;
+  `${btnBase} bg-primary text-primary-foreground hover:bg-accent`;
 
 export const btnOutline =
   `${btnBase} border border-border bg-card text-foreground hover:bg-muted`;
 
 export const btnAccentOutline =
-  `${btnBase} border border-accent-primary-border bg-accent-primary-soft text-accent-primary hover:border-accent-primary`;
+  `${btnBase} border border-accent-tint bg-accent-tint text-accent hover:border-accent`;
 
 export function pillClass(selected: boolean, extra = ""): string {
   return `${extra} h-11 rounded-full px-3 text-xs font-semibold transition-colors duration-150 ${

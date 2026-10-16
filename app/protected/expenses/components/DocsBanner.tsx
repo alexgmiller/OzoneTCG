@@ -18,7 +18,7 @@ export function DocsBanner({ onDismiss }: { onDismiss: () => void }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-xl border border-accent-primary-border bg-accent-primary-soft px-3 py-2">
+    <div className="rounded-xl border border-accent-tint bg-accent-tint px-3 py-2">
       <div className="flex items-center gap-2">
         <span className="shrink-0 text-sm">📸</span>
         <span className="min-w-0 flex-1 text-sm text-muted-foreground">
@@ -26,7 +26,7 @@ export function DocsBanner({ onDismiss }: { onDismiss: () => void }) {
         </span>
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="h-11 shrink-0 px-2 text-sm text-accent-primary transition-colors duration-150 hover:text-accent-primary-hover"
+          className="h-11 shrink-0 px-2 text-sm text-accent transition-colors duration-150 hover:text-accent"
         >
           {expanded ? "Less ↑" : "More ↓"}
         </button>
@@ -39,7 +39,7 @@ export function DocsBanner({ onDismiss }: { onDismiss: () => void }) {
         </button>
       </div>
       {expanded && (
-        <div className="mt-2 space-y-1 border-t border-accent-primary-border pt-2 text-sm text-muted-foreground">
+        <div className="mt-2 space-y-1 border-t border-accent-tint pt-2 text-sm text-muted-foreground">
           {DOC_EXAMPLES.map((line) => <p key={line}>• {line}</p>)}
           <p className="pt-1 text-xs">
             Expenses ≥ ${RECEIPT_IRS_THRESHOLD} need documentation. Mileage log counts for mileage.

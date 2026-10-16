@@ -110,10 +110,10 @@ export function MileageFields({
       <div>
         <ChipRow chips={buildChips("from")} selected={form.mileage_from} onPick={(a) => setField("mileage_from", a)} />
         {!homeAddress && !homeTipDismissed && (
-          <div className="mb-2 flex items-start gap-2 rounded-lg border border-dashed border-accent-primary-border bg-accent-primary-soft px-3 py-2 text-xs">
+          <div className="mb-2 flex items-start gap-2 rounded-lg border border-dashed border-accent-tint bg-accent-tint px-3 py-2 text-xs">
             <span className="flex-1 leading-relaxed text-muted-foreground">
               Tip: Save your home address in Settings for one-tap mileage entry.{" "}
-              <a href="/protected/settings" className="text-accent-primary underline underline-offset-2">
+              <a href="/protected/settings" className="text-accent underline underline-offset-2">
                 Set home address →
               </a>
             </span>
@@ -160,7 +160,7 @@ export function MileageFields({
           href={mapsUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-11 items-center gap-1.5 text-sm text-accent-primary underline underline-offset-2 transition-colors duration-150 hover:text-accent-primary-hover"
+          className="inline-flex h-11 items-center gap-1.5 text-sm text-accent underline underline-offset-2 transition-colors duration-150 hover:text-accent"
         >
           <ExternalLink size={14} />
           Look up distance on Google Maps →
@@ -185,7 +185,7 @@ export function MileageFields({
           <button
             type="button"
             onClick={() => setField("mileage_miles", lastShowMileage.miles)}
-            className="inline-flex h-11 items-center text-sm text-accent-primary underline underline-offset-2 transition-colors duration-150 hover:text-accent-primary-hover"
+            className="inline-flex h-11 items-center text-sm text-accent underline underline-offset-2 transition-colors duration-150 hover:text-accent"
           >
             Same as last entry ({lastShowMileage.miles} mi)
           </button>
@@ -199,7 +199,7 @@ export function MileageFields({
             type="checkbox"
             checked={form.round_trip}
             onChange={(e) => setField("round_trip", e.target.checked)}
-            className="h-5 w-5 rounded-lg accent-accent-primary"
+            className="h-5 w-5 rounded-lg accent-accent"
           />
           Round trip (×2)
         </label>

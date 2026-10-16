@@ -117,7 +117,7 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
 
       {/* ── Expenses by category ── */}
       <section className="space-y-2">
-        <SectionHeader action={<Link href="/protected/expenses/tax-report" className="text-xs text-accent-primary">Tax report →</Link>}>
+        <SectionHeader action={<Link href="/protected/expenses/tax-report" className="text-xs text-accent">Tax report →</Link>}>
           {data.year} expenses by category
         </SectionHeader>
         {data.categories.length === 0 ? (

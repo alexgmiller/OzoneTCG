@@ -98,7 +98,7 @@ export function RecordPayoutModal({
           {differsFromPending && (
             <button
               type="button"
-              className="h-11 text-xs text-accent-primary underline-offset-2 hover:underline"
+              className="h-11 text-xs text-accent underline-offset-2 hover:underline"
               onClick={() => setAmountStr(consigner.pending_payout.toFixed(2))}
             >
               Use owed amount (<MoneyDisplay amount={consigner.pending_payout} tone="positive" />)

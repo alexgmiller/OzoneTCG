@@ -10,7 +10,7 @@ export type ScheduleFields = {
 };
 
 const inputCls =
-  "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent-primary focus:outline-none";
+  "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none";
 
 // ── Labelled field ────────────────────────────────────────────────────────────
 
@@ -173,7 +173,7 @@ export function ScheduleShowModal({
           type="button"
           onClick={handleSubmit}
           disabled={busy}
-          className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+          className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent disabled:opacity-40"
         >
           {busy ? <><Loader2 size={14} className="animate-spin" />Scheduling…</> : "Schedule Show"}
         </button>

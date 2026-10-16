@@ -53,12 +53,12 @@ export function catMeta(c: ExpenseCategory) {
 // Per-category visual tokens: amber=warning, teal=accent, emerald=positive, slate=neutral.
 export const CAT_TOKEN: Record<ExpenseCategory, { border: string; pill: string; text: string; label: string }> = {
   meals:        { border: "border-l-warning",        pill: "border-warning-border bg-warning-soft text-warning",                         text: "text-warning",        label: "MEAL"   },
-  mileage:      { border: "border-l-accent-primary", pill: "border-accent-primary-border bg-accent-primary-soft text-accent-primary",    text: "text-accent-primary", label: "MILE"   },
-  lodging:      { border: "border-l-accent-primary", pill: "border-accent-primary-border bg-accent-primary-soft text-accent-primary",    text: "text-accent-primary", label: "HOTEL"  },
+  mileage:      { border: "border-l-accent", pill: "border-accent-tint bg-accent-tint text-accent",    text: "text-accent", label: "MILE"   },
+  lodging:      { border: "border-l-accent", pill: "border-accent-tint bg-accent-tint text-accent",    text: "text-accent", label: "HOTEL"  },
   booth_fee:    { border: "border-l-positive",       pill: "border-positive-border bg-positive-soft text-positive",                      text: "text-positive",       label: "BOOTH"  },
   supplies:     { border: "border-l-neutral",        pill: "border-border bg-muted text-muted-foreground",                               text: "text-neutral",        label: "SUPPLY" },
   shipping:     { border: "border-l-neutral",        pill: "border-border bg-muted text-muted-foreground",                               text: "text-neutral",        label: "SHIP"   },
-  software:     { border: "border-l-accent-primary", pill: "border-accent-primary-border bg-accent-primary-soft text-accent-primary",    text: "text-accent-primary", label: "SW"     },
+  software:     { border: "border-l-accent", pill: "border-accent-tint bg-accent-tint text-accent",    text: "text-accent", label: "SW"     },
   grading_fees: { border: "border-l-warning",        pill: "border-warning-border bg-warning-soft text-warning",                         text: "text-warning",        label: "GRADE"  },
   other:        { border: "border-l-neutral",        pill: "border-border bg-muted text-muted-foreground",                               text: "text-neutral",        label: "OTHER"  },
 };

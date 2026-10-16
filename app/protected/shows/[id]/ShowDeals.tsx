@@ -6,7 +6,7 @@ import { pillCls } from "../shared";
 const MODE: Record<Deal["mode"], { label: string; cls: string }> = {
   buy: { label: "Buy", cls: "border-negative-border bg-negative-soft text-negative" },
   sell: { label: "Sell", cls: "border-positive-border bg-positive-soft text-positive" },
-  trade: { label: "Trade", cls: "border-accent-primary-border bg-accent-primary-soft text-accent-primary" },
+  trade: { label: "Trade", cls: "border-accent-tint bg-accent-tint text-accent" },
 };
 
 function methodLabel(m: string | null) {

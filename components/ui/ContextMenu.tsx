@@ -56,7 +56,7 @@ export function ContextMenu({ open, at, items, onClose, title }: Props) {
 
   return (
     <div className="fixed inset-0 z-50" role="presentation">
-      <div className="absolute inset-0 bg-bg/60 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-scrim backdrop-blur-sm" onClick={onClose} aria-hidden />
       <div
         ref={ref}
         role="menu"

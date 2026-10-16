@@ -34,8 +34,8 @@ export function OfferCalc({
             onClick={() => onSelectPct(pct)}
             className={`flex h-14 flex-col items-center justify-center rounded-lg border transition-colors duration-150 ${
               selectedPct === pct
-                ? "border-accent-primary bg-accent-primary-soft"
-                : "border-border bg-card hover:border-accent-primary"
+                ? "border-accent bg-accent-tint"
+                : "border-border bg-card hover:border-accent"
             }`}
           >
             <span className="text-xs text-muted-foreground tabular-nums">{pct}%</span>

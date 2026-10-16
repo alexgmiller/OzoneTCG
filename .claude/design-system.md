@@ -27,9 +27,11 @@ The teal is darker in light mode so text and icons stay readable on white. There
 
 **Frosted overlay** (CardTile): `bg-black/45 backdrop-blur-md` with white text, in both themes. It sits on card art, not on the page, so it does not flip.
 
-**shadcn aliases.** `bg-background`, `bg-card`, `bg-muted`, `text-primary`, `border-input` and friends still exist and resolve to the same palette (`--sh-*` HSL vars derived from the table above). They are legacy-compatible, not canonical: new code uses the token names in the table. shadcn's hover surface is `bg-hover`, not `bg-accent` — the accent name belongs to the teal.
+**shadcn aliases.** `bg-background`, `bg-card`, `bg-muted`, `text-primary`, `border-input` and friends still exist and resolve to the same palette (`--sh-*` HSL vars derived from the table above, with `<alpha-value>` so `/80`-style modifiers work). They are legacy-compatible, not canonical: new code uses the token names in the table. shadcn's hover surface is `bg-hover`, not `bg-accent` — the accent name belongs to the teal.
 
-**Pre-Phase-3 aliases** (`accent-primary`, `accent-secondary`, `positive-strong`, …) resolve to the accent/up/down so untouched screens render teal. They are removed in the audit commit as screens migrate.
+**Semantic tones** `positive` / `negative` / `warning` (`-soft`, `-strong`, `-border`) resolve to `up` / `down` / amber and remain valid; `up-tint` / `down-tint` are the canonical soft backgrounds for new code.
+
+**Alpha modifiers.** The brief tokens are `var()` colours, so Tailwind cannot apply `/50` to them — `bg-accent/20` emits nothing. Use the tint tokens (`accent-tint`, `up-tint`, `down-tint`) and `bg-scrim` for the dim behind sheets, menus and modals. The violet-era `accent-primary*` classes are gone from the config; the build no longer accepts them.
 
 ### Don'ts
 - **Don't use `text-red-*`, `text-green-*`, `text-blue-*`, `text-violet-*` or any hue class.** Positive = `up`, negative = `down`, active = `accent`.

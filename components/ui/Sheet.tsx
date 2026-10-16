@@ -61,7 +61,7 @@ export function Sheet({ open, onClose, title, children, footer, dirty = false, c
 
   return (
     <div className="fixed inset-0 z-50 md:flex md:items-center md:justify-center md:p-4" role="presentation">
-      <div className="absolute inset-0 bg-bg/70 backdrop-blur-sm transition-opacity duration-150" onClick={() => void requestClose()} aria-hidden />
+      <div className="absolute inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150" onClick={() => void requestClose()} aria-hidden />
       <div
         role="dialog"
         aria-modal="true"

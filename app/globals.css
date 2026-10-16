@@ -34,6 +34,8 @@
   /* tab bar: --surface at 80% + blur, plus a soft shadow in light only */
   --tabbar-bg:     rgba(255, 255, 255, 0.80);
   --tabbar-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+  /* dim behind sheets, menus and modals (Tailwind can't alpha a var() colour) */
+  --scrim:         rgba(15, 23, 42, 0.45);
 }
 
 /* ── Brief tokens (dark) ── */
@@ -53,6 +55,7 @@
 
   --tabbar-bg:     rgba(27, 31, 39, 0.80);
   --tabbar-shadow: none;
+  --scrim:         rgba(0, 0, 0, 0.60);
 }
 
 @layer base {

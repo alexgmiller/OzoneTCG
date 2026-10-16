@@ -109,7 +109,7 @@ export function ConsignerCard({
     <article className="overflow-hidden rounded-xl border border-border bg-card">
       {/* ── Header: who, and what they're owed ── */}
       <div className="flex items-start gap-3 p-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-primary-soft text-sm font-semibold text-accent-primary">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-tint text-sm font-semibold text-accent">
           {initials(c.name)}
         </div>
         <div className="min-w-0 flex-1">
