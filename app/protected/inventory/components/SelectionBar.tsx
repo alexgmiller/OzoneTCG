@@ -2,7 +2,10 @@
 
 import { btnPrimary, btnOutline } from "../utils";
 
-// ── Bulk action bar (fixed above the mobile tab bar) ──
+// ── Bulk action bar ──
+// Sits where the floating tab bar sits and above it in z-order, so it replaces
+// the bar while a selection is active (the multi-select commit restyles it as
+// a pill). On desktop it spans the content area to the right of the rail.
 // Sold rows can't be sold again or price-refreshed, so those actions hide when any is selected.
 export function SelectionBar({
   count,
@@ -26,7 +29,7 @@ export function SelectionBar({
   onClear: () => void;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-background md:bottom-0 md:left-56">
+    <div className="tabbar-inset fixed inset-x-4 z-50 rounded-2xl border border-border bg-surface md:inset-x-0 md:bottom-0 md:left-20 md:rounded-none md:border-x-0 md:border-b-0">
       <div className="mx-auto w-full max-w-3xl space-y-2 px-4 py-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground tabular-nums">{count} selected</span>

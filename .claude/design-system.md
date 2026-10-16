@@ -1,165 +1,188 @@
 # Ozone TCG — Design System
 
-Canonical reference for visual decisions. Read this before adding UI. Tokens and primitives live in `components/ui/` and `tailwind.config.ts`.
+Canonical reference for visual decisions. Tokens live in `app/globals.css` and `tailwind.config.ts`; primitives in `components/ui/`. Read this before adding UI.
+
+The look is DeckTradr-style: card-art forward, low density, one teal accent, rounded surfaces, a floating tab bar. Light and dark are both first-class; the default is System.
 
 ---
 
-## 1. Color semantics
+## 1. Color tokens
 
-| Token                | Tailwind              | Use for                                                  |
-| -------------------- | --------------------- | -------------------------------------------------------- |
-| `accent-primary`     | `violet-500/600`      | Primary CTAs, active nav, focus rings                    |
-| `accent-secondary`   | `violet-300/400`      | Subtle accents, secondary iconography                    |
-| `positive`           | `emerald-400/500`     | Sells, profit, margin up, success toasts                 |
-| `negative`           | `rose-400/500`        | Buys (cash out), loss, destructive actions, error toasts |
-| `warning`            | `amber-400/500`       | Missing data, passes, flags, warning toasts              |
-| `neutral`            | `slate-400/500`       | Body text, muted UI, disabled states                     |
-| `surface`            | shadcn tokens         | Background stack (token classes below)                   |
+Every color is a CSS variable on `:root` (light) and `.dark`. Components never use raw hex.
 
-### Surface stack (both themes)
-`bg-background` page → `bg-card` panels/cards → `bg-muted` inset/hover → `border-border` hairlines. Text: `text-foreground` (titles, values) / `text-muted-foreground` (labels, meta). The HSL values live in `app/globals.css` (`:root` / `.dark`); never spell them out as `slate-950`/`slate-900`/`white/5` literals — the token flips with the theme, a literal does not.
+| Token | Tailwind | Light | Dark | Use for |
+|---|---|---|---|---|
+| `--bg` | `bg-bg` | `#f5f6f8` | `#11141a` | Page background |
+| `--surface` | `bg-surface` | `#ffffff` | `#1b1f27` | Cards, tiles, sheets, the tab bar |
+| `--surface-2` | `bg-surface-2` | `#eef0f4` | `#232833` | Inset surfaces, chips at rest, raised pill in a segmented control |
+| `--border` | `border-border` | `rgba(15,23,42,.08)` | `rgba(255,255,255,.06)` | Hairlines |
+| `--text` | `text-foreground` | `#0f172a` | `#f5f7fa` | Titles, values |
+| `--text-muted` | `text-muted-foreground` | `#64748b` | `#8a93a3` | Labels, meta |
+| `--accent` | `text-accent` `bg-accent` | `#0d9488` | `#5eead4` | **Active states only**: active tab, selected chip text, TabStrip underline, primary button |
+| `--accent-tint` | `bg-accent-tint` | `rgba(13,148,136,.10)` | `rgba(94,234,212,.12)` | Selected chip background, active-show chip |
+| `--up` | `text-up` | `#059669` | `#34d399` | Profit, FMV above cost, ▲ |
+| `--down` | `text-down` | `#e11d48` | `#f43f5e` | Loss, FMV below cost, ▼, destructive rows |
 
-### Don'ts (read this section — it prevents drift)
-- **Don't use `text-red-*` or `bg-red-*` for anything.** Negative = rose. Destructive = rose. Red is reserved for system-level errors we don't raise in-app.
-- **Don't use blue anywhere.** No `text-blue-*`, `bg-blue-*`, `border-blue-*`. The only CTA/link color is violet (`accent-primary`).
-- **Don't mix semantic colors.** Emerald is for money-positive states only — not for "active" or "selected". Use `accent-primary` for selection.
-- **Don't use arbitrary hex.** If a color isn't in the table above, stop and ask.
-- **Don't use `text-green-*` for positive** — use `emerald`. Same for `text-yellow-*` → `amber`.
+The teal is darker in light mode so text and icons stay readable on white. There is one accent — no violet, no gold, no gradients except the frosted overlay on card art.
+
+**Frosted overlay** (CardTile): `bg-black/45 backdrop-blur-md` with white text, in both themes. It sits on card art, not on the page, so it does not flip.
+
+**shadcn aliases.** `bg-background`, `bg-card`, `bg-muted`, `text-primary`, `border-input` and friends still exist and resolve to the same palette (`--sh-*` HSL vars derived from the table above). They are legacy-compatible, not canonical: new code uses the token names in the table. shadcn's hover surface is `bg-hover`, not `bg-accent` — the accent name belongs to the teal.
+
+**Pre-Phase-3 aliases** (`accent-primary`, `accent-secondary`, `positive-strong`, …) resolve to the accent/up/down so untouched screens render teal. They are removed in the audit commit as screens migrate.
+
+### Don'ts
+- **Don't use `text-red-*`, `text-green-*`, `text-blue-*`, `text-violet-*` or any hue class.** Positive = `up`, negative = `down`, active = `accent`.
+- **Don't use arbitrary hex or `bg-[#…]`.** If a color isn't in the table, stop and ask.
+- **Don't use the accent for anything that isn't active or selected.** It is not a decoration color.
+- **Don't put `var(--…)` or color `style={{}}` in TSX.** Use the token classes. This was the known source of light-mode regressions.
 
 ---
 
 ## 2. Spacing scale
 
-| Class  | Use for                                                      |
-| ------ | ------------------------------------------------------------ |
-| `p-2`  | Compact chips, pills, dense table cells                      |
-| `p-2.5`| Inventory card interior, batch row items                     |
-| `p-3`  | Standard content panels, form rows, list rows                |
-| `p-4`  | Prominent panels, card headers, sticky bottom bars           |
-| `p-5`  | Modal bodies, empty-state panels, onboarding cards           |
+| Class | Use for |
+|---|---|
+| `p-2` | Compact chips, dense cells |
+| `p-2.5` | Tile overlay interior |
+| `p-3` | Content panels, form rows, list rows |
+| `p-4` | Prominent panels, sheet bodies, page gutters |
+| `p-5` | Empty-state panels |
 
-Gaps follow the same scale: `gap-2` for chip rows, `gap-3` for form fields, `gap-4` for card stacks.
+Gaps follow the same scale: `gap-2` chip rows, `gap-3` form fields and tile grids (12px), `gap-4` card stacks.
 
 ### Don'ts
-- **Don't use `p-1`, `p-1.5`, `p-6`, `p-8`.** If your content needs these, it probably wants a different container.
-- **Don't use arbitrary `p-[13px]`.** No arbitrary spacing values. Period.
+- **Don't use `p-1`, `p-1.5`, `p-6`, `p-8`.**
+- **Don't use arbitrary `p-[13px]`.** No arbitrary spacing values.
 
 ---
 
 ## 3. Typography
 
-| Class       | Use for                                            |
-| ----------- | -------------------------------------------------- |
-| `text-xs`   | Labels, captions, monospace meta, section headers  |
-| `text-sm`   | Body text, list rows, form values                  |
-| `text-base` | Emphasized content, card titles                    |
-| `text-lg`   | Modal titles, section headings                     |
-| `text-xl`   | Primary stat values (header totals)                |
-| `text-2xl`+ | Reserved for marketing/empty-state headlines only  |
+**Fonts:** Lexend for UI (`font-sans`). Space Mono (`font-mono`) only for small muted metadata: variant, set number, grade, cert.
 
-**Fonts:** Inter (UI), JetBrains Mono (numbers, timestamps, codes, labels).
+| Class | Use for |
+|---|---|
+| `text-xs` | Labels, captions, mono meta, section labels |
+| `text-sm` | Body, list rows, form values, chip text |
+| `text-base` | Emphasised content, card titles |
+| `text-lg` | Sheet titles, section headings |
+| `text-xl` | Page titles, CountStat numbers |
+| `text-2xl` | Card detail name (28px) |
+| `text-hero` | HeroValue (48px). Nothing else. |
 
-**Tabular nums:** Any money, count, or time display MUST include `tabular-nums` (or `font-feature-settings: 'tnum'`). Use `<MoneyDisplay />` which handles this automatically.
+**Prices are bold with `tabular-nums`.** Any money, count, or time display MUST include `tabular-nums`. Use `<MoneyDisplay />` or `<HeroValue />`; they handle it.
 
-**Label pattern:** Uppercase meta labels use `text-xs font-mono uppercase tracking-[0.18em] text-neutral`. Use `<SectionHeader />`.
+**Section labels:** uppercase, 12px, `0.12em` tracking, muted — the `.section-label` class. ("MOST VALUABLE", "RECENT", "UPCOMING").
 
 ### Don'ts
-- **Don't use arbitrary sizes** like `text-[11px]` or `text-[13px]`. The only exception is inventory card captions which already use `text-[11px]` — don't propagate it elsewhere.
-- **Don't use `font-thin`, `font-light`, or `font-black`.** Weight scale is 400 / 500 / 600 / 700. That's it.
-- **Don't forget `tabular-nums` on numeric values.** Columns of money will jitter without it.
+- **Don't use arbitrary sizes** like `text-[13px]`. The only exception is the inventory card caption at `text-[11px]`; don't propagate it.
+- **Don't use `font-thin`, `font-light`, or `font-black`.** Weights are 400 / 500 / 600 / 700.
+- **Don't use Space Mono for anything you want people to read.** Meta only.
 
 ---
 
 ## 4. Border radius
 
-| Class            | Use for                               |
-| ---------------- | ------------------------------------- |
-| `rounded-lg`     | Inputs, buttons, small chips          |
-| `rounded-xl`     | Cards, panels, modals, toasts         |
-| `rounded-2xl`    | Phone-frame-level containers only     |
-| `rounded-full`   | Pills, badges, avatars, icon buttons  |
+| Class | px | Use for |
+|---|---|---|
+| `rounded-xl` | 12 | Chips, inputs, list thumbnails |
+| `rounded-2xl` | 16 | Cards, tiles, sheets, More rows, context menus |
+| `rounded-3xl` | 24 | Bottom-sheet top corners only |
+| `rounded-full` | — | Pills, tab bar, IconButton, SearchBar, SegmentedControl |
 
 ### Don'ts
-- **Don't use `rounded-md` or `rounded-sm`.** They're in the wrong place on the scale for this product.
-- **Don't use `rounded` (default 4px).** Always pick from the table.
+- **Don't use `rounded-md`, `rounded-sm` or bare `rounded`.** Pick from the table.
 
 ---
 
 ## 5. Transitions
 
-| Pattern                        | Class                                      |
-| ------------------------------ | ------------------------------------------ |
-| Color/bg hover                 | `transition-colors duration-150`           |
-| Modal backdrop fade            | `transition-opacity duration-150`          |
-| Complex (multi-property)       | `transition-all duration-150`              |
-| Sheet slide-up                 | `transition-transform duration-200 ease-out` |
+| Pattern | Class |
+|---|---|
+| Color/bg hover | `transition-colors duration-150` |
+| Backdrop fade | `transition-opacity duration-150` |
+| Tile press | `transition-transform duration-150` + `active:scale-[0.98]` |
+| Sheet slide-up | `transition-transform duration-200 ease-out` |
 
 **Hard cap: 200ms.** Longer feels sluggish on a show floor.
 
 ### Don'ts
-- **Don't use `duration-300` or `duration-500`.** Too slow for our interaction model.
-- **Don't use `ease-in-out`** for entering elements — it feels draggy. Use `ease-out` for enter, `ease-in` for exit.
-- **Don't animate `height: auto`.** Animate `max-height` with a fixed cap, or better, don't animate.
+- **Don't use `duration-300` or `duration-500`.**
+- **Don't use `ease-in-out`** for entering elements. `ease-out` to enter, `ease-in` to exit.
+- **Don't animate `height: auto`.**
 
 ---
 
 ## 6. Depth & elevation
 
-We do NOT use box-shadows for depth. Depth comes from:
-1. **Border** — `border border-border` (token; correct in both themes)
-2. **Background contrast** — step up one level in the surface stack
-3. **Position** — sticky/fixed panels get a subtle top border, never a shadow
+Depth comes from borders and surface steps (`bg` → `surface` → `surface-2`), never shadows — with **one exception**: the floating tab bar in light mode uses `shadow-tabbar` (`0 4px 24px rgba(15,23,42,.08)`) so it reads as floating over a near-white page. In dark mode that shadow is `none`.
 
-The only shadow allowed: device-frame outer shadow in the mockup canvas. That's it.
+The tab bar is `--surface` at 80% with `backdrop-blur-md` in both themes (`bg-tabbar`).
 
 ### Don'ts
-- **Don't add `shadow-sm`, `shadow-md`, `shadow-lg`** to any in-app surface.
-- **Don't introduce new shadow treatments** "for polish". They read as web-y and break the app aesthetic.
+- **Don't add `shadow-sm` / `shadow-md` / `shadow-lg` to any in-app surface.**
+- **Don't add glow shadows.** They are gone and stay gone.
 
 ---
 
-## 7. Interaction patterns
+## 7. Shell & interaction patterns
 
-**Sticky bottom panel.** Lives outside scroll container, `sticky bottom-0`, fades background into content with a linear gradient top. Height ~68–84px depending on content. Primary action right-aligned.
+**Floating tab bar (mobile).** `components/shell/TabBar.tsx`. A rounded-full pill inset 16px from the screen edges and the safe-area bottom (`.tabbar-inset`). Five icon-only tabs in this order: Search, Inventory, **Home** (centre, default route), POS, More. The active tab sits in a raised `surface-2` pill with an accent icon. Content clears it with `.pb-tabbar-safe` on `<main>`; anything else pinned to the bottom (confirm buttons, action bars) sits above it.
 
-**Modal layering.** Backdrop = `bg-background/80 backdrop-blur-sm`. Panel = `rounded-xl border border-border bg-card p-5 text-foreground`; title = `text-lg font-semibold text-foreground`. One modal at a time — no stacked modals. Use `<Modal />`.
+**Rail (desktop).** `components/shell/Rail.tsx`. The same five items, icon-only, 80px wide. Content shifts right with `md:pl-20`.
 
-**Control sizes (tap targets).** `Button` default / `sm` / `icon` are `h-11` (`lg` is `h-12`); `Input` is `h-11`. Don't shrink them — a show floor needs big targets. The mobile tab bar (`AppNav`) is a fixed `h-16` bottom bar, so bottom-anchored content needs `bottom-20` / `pb-20` on mobile.
+**More.** `/protected/more`, a grouped list — Shows first, then money, people, app. Its header carries the quick theme icon; the full System | Light | Dark toggle is in Settings.
 
-**Toast notifications.** Bottom-center, stacked, `rounded-xl`, max 3 visible. Auto-dismiss at 4s (success) / 6s (warning) / never (error, manual dismiss). Use `<Toast />`.
+**Bottom sheet.** Drag handle, `rounded-3xl` top corners, `bg-surface`. Drag down or X to close; with unsaved changes, close asks first. Save button full-width accent, pinned above the safe area, disabled until something changes.
 
-**Skeleton loading.** Same shape + size as final content, `bg-slate-800/60` pulse (dark) or `bg-slate-200` pulse (light). No spinners except for inline async actions. Use `<Skeleton />`.
+**Context menu (long-press / right-click).** Dims the page, lifts a `surface-2` `rounded-2xl` card near the item: full-width rows of icon + label separated by `border`. Delete is in `down` and separated by a thicker gap. Threshold 450ms; a scroll cancels. `navigator.vibrate(10)` on open where supported.
+
+**Control sizes (tap targets).** `Button` default / `sm` / `icon` are `h-11`; `Input` is `h-11`; `IconButton` is 44px. Don't shrink them.
+
+**Toast notifications.** Bottom-centre, stacked, `rounded-2xl`, above the tab bar, max 3 visible. Auto-dismiss 4s (success) / 6s (warning) / never (error). Use `<Toast />`.
+
+**Skeleton loading.** Same shape + size as final content, `surface-2 → surface` shimmer. No spinners except inline async actions. Use `<Skeleton />`.
 
 **Empty states.** Ghost preview of what will appear + starter CTA. Never "No items yet." alone. Use `<EmptyState />`.
 
-**Recent-action affordance.** Entries < 5 min old show inline undo pill. Fades out over time. This is app-level, not per-component.
-
 ---
 
-## 8. Canonical component patterns
+## 8. Canonical primitives
 
-All in `components/ui/`:
+All in `components/ui/`, exported from `components/ui/index.ts`.
 
-- **`StatCard`** — primary stat display (header totals, deal step summaries). Props: `label`, `value`, `delta?`, `tone?`.
-- **`MoneyDisplay`** — formatted amount with sign, color-coding, tabular nums. Props: `amount`, `tone?`, `showSign?`.
-- **`SectionHeader`** — uppercase mono label. Props: `children`, `action?`.
-- **`Skeleton`** — shimmer placeholder. Props: `className`, `variant?: 'rect' | 'circle' | 'text'`.
-- **`Modal`** — backdrop + panel shell. Props: `open`, `onClose`, `title?`, `children`.
-- **`EmptyState`** — ghost preview + CTA. Props: `title`, `hint?`, `cta?`, `preview?`.
-- **`Toast`** — single notification. Use via `toast.success()` / `.error()` / `.warning()` / `.info()` helpers.
+| Primitive | What it is |
+|---|---|
+| `SegmentedControl` | Pill track, selected segment raised (Value \| Profit, Raw \| Graded) |
+| `TabStrip` | Text tabs with a 2px accent underline (Buy \| Sell \| Trade, RAW \| GRADED) |
+| `Chip` / `ChipRow` | Filter pill; selected = accent-tint bg + accent text. ChipRow scrolls horizontally |
+| `RangePicker` | 1W 1M 3M 6M 1Y All as plain text, active bright |
+| `HeroValue` | 48px bold number; label above as a muted dropdown trigger |
+| `CountStat` / `CountStatRow` | Muted label over a big number, no background (Raw \| Graded \| Sealed) |
+| `CardTile` | Card art tile with frosted overlay (name, meta, price ▲▼); consigned badge; no-image fallback |
+| `SearchBar` | Rounded-full field with a trailing camera icon that opens the cert scanner |
+| `IconButton` | 44px round surface button; `showLabel` for Home quick actions |
+| `StatCard` | Framed stat (legacy; prefer HeroValue / CountStat on new screens) |
+| `MoneyDisplay` | Formatted amount with sign, tone, tabular nums |
+| `SectionHeader` | Uppercase label above a list |
+| `Skeleton`, `Modal`, `EmptyState`, `Toast`, `ConfirmDialog` | As named |
 
-**Prefer these over raw Tailwind.** If you find yourself recreating one of these patterns inline, stop — import the primitive. If the primitive doesn't fit, extend the primitive, don't fork it.
+**Prefer these over raw Tailwind.** If you find yourself recreating one inline, stop — import the primitive. If it doesn't fit, extend it; don't fork it.
 
 ---
 
 ## 9. Quick audit checklist
 
-Before opening a PR, grep your diff for:
-- `text-red-` · `text-blue-` · `text-green-` · `text-yellow-` → swap to semantic tokens
-- `rounded-md` · `rounded-sm` · `rounded ` → swap to scale
-- `shadow-` → remove
-- `text-\[` → swap to scale
+Before committing, grep your diff for:
+- `text-red-` · `text-blue-` · `text-green-` · `text-yellow-` · `violet` → swap to `up` / `down` / `accent`
+- `#[0-9a-f]{6}` · `bg-[#` → swap to a token
+- `style={{ color` · `style={{ background` · `var(--` in TSX → token classes
+- `rounded-md` · `rounded-sm` · bare `rounded` → swap to scale
+- `shadow-` (anything but `shadow-tabbar`) → remove
+- `text-[` → swap to scale
 - `duration-300` · `duration-500` → 150 or 200
-- Raw money formatting → `<MoneyDisplay />`
-- `max-w-* mx-auto` inside a flex container needs `w-full` (otherwise it shrinks to content and won't center)
-- No inline `style` color/background props, no `var(--…)` in TSX → use token classes
+- Raw money formatting → `<MoneyDisplay />` / `<HeroValue />`
+- `max-w-* mx-auto` inside a flex container needs `w-full`, or it shrinks to content and won't centre
+- Every file under `app/protected` stays under 500 lines — split by section
+- Screenshot at 390px wide in **both** themes; nothing under 4.5:1 contrast

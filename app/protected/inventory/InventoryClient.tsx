@@ -402,7 +402,7 @@ export default function InventoryClient({
       {/* ── Mobile add FAB ── */}
       {selectedIds.size === 0 && !addOpen && (
         <button
-          className="fixed bottom-20 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent-primary text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover md:hidden"
+          className="above-tabbar fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-bg transition-colors duration-150 hover:bg-accent-tint hover:text-accent md:hidden"
           onClick={() => { openAdd(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
           aria-label="Add item"
         >

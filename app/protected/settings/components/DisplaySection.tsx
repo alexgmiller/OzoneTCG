@@ -7,9 +7,9 @@ import type { UserSettings } from "../actions";
 import { Section, SettingRow, Segmented, inputClass, type SettingsUpdate } from "./SettingsPrimitives";
 
 const THEMES = [
+  { value: "system", label: "System" },
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
 ] as const;
 
 type ThemeValue = (typeof THEMES)[number]["value"];
@@ -27,7 +27,7 @@ export function DisplaySection({
 
   return (
     <Section icon={Monitor} title="Display">
-      <SettingRow stack label="Theme" description="Light is the default; system follows your device">
+      <SettingRow stack label="Theme" description="System follows your device; both light and dark are first-class">
         <Segmented
           value={activeTheme}
           options={THEMES}

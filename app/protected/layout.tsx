@@ -1,28 +1,14 @@
-import Link from "next/link";
-import AppNav from "@/components/AppNav";
+import TabBar from "@/components/shell/TabBar";
+import Rail from "@/components/shell/Rail";
 import ActiveShowBanner from "@/components/ActiveShowBanner";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { createClient } from "@/lib/supabase/server";
 import { getActiveShow } from "@/app/protected/shows/actions";
-
-// ── Signed-in handle for the sidebar footer ──
-async function getHandle(): Promise<string> {
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getClaims();
-    const email = data?.claims?.email as string | undefined;
-    return email?.split("@")[0] ?? "Account";
-  } catch {
-    return "Account";
-  }
-}
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   // Every page needs the workspace; say so plainly instead of a production error digest
   if (!process.env.OZONE_WORKSPACE_ID) {
     return (
-      <div className="min-h-dvh bg-background p-5 text-foreground">
-        <div className="mx-auto w-full max-w-md space-y-3 rounded-xl border border-border bg-card p-5">
+      <div className="min-h-dvh bg-bg p-5 text-foreground">
+        <div className="mx-auto w-full max-w-md space-y-3 rounded-2xl bg-surface p-5">
           <h1 className="text-lg font-semibold">Setup needed</h1>
           <p className="text-sm text-muted-foreground">
             The <code className="font-mono">OZONE_WORKSPACE_ID</code> environment variable is not set for this
@@ -34,30 +20,19 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     );
   }
 
-  const [activeShow, handle] = await Promise.all([
-    getActiveShow().catch(() => null),
-    getHandle(),
-  ]);
+  const activeShow = await getActiveShow().catch(() => null);
+  const hasActiveShow = !!activeShow;
 
   return (
-    <div className="min-h-dvh bg-background">
-      <AppNav handle={handle} hasActiveShow={!!activeShow} />
+    <div className="min-h-dvh bg-bg">
+      <Rail hasActiveShow={hasActiveShow} />
+      <TabBar hasActiveShow={hasActiveShow} />
 
-      {/* Sidebar is fixed on md+, so content shifts right by its width */}
-      <div className="flex min-h-dvh flex-col md:pl-56">
-        {/* ── Mobile header ── */}
-        <header className="md:hidden sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-sm">
-          <Link href="/protected/dashboard" className="text-base font-bold tracking-tight text-foreground">
-            <span className="text-primary">Ozone</span>TCG
-          </Link>
-          <ThemeSwitcher />
-        </header>
-
-        {/* ── Active show banner ── hides itself on Home and POS */}
+      {/* Rail is fixed on md+, so content shifts right by its width.
+          On mobile the floating tab bar needs clearance at the bottom. */}
+      <div className="flex min-h-dvh flex-col md:pl-20">
         <ActiveShowBanner show={activeShow} />
-
-        {/* pb-20 clears the h-16 mobile tab bar */}
-        <main className="flex w-full flex-1 flex-col px-4 pb-20 md:px-8 md:pb-5">
+        <main className="pb-tabbar-safe flex w-full flex-1 flex-col px-4 md:px-8 md:pb-5">
           {children}
         </main>
       </div>

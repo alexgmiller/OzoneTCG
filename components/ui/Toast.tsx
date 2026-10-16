@@ -44,8 +44,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ push }}>
       {children}
-      {/* bottom-20 clears the h-16 mobile tab bar (AppNav); the bar is md:hidden */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex flex-col items-start gap-2 pl-4 pr-20 md:bottom-5 md:items-center md:px-4">
+      {/* .above-tabbar clears the floating mobile tab bar (+ safe area); the bar is md:hidden */}
+      <div className="above-tabbar pointer-events-none fixed inset-x-0 z-50 flex flex-col items-start gap-2 pl-4 pr-20 md:bottom-5 md:items-center md:px-4">
         {toasts.map((t) => (
           <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
         ))}

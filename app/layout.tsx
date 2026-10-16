@@ -20,6 +20,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
+  viewportFit: "cover", // lets env(safe-area-inset-bottom) reach the floating tab bar
 };
 
 const lexend = Lexend({
@@ -46,7 +47,7 @@ export default function RootLayout({
       <body className={`${lexend.variable} ${spaceMono.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="light"
+          defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >

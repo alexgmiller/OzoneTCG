@@ -4,127 +4,153 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    OzoneTCG — global styles
-   Light is the default; `.dark` on <html> (next-themes, class strategy) flips
-   every token. Depth comes from borders + surface steps, never shadows (§6).
-   Screens style themselves with Tailwind token classes and components/ui;
-   only the handful of rules below still live here.
+   One palette, two themes. The brief's tokens (--bg, --surface, --accent, …)
+   are the source of truth and carry their exact values. The shadcn HSL vars
+   below them are derived approximations kept so the existing bg-background /
+   bg-card / text-muted-foreground classes keep rendering while screens migrate.
+   System is the default; next-themes sets .dark on <html> (class strategy).
+   Depth comes from borders + surface steps. The only shadow is the tab bar's.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── Brief tokens (light) ── exact values from the Phase 3 spec */
+:root {
+  --bg:           #f5f6f8;
+  --surface:      #ffffff;
+  --surface-2:    #eef0f4;
+  --border:       rgba(15, 23, 42, 0.08);
+  --text:         #0f172a;
+  --text-muted:   #64748b;
+  --accent:       #0d9488;   /* darker teal so it reads on white */
+  --accent-tint:  rgba(13, 148, 136, 0.10);
+  --up:           #059669;
+  --down:         #e11d48;
+  --up-tint:      rgba(5, 150, 105, 0.10);
+  --down-tint:    rgba(225, 29, 72, 0.10);
+
+  --radius-chip:  12px;      /* chips, inputs */
+  --radius-card:  16px;      /* cards, tiles, sheets */
+  --radius-full:  999px;     /* pills */
+
+  /* tab bar: --surface at 80% + blur, plus a soft shadow in light only */
+  --tabbar-bg:     rgba(255, 255, 255, 0.80);
+  --tabbar-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+}
+
+/* ── Brief tokens (dark) ── */
+.dark {
+  --bg:           #11141a;
+  --surface:      #1b1f27;
+  --surface-2:    #232833;
+  --border:       rgba(255, 255, 255, 0.06);
+  --text:         #f5f7fa;
+  --text-muted:   #8a93a3;
+  --accent:       #5eead4;
+  --accent-tint:  rgba(94, 234, 212, 0.12);
+  --up:           #34d399;
+  --down:         #f43f5e;
+  --up-tint:      rgba(52, 211, 153, 0.12);
+  --down-tint:    rgba(244, 63, 94, 0.12);
+
+  --tabbar-bg:     rgba(27, 31, 39, 0.80);
+  --tabbar-shadow: none;
+}
+
 @layer base {
-  /* ── shadcn HSL variables (light) ── */
+  /* ── shadcn HSL vars (light), derived from the palette above ──
+     Hue/sat/light approximations of the hex tokens. Border is the alpha
+     border composited on --surface. Prefixed sh- so they never collide with
+     the brief's --border / --accent names. */
   :root {
-    --background: 250 30% 99%;
-    --foreground: 250 25% 8%;
-    --card: 0 0% 100%;
-    --card-foreground: 250 25% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 250 25% 8%;
-    --primary: 265 89% 65%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 258 60% 95%;
-    --secondary-foreground: 258 55% 38%;
-    --muted: 250 30% 95%;
-    --muted-foreground: 250 15% 46%;
-    --accent: 258 60% 95%;
-    --accent-foreground: 258 55% 38%;
-    --destructive: 347 77% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 250 30% 88%;
-    --input: 250 30% 88%;
-    --ring: 265 89% 65%;
-    --radius: 0.625rem;
+    --sh-background: 220 18% 97%;
+    --sh-foreground: 222 47% 11%;
+    --sh-card: 0 0% 100%;
+    --sh-card-foreground: 222 47% 11%;
+    --sh-popover: 0 0% 100%;
+    --sh-popover-foreground: 222 47% 11%;
+    --sh-primary: 175 84% 32%;
+    --sh-primary-foreground: 0 0% 100%;
+    --sh-secondary: 220 21% 95%;
+    --sh-secondary-foreground: 222 47% 11%;
+    --sh-muted: 220 21% 95%;
+    --sh-muted-foreground: 215 16% 47%;
+    --sh-hover: 220 21% 95%;
+    --sh-hover-foreground: 222 47% 11%;
+    --sh-destructive: 347 77% 50%;
+    --sh-destructive-foreground: 0 0% 98%;
+    --sh-border: 220 20% 93%;
+    --sh-input: 220 20% 93%;
+    --sh-ring: 175 84% 32%;
+    --radius: 0.75rem;
   }
 
-  /* ── shadcn HSL variables (dark) ── */
+  /* ── shadcn HSL vars (dark) ── */
   .dark {
-    --background: 255 29% 6%;
-    --foreground: 214 32% 96%;
-    --card: 252 31% 10%;
-    --card-foreground: 214 32% 89%;
-    --popover: 257 28% 16%;
-    --popover-foreground: 214 32% 89%;
-    --primary: 265 89% 65%;
-    --primary-foreground: 265 60% 10%;
-    --secondary: 255 22% 17%;
-    --secondary-foreground: 214 32% 89%;
-    --muted: 255 22% 14%;
-    --muted-foreground: 215 14% 56%;
-    --accent: 255 22% 17%;
-    --accent-foreground: 214 32% 89%;
-    --destructive: 347 77% 35%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 255 16% 16%;
-    --input: 255 16% 16%;
-    --ring: 265 89% 65%;
+    --sh-background: 220 21% 8%;
+    --sh-foreground: 216 33% 97%;
+    --sh-card: 220 18% 13%;
+    --sh-card-foreground: 216 33% 97%;
+    --sh-popover: 220 18% 13%;
+    --sh-popover-foreground: 216 33% 97%;
+    --sh-primary: 172 77% 64%;
+    --sh-primary-foreground: 220 21% 8%;
+    --sh-secondary: 221 19% 17%;
+    --sh-secondary-foreground: 216 33% 97%;
+    --sh-muted: 221 19% 17%;
+    --sh-muted-foreground: 218 12% 59%;
+    --sh-hover: 221 19% 17%;
+    --sh-hover-foreground: 216 33% 97%;
+    --sh-destructive: 350 89% 60%;
+    --sh-destructive-foreground: 0 0% 98%;
+    --sh-border: 222 15% 14%;
+    --sh-input: 222 15% 14%;
+    --sh-ring: 172 77% 64%;
   }
 }
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  body { @apply bg-bg font-sans text-foreground; }
   html { scroll-behavior: smooth; }
-}
-
-/* ── Ozone token CSS variables (light) ──
-   Only the variables still read by the rules below (scrollbar, focus ring,
-   .skeleton, .loading-*). Light values live on :root so there is no dark
-   flash before hydration. */
-:root {
-  --bg-surface:       #f1f3f6;
-  --bg-surface-hover: #eceef2;
-
-  --accent-primary:   #8b5cf6;
-
-  --text-muted:       #94a3b8;
-
-  /* semantic tones (Tailwind positive/negative/warning/neutral) — 600-weight for light */
-  --positive: 5 150 105;
-  --negative: 225 29 72;
-  --warning:  217 119 6;
-  --neutral:  100 116 139;
-
-  --radius-md:   10px;
-  --radius-full: 999px;
-}
-
-/* ── Ozone token CSS variables (dark) ── */
-.dark {
-  --bg-surface:       #161222;
-  --bg-surface-hover: #1e1830;
-
-  --accent-primary:   #8b5cf6;
-
-  --text-muted:       #64748b;
-
-  /* 400-weight tones read best on dark surfaces */
-  --positive: 52 211 153;
-  --negative: 251 113 133;
-  --warning:  251 191 36;
-  --neutral:  148 163 184;
-
-  --radius-md:   10px;
-  --radius-full: 999px;
 }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar       { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.22);
+  background: var(--accent-tint);
   border-radius: var(--radius-full);
   transition: background 150ms;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.45); }
-* { scrollbar-width: thin; scrollbar-color: rgba(139,92,246,0.22) transparent; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+* { scrollbar-width: thin; scrollbar-color: var(--accent-tint) transparent; }
 
 /* ── Selection & focus ── */
-::selection { background: rgba(139, 92, 246, 0.28); }
-:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+::selection { background: var(--accent-tint); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Button tactile press ──
    Radix trigger buttons ([data-state]) are excluded: a transform at click time
    disrupts Portal position calculation. */
 button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([data-state]) { transform: scale(0.97); }
+
+/* ── Section labels (design-system §3) ── uppercase, 12px, 0.12em, muted */
+.section-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Hide scrollbars on horizontal chip / tile rails ── */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ── Floating tab bar + safe area ──
+   The bar floats 16px above the home indicator; content clears it. */
+.tabbar-inset { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+.pb-tabbar-safe { padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)); }
+/* Toasts, FABs and action bars pin here so they clear the floating bar. */
+.above-tabbar { bottom: calc(6rem + env(safe-area-inset-bottom, 0px)); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SKELETON LOADERS (components/ui/Skeleton.tsx)
@@ -136,13 +162,13 @@ button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([dat
 }
 .skeleton {
   background: linear-gradient(90deg,
-    var(--bg-surface)       25%,
-    var(--bg-surface-hover) 50%,
-    var(--bg-surface)       75%
+    var(--surface-2) 25%,
+    var(--surface)   50%,
+    var(--surface-2) 75%
   );
   background-size: 600px 100%;
   animation: shimmer 1.6s ease-in-out infinite;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-chip);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -177,8 +203,8 @@ button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([dat
 .loading-ring {
   width: 28px;
   height: 28px;
-  border: 2.5px solid rgba(139, 92, 246, 0.15);
-  border-top-color: var(--accent-primary);
+  border: 2.5px solid var(--accent-tint);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: ring-spin 1s linear infinite;
 }

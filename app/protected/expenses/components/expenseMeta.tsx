@@ -50,7 +50,7 @@ export function catMeta(c: ExpenseCategory) {
   return CATEGORIES.find((x) => x.value === c) ?? CATEGORIES[CATEGORIES.length - 1];
 }
 
-// Per-category visual tokens: amber=warning, violet=accent-primary, emerald=positive, slate=neutral.
+// Per-category visual tokens: amber=warning, teal=accent, emerald=positive, slate=neutral.
 export const CAT_TOKEN: Record<ExpenseCategory, { border: string; pill: string; text: string; label: string }> = {
   meals:        { border: "border-l-warning",        pill: "border-warning-border bg-warning-soft text-warning",                         text: "text-warning",        label: "MEAL"   },
   mileage:      { border: "border-l-accent-primary", pill: "border-accent-primary-border bg-accent-primary-soft text-accent-primary",    text: "text-accent-primary", label: "MILE"   },

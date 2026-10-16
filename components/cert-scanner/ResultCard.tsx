@@ -87,7 +87,7 @@ export function ResultCard({
       </div>
 
       {/* ── Grade tabs (horizontal scroll) ── */}
-      <div ref={gradeScrollRef} className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+      <div ref={gradeScrollRef} className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
         {[...GRADE_LADDER].reverse().map((g) => {
           const selected = g === selectedGrade;
           const fetching = !selected && lookup.isGradeFetching(g);
@@ -101,7 +101,7 @@ export function ResultCard({
             >
               {g}
               {fetching && (
-                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent-secondary" />
+                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent" />
               )}
             </button>
           );

@@ -14,7 +14,7 @@ export function Lightbox({ url, onClose }: { url: string | null; onClose: () => 
       <button
         type="button"
         aria-label="Close"
-        className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-lg text-neutral transition-colors duration-150 hover:text-accent-secondary"
+        className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-lg text-neutral transition-colors duration-150 hover:text-accent"
         onClick={onClose}
       >
         <X size={22} />

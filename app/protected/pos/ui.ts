@@ -6,7 +6,7 @@ export const INPUT =
 export const BTN =
   "h-11 shrink-0 whitespace-nowrap rounded-lg border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted disabled:opacity-40";
 
-// Selectable chip; selection is always the violet accent
+// Selectable chip; selection is always the teal accent
 export const chip = (on: boolean) =>
   `h-11 shrink-0 whitespace-nowrap rounded-lg border px-3 text-sm transition-colors duration-150 ${
     on
