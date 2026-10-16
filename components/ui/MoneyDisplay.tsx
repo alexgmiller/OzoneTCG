@@ -3,8 +3,10 @@ import { cn } from "@/lib/utils";
 export type MoneyTone = "auto" | "positive" | "negative" | "neutral";
 
 // ── MoneyDisplay ──
-// Canonical currency value: tabular nums, sign prefix, tone colour.
-// tone="auto" (default): negative → rose, positive → emerald, zero → neutral.
+// Canonical currency value: tabular nums, sign prefix, tone colour. Prices
+// are set in the UI face (Lexend); callers choose the weight. Space Mono is
+// for small muted metadata only (design-system §3).
+// tone="auto" (default): negative → down, positive → up, zero → neutral.
 // Pass an explicit tone when the meaning differs (e.g. expected cash isn't "profit").
 export function MoneyDisplay({
   amount,
@@ -38,7 +40,7 @@ export function MoneyDisplay({
   const prefix = showSign ? (amount < 0 ? "–" : "+") : amount < 0 ? "–" : "";
 
   return (
-    <span className={cn("font-mono tabular-nums", toneClass, className)}>
+    <span className={cn("tabular-nums", toneClass, className)}>
       {prefix}${body}
     </span>
   );

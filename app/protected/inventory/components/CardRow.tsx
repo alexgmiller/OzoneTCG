@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { MoneyDisplay, useLongPress, type PressPoint } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { Item } from "../types";
@@ -35,6 +36,15 @@ export function CardRow({ it, price, cost, selecting, selected, onOpen, onToggle
   const sold = it.status === "sold";
   const consigned = it.owner === "consigner";
   const meta = rowMeta(it);
+  // Dead art falls back to the blank thumb; the mount check covers an error
+  // that fires on the server-rendered <img> before hydration attaches onError
+  const [broken, setBroken] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    setBroken(false);
+    const el = imgRef.current;
+    if (el && el.complete && el.naturalWidth === 0) setBroken(true);
+  }, [it.image_url]);
 
   return (
     <button
@@ -55,9 +65,9 @@ export function CardRow({ it, price, cost, selecting, selected, onOpen, onToggle
       )}
 
       <div className="h-14 w-10 shrink-0 overflow-hidden rounded-thumb bg-surface-2">
-        {it.image_url && (
+        {it.image_url && !broken && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={it.image_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+          <img ref={imgRef} src={it.image_url} alt="" loading="lazy" onError={() => setBroken(true)} className="h-full w-full object-cover" />
         )}
       </div>
 

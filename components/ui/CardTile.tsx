@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,17 @@ export function CardTile({
   name, setNumber, meta, price, delta = null, imageUrl, consigned, selected, width, onClick, className,
 }: Props) {
   const Tag = onClick ? "button" : "div";
+  // A dead image URL falls back to the no-image tile instead of a broken glyph.
+  // The error can fire on the server-rendered <img> before hydration attaches
+  // onError, so the mount check catches that case too.
+  const [broken, setBroken] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    setBroken(false);
+    const el = imgRef.current;
+    if (el && el.complete && el.naturalWidth === 0) setBroken(true);
+  }, [imageUrl]);
+  const art = imageUrl && !broken ? imageUrl : null;
 
   return (
     <Tag
@@ -46,9 +58,9 @@ export function CardTile({
         className,
       )}
     >
-      {imageUrl ? (
+      {art ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+        <img ref={imgRef} src={art} alt="" loading="lazy" onError={() => setBroken(true)} className="absolute inset-0 h-full w-full object-cover" />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center p-3">
           <span className="line-clamp-3 text-center text-sm font-medium text-muted-foreground">{name}</span>
@@ -66,7 +78,7 @@ export function CardTile({
         </span>
       )}
 
-      {imageUrl && (
+      {art && (
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 bg-black/45 px-2.5 pb-2.5 pt-3 text-white backdrop-blur-md">
           <div className="flex items-baseline gap-1.5">
             <span className="truncate text-sm font-semibold">{name}</span>
