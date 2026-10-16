@@ -13,8 +13,9 @@ export type TxRow = {
   cash_paid: number | null;
   cost_basis: number | null;
   cash_difference: number | null;
-  // Present only when the query joins items for the card name
-  card?: { name: string } | null;
+  payment_method?: string | null;
+  // Present only when the query joins items for the card name / art
+  card?: { name: string; image_url?: string | null } | null;
 };
 
 export type DealMode = "buy" | "sell" | "trade";
@@ -34,6 +35,8 @@ export type RecentDeal = {
   date: string;
   cardCount: number;
   firstName: string | null;
+  imageUrl: string | null;
+  method: string | null;
   // Signed cash from our side: sells positive, buys negative, trades = −cash_difference
   amount: number;
 };
@@ -115,12 +118,15 @@ export function groupRecentDeals(rows: TxRow[], limit = 5): RecentDeal[] {
       : mode === "sell" ? sum((r) => r.sale_price)
       : -n(lead.cash_difference);
 
+    const withCard = rs.find((r) => r.card?.name);
     deals.push({
       id,
       mode,
       date: lead.date,
       cardCount: rs.length,
-      firstName: lead.card?.name ?? rs.find((r) => r.card?.name)?.card?.name ?? null,
+      firstName: lead.card?.name ?? withCard?.card?.name ?? null,
+      imageUrl: lead.card?.image_url ?? rs.find((r) => r.card?.image_url)?.card?.image_url ?? null,
+      method: lead.payment_method ?? null,
       amount: round2(amount),
     });
   }

@@ -35,6 +35,7 @@ file is the source of truth for what has been applied.
 | `20260721_scan_photos.sql` | ✅ | scan photo persistence for recognition training data (applied 2026-07-21) |
 | `20261013_internal_v1.sql` | ✅ | Drops guest_pins, scan_photos, card_embeddings (+ match_card), pop_snapshots. Take the backups at the top first; delete the scan-photos bucket in the dashboard (SQL can't). After running, those tables will show MISSING in the check below — expected. | (applied 2026-10-14; bucket still to delete in the dashboard)
 | `20261013_pos.sql` | ✅ | applied 2026-10-14. card_transactions payment_method/counterparty/show_session_id/client_id/paid_by/sale_price; deal_logs.transaction_id. Optional commented backfill of legacy deals into the ledger at the bottom. |
+| `20261016_inventory_snapshots.sql` | ⬜ | Home value chart. One row per workspace per day (total_fmv, total_cost, item_count), written by the 03:00 refresh-prices cron after it updates prices. The chart shows an empty state until two rows exist. |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.
 

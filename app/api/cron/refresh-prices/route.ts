@@ -59,5 +59,49 @@ export async function GET(req: NextRequest) {
   }
 
   console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items`);
-  return NextResponse.json({ updated, total: items.length });
+
+  // ── Daily inventory snapshot ──
+  // One row per workspace per day feeds the Home value chart. Re-read after the
+  // updates so the snapshot reflects today's prices. Upsert on (workspace, date)
+  // keeps a re-run idempotent.
+  const snapshots = await writeInventorySnapshots(supabase);
+
+  return NextResponse.json({ updated, total: items.length, snapshots });
+}
+
+type StockRow = { workspace_id: string; market: number | null; cost: number | null };
+
+async function writeInventorySnapshots(supabase: ReturnType<typeof createAdminClient>): Promise<number> {
+  const { data, error } = await supabase
+    .from("items")
+    .select("workspace_id, market, cost")
+    .eq("status", "inventory");
+  if (error || !data) {
+    console.error("[cron/refresh-prices] snapshot read failed:", error?.message);
+    return 0;
+  }
+
+  const byWorkspace = new Map<string, { total_fmv: number; total_cost: number; item_count: number }>();
+  for (const row of data as StockRow[]) {
+    const agg = byWorkspace.get(row.workspace_id) ?? { total_fmv: 0, total_cost: 0, item_count: 0 };
+    agg.total_fmv += row.market ?? 0;
+    agg.total_cost += row.cost ?? 0;
+    agg.item_count += 1;
+    byWorkspace.set(row.workspace_id, agg);
+  }
+
+  const date = new Date().toISOString().slice(0, 10);
+  const rows = [...byWorkspace].map(([workspace_id, agg]) => ({ workspace_id, date, ...agg }));
+  if (rows.length === 0) return 0;
+
+  const { error: upsertErr } = await supabase
+    .from("inventory_snapshots")
+    .upsert(rows, { onConflict: "workspace_id,date" });
+  if (upsertErr) {
+    // The table arrives with migrations/20261016_inventory_snapshots.sql; until
+    // it is applied the price refresh must still succeed.
+    console.error("[cron/refresh-prices] snapshot write failed:", upsertErr.message);
+    return 0;
+  }
+  return rows.length;
 }
