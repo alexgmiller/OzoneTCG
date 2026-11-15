@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { Button, Input, MoneyDisplay, Page, PageHeader, Segmented, useToast } from "@/components/ui";
+import { Button, Input, MoneyDisplay, Page, PageHeader, Segmented, useConfirm, useToast } from "@/components/ui";
 import { startAutoSync } from "@/lib/offlineSync";
 import { endShowSession, startShow, type ActiveShowInfo } from "@/app/protected/shows/actions";
 import type { Mode, PickItem } from "./ledger";
@@ -27,6 +27,7 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
 }) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [attached, setAttached] = useState(true);
   const [showName, setShowName] = useState(scheduled?.name ?? "");
@@ -48,6 +49,17 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
     } finally {
       setBusy(false);
     }
+  }
+
+  async function endShow(show: ActiveShowInfo) {
+    const ok = await confirm({
+      title: `End ${show.name}?`,
+      description: "The show closes and new deals stop attaching to it.",
+      confirmLabel: "End show",
+      destructive: true,
+    });
+    if (!ok) return;
+    await run(() => endShowSession(show.id, cash ? Number(cash) : null));
   }
 
   return (
@@ -75,10 +87,10 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
                 <span className="truncate">Not attached · tap to attach</span>
               )}
             </button>
-            <span className="shrink-0 text-sm text-muted-foreground">
-              <MoneyDisplay amount={activeShow.expected_cash} tone="neutral" className="font-semibold text-foreground" />
-            </span>
-            <Button variant="outline" className="shrink-0" onClick={() => setEnding((e) => !e)} aria-expanded={ending}>End</Button>
+            <div className="shrink-0 text-right">
+              <div className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Cash in drawer</div>
+              <MoneyDisplay amount={activeShow.expected_cash} tone="neutral" className="text-base font-semibold text-foreground" />
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -98,14 +110,26 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
             </div>
           </div>
         )}
-        {activeShow && ending && (
-          <div className="flex gap-2">
-            <Input className="flex-1" type="number" inputMode="decimal" value={cash}
-              onChange={(e) => setCash(e.target.value)} placeholder="Counted cash (optional)" aria-label="Counted cash" />
-            <Button variant="outline" className="shrink-0" disabled={busy}
-              onClick={() => run(() => endShowSession(activeShow.id, cash ? Number(cash) : null))}>
-              End show
+        {/* Ending lives on its own row, away from the attach toggle, behind a confirm */}
+        {activeShow && !ending && (
+          <div className="flex justify-end border-t border-border pt-2">
+            <Button variant="destructive-ghost" size="sm" onClick={() => setEnding(true)} aria-expanded={false}>
+              End show…
             </Button>
+          </div>
+        )}
+        {activeShow && ending && (
+          <div className="space-y-2 border-t border-border pt-3">
+            <Input type="number" inputMode="decimal" value={cash}
+              onChange={(e) => setCash(e.target.value)} placeholder="Counted cash (optional)" aria-label="Counted cash" />
+            <div className="flex gap-2">
+              <Button variant="ghost" className="flex-1" disabled={busy} onClick={() => { setEnding(false); setCash(""); }}>
+                Cancel
+              </Button>
+              <Button variant="destructive" className="flex-1" loading={busy} onClick={() => endShow(activeShow)}>
+                End show
+              </Button>
+            </div>
           </div>
         )}
       </header>

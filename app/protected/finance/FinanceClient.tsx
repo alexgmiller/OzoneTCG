@@ -81,13 +81,13 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
   const periods = [data.current, ...data.periods];
 
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader title="Finance" />
 
       {/* ── Year to date ── */}
       <section className="space-y-2">
         <SectionHeader>{data.year} to date</SectionHeader>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <StatCard label="Revenue" money={data.ytd.revenue} />
           <StatCard label="Gross profit" value={<MoneyDisplay amount={data.ytd.grossProfit} showSign />} />
           <StatCard label="Expenses" money={data.ytd.expenses} />
@@ -95,59 +95,64 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
         </div>
       </section>
 
-      {/* ── P&L ── */}
-      <section className="space-y-3">
-        <Segmented options={VIEWS} value={view} onChange={setView} aria-label="P&L view" />
-        <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-          {view === "month"
-            ? months.map((m) => <PnlRow key={m.month} title={fmtMonth(m.month)} p={m} />)
-            : periods.map((p) => (
-                <PnlRow key={p.id} p={p}
-                  title={p.period_end ? `${fmtDay(p.period_start)} – ${fmtDay(p.period_end)}` : `Since ${fmtDay(p.period_start)}`}
-                  sub={periodSub(p)} />
-              ))}
-        </ul>
-        {view === "period" && (
-          <Button asChild variant="outline" className="w-full"><Link href="/protected/payout">Settle up in Payout</Link></Button>
-        )}
-      </section>
-
-      {/* ── Expenses by category ── */}
-      <section className="space-y-2">
-        <SectionHeader action={<Link href="/protected/expenses/tax-report" className="text-xs text-accent-primary">Tax report →</Link>}>
-          {data.year} expenses by category
-        </SectionHeader>
-        {data.categories.length === 0 ? (
-          <EmptyState title="No expenses this year" hint="Expenses you log will be grouped here." />
-        ) : (
+      {/* lg+: P&L takes two thirds, categories + exports sit beside it */}
+      <div className="grid gap-5 lg:grid-cols-3 lg:items-start">
+        {/* ── P&L ── */}
+        <section className="space-y-3 lg:col-span-2">
+          <Segmented options={VIEWS} value={view} onChange={setView} aria-label="P&L view" />
           <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-            {data.categories.map((c) => (
-              <li key={c.category} className="flex min-h-12 items-center gap-3 px-4 py-2">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm text-foreground">{label(c.category)}</div>
-                  <div className="text-xs text-muted-foreground tabular-nums">
-                    {c.count} · deductible <MoneyDisplay amount={c.deductible} tone="neutral" />
-                  </div>
-                </div>
-                <MoneyDisplay amount={c.total} tone="neutral" className="text-sm font-semibold text-foreground" />
-              </li>
-            ))}
+            {view === "month"
+              ? months.map((m) => <PnlRow key={m.month} title={fmtMonth(m.month)} p={m} />)
+              : periods.map((p) => (
+                  <PnlRow key={p.id} p={p}
+                    title={p.period_end ? `${fmtDay(p.period_start)} – ${fmtDay(p.period_end)}` : `Since ${fmtDay(p.period_start)}`}
+                    sub={periodSub(p)} />
+                ))}
           </ul>
-        )}
-      </section>
+          {view === "period" && (
+            <Button asChild variant="outline" className="w-full"><Link href="/protected/payout">Settle up in Payout</Link></Button>
+          )}
+        </section>
 
-      {/* ── Exports ── */}
-      <section className="space-y-2">
-        <SectionHeader>Export</SectionHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <Button variant="outline" disabled={busy !== null} onClick={() => exportCsv("transactions", exportTransactionsCSV)}>
-            <Download size={16} />{busy === "transactions" ? "Exporting…" : "Transactions CSV"}
-          </Button>
-          <Button variant="outline" disabled={busy !== null} onClick={() => exportCsv("expenses", exportExpensesCSV)}>
-            <Download size={16} />{busy === "expenses" ? "Exporting…" : "Expenses CSV"}
-          </Button>
+        <div className="space-y-5">
+          {/* ── Expenses by category ── */}
+          <section className="space-y-2">
+            <SectionHeader action={<Link href="/protected/expenses/tax-report" className="text-xs text-accent-primary">Tax report →</Link>}>
+              {data.year} expenses by category
+            </SectionHeader>
+            {data.categories.length === 0 ? (
+              <EmptyState title="No expenses this year" hint="Expenses you log will be grouped here." />
+            ) : (
+              <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+                {data.categories.map((c) => (
+                  <li key={c.category} className="flex min-h-12 items-center gap-3 px-4 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-foreground">{label(c.category)}</div>
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        {c.count} · deductible <MoneyDisplay amount={c.deductible} tone="neutral" />
+                      </div>
+                    </div>
+                    <MoneyDisplay amount={c.total} tone="neutral" className="text-sm font-semibold text-foreground" />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* ── Exports ── */}
+          <section className="space-y-2">
+            <SectionHeader>Export</SectionHeader>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" disabled={busy !== null} onClick={() => exportCsv("transactions", exportTransactionsCSV)}>
+                <Download size={16} />{busy === "transactions" ? "Exporting…" : "Transactions CSV"}
+              </Button>
+              <Button variant="outline" disabled={busy !== null} onClick={() => exportCsv("expenses", exportExpensesCSV)}>
+                <Download size={16} />{busy === "expenses" ? "Exporting…" : "Expenses CSV"}
+              </Button>
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
     </Page>
   );
 }

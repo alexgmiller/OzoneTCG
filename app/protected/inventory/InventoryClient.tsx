@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { LayoutGrid, List, Plus } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
-import { Button, useToast, useConfirm } from "@/components/ui";
+import { Button, Segmented, useToast, useConfirm } from "@/components/ui";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
 import { createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, fetchCardData } from "./actions";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
@@ -17,10 +17,17 @@ import { ItemDetailModal } from "./components/ItemDetailModal";
 import { EditItemModal, MassEditModal, SellModal, BulkCostModal } from "./components/InventoryModals";
 import { InventoryFilters, defaultFilters, countActiveFilters, type Filters } from "./components/InventoryFilters";
 import { InventorySummary } from "./components/InventorySummary";
-import { InventoryList } from "./components/InventoryList";
+import { InventoryList, type InventoryView } from "./components/InventoryList";
 import { SelectionBar } from "./components/SelectionBar";
 import GradingSection from "./components/GradingSection";
 import AddItemPanel from "./components/AddItemPanel";
+
+const VIEW_KEY = "inventory_view";
+
+const VIEW_OPTIONS = [
+  { value: "list", label: <><List size={18} aria-hidden /><span className="sr-only">List</span></> },
+  { value: "grid", label: <><LayoutGrid size={18} aria-hidden /><span className="sr-only">Grid</span></> },
+] as const;
 
 // `items` holds active rows plus the most recent sold rows; sold rows only render under the Sold filter.
 export default function InventoryClient({
@@ -46,6 +53,20 @@ export default function InventoryClient({
   const pricing = usePricing(activeItems, slabPrices, rawCardPrices);
   const { priceFor } = pricing;
   const [busy, setBusy] = useState(false);
+
+  // ── List / grid view ── per device: stored choice, else grid from md up
+  const [view, setViewState] = useState<InventoryView>("list");
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_KEY);
+      if (stored === "list" || stored === "grid") setViewState(stored);
+      else if (window.innerWidth >= 768) setViewState("grid");
+    } catch {}
+  }, []);
+  const setView = (v: InventoryView) => {
+    setViewState(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch {}
+  };
 
   // ── Panels / pickers ──
   const [addOpen, setAddOpen] = useState(false);
@@ -372,17 +393,21 @@ export default function InventoryClient({
       )}
 
       {/* ── List header ── */}
-      <div className="flex min-h-11 items-center justify-between">
+      <div className="flex min-h-11 items-center justify-between gap-2">
         <span className="font-mono text-xs uppercase tracking-[0.18em] text-neutral tabular-nums">{listLabel}</span>
-        {displayedItems.length > 0 && (
-          <Button variant="link" className="h-11 px-2" onClick={selectAll}>
-            {selectedIds.size === displayedItems.length ? "Deselect all" : "Select all"}
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {displayedItems.length > 0 && (
+            <Button variant="link" className="h-11 px-2" onClick={selectAll}>
+              {selectedIds.size === displayedItems.length ? "Deselect all" : "Select all"}
+            </Button>
+          )}
+          <Segmented options={VIEW_OPTIONS} value={view} onChange={setView} kind="radio" aria-label="Layout" className="w-24" />
+        </div>
       </div>
 
       <InventoryList
         items={displayedItems}
+        view={view}
         totalCount={soldFilter ? soldCount : activeCount}
         soldFilter={soldFilter}
         priceFor={priceOf}

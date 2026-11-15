@@ -9,23 +9,26 @@ export default function PosLoading() {
       <Skeleton className="h-7 w-24 rounded-lg" />
 
       {/* Show session */}
-      <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-3">
-        <Skeleton className="h-11 flex-1 rounded-lg" />
-        <Skeleton variant="text" className="w-16" />
-        <Skeleton className="h-11 w-16 rounded-lg" />
+      <div className="space-y-3 rounded-xl border border-border bg-card p-3">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-11 flex-1 rounded-lg" />
+          <div className="w-24 space-y-1">
+            <Skeleton variant="text" className="w-full" />
+            <Skeleton variant="text" className="ml-auto w-16" />
+          </div>
+        </div>
+        <div className="flex justify-end border-t border-border pt-2">
+          <Skeleton className="h-11 w-24 rounded-lg" />
+        </div>
       </div>
 
       {/* Mode switch */}
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-12 rounded-lg" />
-        ))}
-      </div>
+      <Skeleton className="h-12" />
 
       {/* Category chips + card entry */}
       <div className="flex gap-2">
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-11 w-20 rounded-lg" />
+          <Skeleton key={i} className="h-11 w-20 rounded-full" />
         ))}
       </div>
       <div className="flex gap-2">

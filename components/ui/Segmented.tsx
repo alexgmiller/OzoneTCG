@@ -45,7 +45,7 @@ export function Segmented<T extends string>({
             {...(radio ? { "aria-checked": on } : { "aria-selected": on })}
             onClick={() => onChange(v)}
             className={cn(
-              "flex-1 px-3 text-sm font-semibold transition-colors duration-150",
+              "flex flex-1 items-center justify-center gap-2 px-3 text-sm font-semibold transition-colors duration-150",
               size === "lg" ? "h-12" : "h-11",
               on ? "bg-accent-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
             )}

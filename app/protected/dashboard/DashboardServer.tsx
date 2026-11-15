@@ -58,25 +58,29 @@ export default async function DashboardServer() {
   // ── Layout ──
 
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader title="Home" />
       <DashboardClient workspaceId={workspaceId} />
 
-      <ActiveShowChip show={activeShow} />
+      {/* Phone: one column, actions first. lg+: act + today | history + lifetime */}
+      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+        <div className="space-y-5">
+          <ActiveShowChip show={activeShow} />
+          <QuickActions />
+          <section className="space-y-3">
+            <SectionHeader>Today</SectionHeader>
+            <TodayStats rows={todayRows} />
+          </section>
+        </div>
 
-      <section className="space-y-3">
-        <SectionHeader>Today</SectionHeader>
-        <TodayStats rows={todayRows} />
-      </section>
-
-      <QuickActions />
-
-      <section className="space-y-3">
-        <SectionHeader>Recent activity</SectionHeader>
-        <RecentActivity deals={recentDeals} />
-      </section>
-
-      <LifetimeSection totals={totals} />
+        <div className="space-y-5">
+          <section className="space-y-3">
+            <SectionHeader>Recent activity</SectionHeader>
+            <RecentActivity deals={recentDeals} />
+          </section>
+          <LifetimeSection totals={totals} />
+        </div>
+      </div>
     </Page>
   );
 }

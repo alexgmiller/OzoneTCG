@@ -48,14 +48,16 @@ export default function CardImage({
   }, [onReport, reporting, reported]);
 
   if (src && !failed) {
+    // Fixed 5:7 box: tiles line up and nothing shifts while the image loads.
+    // object-contain, not cover, so slab photos keep their grade label.
     return (
-      <div className={cn("group relative", className)}>
+      <div className={cn("group relative aspect-card w-full overflow-hidden rounded-lg bg-muted", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={name}
           loading="lazy"
-          className="h-auto w-full rounded-lg"
+          className="h-full w-full object-contain"
           onError={() => setFailed(true)}
         />
         {unverified && (
