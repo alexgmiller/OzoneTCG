@@ -21,11 +21,19 @@ export default async function ShowsServer() {
   const shows = (data ?? []) as ShowSession[];
   const hasActive = shows.some((s) => s.status === "active");
 
+  // Desktop (lg+): the list takes two thirds, New show sits in the right
+  // column (sticky); DOM order stays the phone order
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 py-4">
+    <div className="mx-auto w-full max-w-2xl space-y-4 py-4 lg:max-w-6xl">
       <h1 className="text-xl font-bold tracking-tight text-foreground">Shows</h1>
-      <NewShowForm hasActive={hasActive} />
-      <ShowsList shows={shows} />
+      <div className="space-y-4 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+        <div className="lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
+          <NewShowForm hasActive={hasActive} />
+        </div>
+        <div className="lg:col-span-2 lg:row-start-1">
+          <ShowsList shows={shows} />
+        </div>
+      </div>
     </div>
   );
 }

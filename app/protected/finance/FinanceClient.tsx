@@ -54,6 +54,44 @@ function PnlRow({ title, sub, p }: { title: string; sub?: string; p: MonthPnl | 
   );
 }
 
+// ── P&L table (lg+) ── every column visible, no expand step
+type PnlLine = { key: string; title: string; sub?: string; p: MonthPnl | PayPeriodPnl };
+
+function PnlTable({ lines }: { lines: PnlLine[] }) {
+  const num = "px-4 text-right tabular-nums";
+  return (
+    <div className="overflow-hidden rounded-2xl bg-surface">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-border text-left text-sm text-muted-foreground">
+            <th className="px-4 py-3 font-medium">Period</th>
+            <th className="px-4 py-3 text-right font-medium">Revenue</th>
+            <th className="px-4 py-3 text-right font-medium">Cost of goods</th>
+            <th className="px-4 py-3 text-right font-medium">Expenses</th>
+            <th className="px-4 py-3 text-right font-medium">Net</th>
+            <th className="px-4 py-3 text-right font-medium">Sold · bought</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map(({ key, title, sub, p }) => (
+            <tr key={key} className="h-14 border-b border-border text-sm last:border-b-0">
+              <td className="px-4">
+                <div className="font-medium text-foreground">{title}</div>
+                {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+              </td>
+              <td className={num}><MoneyDisplay amount={p.revenue} tone="neutral" className="text-foreground" /></td>
+              <td className={num}><MoneyDisplay amount={-p.cogs} /></td>
+              <td className={num}><MoneyDisplay amount={-p.expenses} /></td>
+              <td className={num}><MoneyDisplay amount={p.net} showSign className="font-semibold" /></td>
+              <td className={`${num} text-muted-foreground`}>{p.cardsSold} · {p.cardsBought}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function periodSub(p: PayPeriodPnl) {
   if (p.net_payout == null) return "Not settled yet";
   if (Math.abs(p.net_payout) < 0.005) return "Settled · even";
@@ -79,15 +117,22 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
 
   const months = [...data.months].reverse(); // newest first on screen
   const periods = [data.current, ...data.periods];
+  const periodTitle = (p: PayPeriodPnl) =>
+    p.period_end ? `${fmtDay(p.period_start)} – ${fmtDay(p.period_end)}` : `Since ${fmtDay(p.period_start)}`;
+  const lines: PnlLine[] = view === "month"
+    ? months.map((m) => ({ key: m.month, title: fmtMonth(m.month), p: m }))
+    : periods.map((p) => ({ key: p.id, title: periodTitle(p), sub: periodSub(p), p }));
 
+  // Desktop (lg+): YTD stats in one row; P&L table on the left two thirds,
+  // expenses by category and exports in the right column
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 py-4">
+    <div className="mx-auto w-full max-w-2xl space-y-5 py-4 lg:max-w-6xl">
       <h1 className="text-xl font-bold tracking-tight text-foreground">Finance</h1>
 
       {/* ── Year to date ── */}
       <section className="space-y-2">
         <SectionHeader>{data.year} to date</SectionHeader>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard label="Revenue" money={data.ytd.revenue} />
           <StatCard label="Gross profit" value={<MoneyDisplay amount={data.ytd.grossProfit} showSign />} />
           <StatCard label="Expenses" money={data.ytd.expenses} />
@@ -95,62 +140,63 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
         </div>
       </section>
 
-      {/* ── P&L ── */}
-      <section className="space-y-3">
-        <div className="flex gap-1 rounded-xl bg-muted p-1" role="tablist">
-          <button type="button" role="tab" aria-selected={view === "month"} className={tab(view === "month")} onClick={() => setView("month")}>By month</button>
-          <button type="button" role="tab" aria-selected={view === "period"} className={tab(view === "period")} onClick={() => setView("period")}>By pay period</button>
-        </div>
-        <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-          {view === "month"
-            ? months.map((m) => <PnlRow key={m.month} title={fmtMonth(m.month)} p={m} />)
-            : periods.map((p) => (
-                <PnlRow key={p.id} p={p}
-                  title={p.period_end ? `${fmtDay(p.period_start)} – ${fmtDay(p.period_end)}` : `Since ${fmtDay(p.period_start)}`}
-                  sub={periodSub(p)} />
-              ))}
-        </ul>
-        {view === "period" && (
-          <Link href="/protected/payout" className={`${btn} w-full`}>Settle up in Payout</Link>
-        )}
-      </section>
-
-      {/* ── Expenses by category ── */}
-      <section className="space-y-2">
-        <SectionHeader action={<Link href="/protected/expenses/tax-report" className="text-xs text-accent">Tax report →</Link>}>
-          {data.year} expenses by category
-        </SectionHeader>
-        {data.categories.length === 0 ? (
-          <EmptyState title="No expenses this year" hint="Expenses you log will be grouped here." />
-        ) : (
-          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-            {data.categories.map((c) => (
-              <li key={c.category} className="flex min-h-12 items-center gap-3 px-4 py-2">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm text-foreground">{label(c.category)}</div>
-                  <div className="text-xs text-muted-foreground tabular-nums">
-                    {c.count} · deductible <MoneyDisplay amount={c.deductible} tone="neutral" />
-                  </div>
-                </div>
-                <MoneyDisplay amount={c.total} tone="neutral" className="text-sm font-semibold text-foreground" />
-              </li>
-            ))}
+      <div className="space-y-5 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+        {/* ── P&L ── */}
+        <section className="space-y-3 lg:col-span-2">
+          <div className="flex gap-1 rounded-xl bg-muted p-1 lg:max-w-sm" role="tablist">
+            <button type="button" role="tab" aria-selected={view === "month"} className={tab(view === "month")} onClick={() => setView("month")}>By month</button>
+            <button type="button" role="tab" aria-selected={view === "period"} className={tab(view === "period")} onClick={() => setView("period")}>By pay period</button>
+          </div>
+          <ul className="divide-y divide-border rounded-xl border border-border bg-card lg:hidden">
+            {lines.map((l) => <PnlRow key={l.key} title={l.title} sub={l.sub} p={l.p} />)}
           </ul>
-        )}
-      </section>
+          <div className="hidden lg:block">
+            <PnlTable lines={lines} />
+          </div>
+          {view === "period" && (
+            <Link href="/protected/payout" className={`${btn} w-full lg:w-auto`}>Settle up in Payout</Link>
+          )}
+        </section>
 
-      {/* ── Exports ── */}
-      <section className="space-y-2">
-        <SectionHeader>Export</SectionHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <button type="button" className={btn} disabled={busy !== null} onClick={() => exportCsv("transactions", exportTransactionsCSV)}>
-            <Download size={16} />{busy === "transactions" ? "Exporting…" : "Transactions CSV"}
-          </button>
-          <button type="button" className={btn} disabled={busy !== null} onClick={() => exportCsv("expenses", exportExpensesCSV)}>
-            <Download size={16} />{busy === "expenses" ? "Exporting…" : "Expenses CSV"}
-          </button>
+        <div className="space-y-5">
+          {/* ── Expenses by category ── */}
+          <section className="space-y-2">
+            <SectionHeader action={<Link href="/protected/expenses/tax-report" className="text-xs text-accent">Tax report →</Link>}>
+              {data.year} expenses by category
+            </SectionHeader>
+            {data.categories.length === 0 ? (
+              <EmptyState title="No expenses this year" hint="Expenses you log will be grouped here." />
+            ) : (
+              <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+                {data.categories.map((c) => (
+                  <li key={c.category} className="flex min-h-12 items-center gap-3 px-4 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-foreground">{label(c.category)}</div>
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        {c.count} · deductible <MoneyDisplay amount={c.deductible} tone="neutral" />
+                      </div>
+                    </div>
+                    <MoneyDisplay amount={c.total} tone="neutral" className="text-sm font-semibold text-foreground" />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* ── Exports ── */}
+          <section className="space-y-2">
+            <SectionHeader>Export</SectionHeader>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
+              <button type="button" className={btn} disabled={busy !== null} onClick={() => exportCsv("transactions", exportTransactionsCSV)}>
+                <Download size={16} />{busy === "transactions" ? "Exporting…" : "Transactions CSV"}
+              </button>
+              <button type="button" className={btn} disabled={busy !== null} onClick={() => exportCsv("expenses", exportExpensesCSV)}>
+                <Download size={16} />{busy === "expenses" ? "Exporting…" : "Expenses CSV"}
+              </button>
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

@@ -60,8 +60,10 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
   const venue = showVenue(show);
   const pill = STATUS_PILL[show.status];
 
+  // Desktop (lg+): header with actions beside it, stats in rows of four and
+  // two, then deals on the left two thirds with expenses on the right
   return (
-    <div className="w-full max-w-2xl mx-auto py-4 space-y-5">
+    <div className="w-full max-w-2xl mx-auto py-4 space-y-5 lg:max-w-6xl">
       <Link
         href="/protected/shows"
         className="inline-flex h-11 items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
@@ -70,25 +72,29 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
         Shows
       </Link>
 
-      {/* ── Header ── */}
-      <header className="space-y-2">
-        <span className={`${pillCls} ${pill.cls}`}>{pill.label}</span>
-        <h1 className="text-xl font-bold tracking-tight text-foreground">{show.name}</h1>
-        <div className="text-sm text-muted-foreground">
-          {fmtDate(show.date, true)}
-          {venue && ` · ${venue}`}
-          {show.hours && ` · ${show.hours}`}
-        </div>
-        {show.notes && <p className="text-sm text-muted-foreground">{show.notes}</p>}
-      </header>
+      <div className="space-y-5 lg:flex lg:items-start lg:justify-between lg:gap-6 lg:space-y-0">
+        {/* ── Header ── */}
+        <header className="min-w-0 space-y-2">
+          <span className={`${pillCls} ${pill.cls}`}>{pill.label}</span>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">{show.name}</h1>
+          <div className="text-sm text-muted-foreground">
+            {fmtDate(show.date, true)}
+            {venue && ` · ${venue}`}
+            {show.hours && ` · ${show.hours}`}
+          </div>
+          {show.notes && <p className="text-sm text-muted-foreground">{show.notes}</p>}
+        </header>
 
-      <ShowDetailActions
-        show={{ id: show.id, name: show.name, status: show.status, starting_cash: show.starting_cash }}
-        hasActive={hasActive}
-      />
+        <div className="lg:w-80 lg:shrink-0">
+          <ShowDetailActions
+            show={{ id: show.id, name: show.name, status: show.status, starting_cash: show.starting_cash }}
+            hasActive={hasActive}
+          />
+        </div>
+      </div>
 
       {/* ── P&L (revenue − cost of goods − show expenses) ── */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Revenue" money={pnl.revenue} delta={`${pnl.cardsSold} card${pnl.cardsSold === 1 ? "" : "s"} sold`} />
         <StatCard label="Cost of goods" value={<MoneyDisplay amount={-pnl.cogs} />} />
         <StatCard
@@ -98,7 +104,7 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
         />
         <StatCard label="Net" value={<MoneyDisplay amount={pnl.net} showSign />} tone={pnl.net >= 0 ? "positive" : "default"} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Spent on cards"
           value={<MoneyDisplay amount={pnl.buysSpent + pnl.tradeCashOut} tone="neutral" />}
@@ -111,50 +117,54 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
         />
       </div>
 
-      {/* ── Expenses ── */}
-      {expenses.length > 0 && (
-        <section className="space-y-2">
-          <SectionHeader action={<MoneyDisplay amount={-pnl.expenses} className="text-sm" />}>
-            Expenses
-          </SectionHeader>
-          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-            {expenses.map((e) => (
-              <li key={e.id} className="flex min-h-11 items-center gap-3 p-3">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm text-foreground">{e.description}</div>
-                  {e.category && (
-                    <div className="mt-0.5 text-xs text-muted-foreground">{categoryLabel(e.category)}</div>
-                  )}
-                </div>
-                <MoneyDisplay amount={-(e.cost ?? 0)} className="shrink-0 text-sm font-semibold" />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* ── Deals ── */}
-      <section className="space-y-2">
-        <SectionHeader
-          action={<span className="text-xs text-muted-foreground tabular-nums">{deals.length}</span>}
-        >
-          Deals
-        </SectionHeader>
-        {deals.length > 0 ? (
-          <ShowDeals deals={deals} />
-        ) : (
-          <EmptyState
-            title="No deals yet"
-            hint={
-              show.status === "active"
-                ? "Buys, sells and trades you record in the POS will show up here."
-                : "Deals recorded in the POS during this show will show up here."
-            }
-          />
+      <div className="space-y-5 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+        {/* ── Expenses ── */}
+        {expenses.length > 0 && (
+          <section className="space-y-2 lg:col-start-3 lg:row-start-1">
+            <SectionHeader action={<MoneyDisplay amount={-pnl.expenses} className="text-sm" />}>
+              Expenses
+            </SectionHeader>
+            <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+              {expenses.map((e) => (
+                <li key={e.id} className="flex min-h-11 items-center gap-3 p-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm text-foreground">{e.description}</div>
+                    {e.category && (
+                      <div className="mt-0.5 text-xs text-muted-foreground">{categoryLabel(e.category)}</div>
+                    )}
+                  </div>
+                  <MoneyDisplay amount={-(e.cost ?? 0)} className="shrink-0 text-sm font-semibold" />
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
-      </section>
 
-      <DeleteShowButton showId={show.id} showName={show.name} />
+        {/* ── Deals ── */}
+        <section className={`space-y-2 lg:row-start-1 ${expenses.length > 0 ? "lg:col-span-2" : "lg:col-span-3"}`}>
+          <SectionHeader
+            action={<span className="text-xs text-muted-foreground tabular-nums">{deals.length}</span>}
+          >
+            Deals
+          </SectionHeader>
+          {deals.length > 0 ? (
+            <ShowDeals deals={deals} />
+          ) : (
+            <EmptyState
+              title="No deals yet"
+              hint={
+                show.status === "active"
+                  ? "Buys, sells and trades you record in the POS will show up here."
+                  : "Deals recorded in the POS during this show will show up here."
+              }
+            />
+          )}
+        </section>
+      </div>
+
+      <div className="lg:ml-auto lg:w-64">
+        <DeleteShowButton showId={show.id} showName={show.name} />
+      </div>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { btnPrimary, fmtDate, pillCls, showVenue, STATUS_PILL, todayLocalISO } f
 // ── Shows list ──
 // Live show pinned on top, then UPCOMING soonest-first, then PAST most-recent-
 // first. Each card: name, date, venue, and net P&L in up/down. Tap opens detail.
+// Desktop (lg+): two cards per row within each section.
 export default function ShowsList({ shows }: { shows: ShowSession[] }) {
   const active = shows.find((s) => s.status === "active") ?? null;
   const scheduled = shows.filter((s) => s.status === "scheduled").sort((a, b) => a.date.localeCompare(b.date));
@@ -34,7 +35,7 @@ export default function ShowsList({ shows }: { shows: ShowSession[] }) {
       {scheduled.length > 0 && (
         <section className="space-y-2">
           <h2 className="section-label">Upcoming</h2>
-          <div className="space-y-2">
+          <div className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
             {scheduled.map((s) => <ShowCard key={s.id} show={s} canStart={!active} />)}
           </div>
         </section>
@@ -43,7 +44,7 @@ export default function ShowsList({ shows }: { shows: ShowSession[] }) {
       {completed.length > 0 && (
         <section className="space-y-2">
           <h2 className="section-label">Past</h2>
-          <div className="space-y-2">
+          <div className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
             {completed.map((s) => <ShowCard key={s.id} show={s} />)}
           </div>
         </section>
