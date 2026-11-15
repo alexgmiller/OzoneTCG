@@ -9,14 +9,14 @@ import MostValuable from "./MostValuable";
 import RecentActivity from "./RecentActivity";
 import { groupRecentDeals, type TxRow } from "./activity";
 import {
-  inStockCounts, realizedProfitByDay, topValuable,
-  type SellRow, type SnapshotPoint, type StockItem,
+  inStockCounts, realizedProfitByDay, topValuable, valueHistory,
+  type HistoryItem, type SellRow, type SnapshotPoint, type StockItem,
 } from "./home";
 
 // ── Queries ──
 
 const TX_COLS = "id,trade_group_id,transaction_type,date,sale_price,cash_paid,cost_basis,cash_difference,payment_method";
-const ITEM_COLS = "id,name,category,status,market,cost,set_name,card_number,grade,condition,image_url,consigner_id";
+const ITEM_COLS = "id,name,category,status,market,cost,set_name,card_number,grade,condition,image_url,consigner_id,created_at,acquired_date,sold_at";
 const RECENT_ROW_LIMIT = 400; // per-card rows; folded into the last 5 deals (bulk deals span many rows)
 
 export default async function DashboardServer() {
@@ -55,39 +55,50 @@ export default async function DashboardServer() {
   // Revenue since the show opened — for a one-day show that is "today"
   const showRevenue = activeShow ? await showSellTotal(supabase, workspaceId, activeShow.id) : 0;
 
-  const items = (itemsRes.data ?? []) as StockItem[];
+  const items = (itemsRes.data ?? []) as (StockItem & HistoryItem)[];
   const inStockValue = items.reduce((s, it) => s + (it.status === "inventory" ? it.market ?? 0 : 0), 0);
+  const valueSeries = valueHistory(items, snapshots, inStockValue);
   const counts = inStockCounts(items);
   const top = topValuable(items, 10);
   const profitPoints = realizedProfitByDay((sellsRes.data ?? []) as SellRow[]);
   const recentDeals = groupRecentDeals((recentRes.data ?? []) as unknown as TxRow[], 5);
 
   // ── Layout ──
+  // Phone: one column — chart, quick actions, most valuable, recent.
+  // Desktop (lg+): the chart card takes two thirds with quick actions and
+  // recent beside it, and most valuable runs full width underneath. DOM order
+  // stays the phone order; the grid places each block on desktop.
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6 py-4">
+    <div className="mx-auto w-full max-w-2xl space-y-6 py-4 lg:max-w-6xl">
       <h1 className="sr-only">Home</h1>
       <DashboardClient workspaceId={workspaceId} />
 
       <ActiveShowChip show={activeShow} revenue={showRevenue} />
 
-      <HomeClient
-        inStockValue={inStockValue}
-        snapshots={snapshots}
-        profitPoints={profitPoints}
-        counts={counts}
-      />
+      <div className="space-y-6 lg:grid lg:grid-cols-3 lg:grid-rows-home lg:items-start lg:gap-6 lg:space-y-0">
+        <div className="lg:col-span-2 lg:row-span-2 lg:row-start-1 lg:rounded-2xl lg:bg-surface lg:p-4">
+          <HomeClient
+            inStockValue={inStockValue}
+            valueSeries={valueSeries}
+            profitPoints={profitPoints}
+            counts={counts}
+          />
+        </div>
 
-      <QuickActions />
+        <div className="lg:col-start-3 lg:row-start-1">
+          <QuickActions />
+        </div>
 
-      <section className="space-y-3">
-        <h2 className="section-label">Most valuable</h2>
-        <MostValuable items={top} />
-      </section>
+        <section className="space-y-3 lg:col-span-3 lg:row-start-3">
+          <h2 className="section-label">Most valuable</h2>
+          <MostValuable items={top} />
+        </section>
 
-      <section className="space-y-3">
-        <h2 className="section-label">Recent</h2>
-        <RecentActivity deals={recentDeals} />
-      </section>
+        <section className="space-y-3 lg:col-start-3 lg:row-start-2">
+          <h2 className="section-label">Recent</h2>
+          <RecentActivity deals={recentDeals} />
+        </section>
+      </div>
     </div>
   );
 }

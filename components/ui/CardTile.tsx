@@ -80,9 +80,10 @@ export function CardTile({
 
       {art && (
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 bg-black/45 px-2.5 pb-2.5 pt-3 text-white backdrop-blur-md">
-          <div className="flex items-baseline gap-1.5">
-            <span className="truncate text-sm font-semibold">{name}</span>
-            {setNumber && <span className="shrink-0 text-xs text-white/60">{setNumber}</span>}
+          {/* The name wins the width; a long set number ("GG41/GG70") truncates first */}
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <span className="max-w-full shrink-0 truncate text-sm font-semibold">{name}</span>
+            {setNumber && <span className="min-w-0 truncate text-xs text-white/60">{setNumber}</span>}
           </div>
           {meta && <span className="truncate font-mono text-xs text-white/60">{meta}</span>}
           {price != null && (

@@ -57,19 +57,19 @@ export function InventoryListView({ items, priceOf, costOf, selecting, selectedI
       {/* ── Desktop ── */}
       <table className="hidden w-full md:table">
         <thead>
-          <tr className="text-left text-xs text-muted-foreground">
-            <th className="w-10 px-3 py-2" aria-label="Select" />
-            <th className="px-3 py-2 font-medium">Item</th>
-            <th className="px-3 py-2 font-medium">Grade</th>
+          <tr className="text-left text-sm text-muted-foreground">
+            <th className="w-12 px-4 py-3" aria-label="Select" />
+            <th className="px-4 py-3 font-medium">Item</th>
+            <th className="px-4 py-3 font-medium">Grade</th>
             {COLS.map((c) => (
-              <th key={c.key} className="px-3 py-2 text-right font-medium">
+              <th key={c.key} className="px-4 py-3 text-right font-medium">
                 <button type="button" onClick={() => clickHeader(c.key)} className={cn("inline-flex items-center gap-1 hover:text-foreground", sortField === c.key && "text-foreground")}>
                   {c.label}
                   {sortField === c.key && (sortDir === "desc" ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
                 </button>
               </th>
             ))}
-            <th className="px-3 py-2 font-medium">Status</th>
+            <th className="px-4 py-3 font-medium">Status</th>
           </tr>
         </thead>
         <tbody className="rounded-2xl bg-surface">
@@ -81,39 +81,39 @@ export function InventoryListView({ items, priceOf, costOf, selecting, selectedI
                 key={it.id}
                 data-item-id={it.id}
                 onContextMenu={(e) => { e.preventDefault(); onContext(it, { x: e.clientX, y: e.clientY }); }}
-                className={cn("h-16 border-b border-border bg-surface transition-colors duration-150 hover:bg-surface-2", selected && "bg-accent-tint")}
+                className={cn("h-20 border-b border-border bg-surface transition-colors duration-150 hover:bg-surface-2", selected && "bg-accent-tint")}
               >
-                <td className="px-3">
+                <td className="px-4">
                   <input type="checkbox" checked={selected} onChange={() => onToggle(it.id)} aria-label={`Select ${it.name}`} className="h-4 w-4 accent-accent" />
                 </td>
-                <td className="px-3">
+                <td className="px-4">
                   <button type="button" onClick={() => onOpen(it)} className="flex items-center gap-3 text-left">
-                    <span className="h-14 w-10 shrink-0 overflow-hidden rounded-thumb bg-surface-2">
+                    <span className="h-16 w-12 shrink-0 overflow-hidden rounded-xl bg-surface-2">
                       {it.image_url && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={it.image_url} alt="" loading="lazy" className="h-full w-full object-cover" />
                       )}
                     </span>
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-foreground">{it.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
+                      <span className="block truncate text-base font-medium text-foreground">{it.name}</span>
+                      <span className="block truncate text-sm text-muted-foreground">
                         {[it.set_name, it.card_number && `#${it.card_number}`].filter(Boolean).join(" · ")}
                       </span>
                     </span>
                   </button>
                 </td>
-                <td className="px-3 font-mono text-xs text-muted-foreground">{rowMeta(it)}</td>
-                <td className="px-3 text-right text-sm tabular-nums text-muted-foreground">{cost != null ? <MoneyDisplay amount={cost} tone="neutral" /> : "—"}</td>
-                <td className="px-3 text-right">
-                  <span className="inline-flex items-center gap-1 text-sm font-bold tabular-nums">
+                <td className="px-4 font-mono text-sm text-muted-foreground">{rowMeta(it)}</td>
+                <td className="px-4 text-right text-base tabular-nums text-muted-foreground">{cost != null ? <MoneyDisplay amount={cost} tone="neutral" /> : "—"}</td>
+                <td className="px-4 text-right">
+                  <span className="inline-flex items-center gap-1 text-base font-bold tabular-nums">
                     {price != null ? <MoneyDisplay amount={price} tone="neutral" /> : <span className="font-normal text-muted-foreground">—</span>}
                     {delta === "up" && <span className="text-xs text-up">▲</span>}
                     {delta === "down" && <span className="text-xs text-down">▼</span>}
                   </span>
                 </td>
-                <td className="px-3 text-right text-sm tabular-nums text-muted-foreground">{it.sticker_price != null ? <MoneyDisplay amount={it.sticker_price} tone="neutral" /> : "—"}</td>
-                <td className="px-3 text-right text-sm tabular-nums text-muted-foreground">{it.status === "sold" ? "—" : daysInStock(it, now)}</td>
-                <td className="px-3 text-xs text-muted-foreground">{statusLabel(it)}</td>
+                <td className="px-4 text-right text-base tabular-nums text-muted-foreground">{it.sticker_price != null ? <MoneyDisplay amount={it.sticker_price} tone="neutral" /> : "—"}</td>
+                <td className="px-4 text-right text-base tabular-nums text-muted-foreground">{it.status === "sold" ? "—" : daysInStock(it, now)}</td>
+                <td className="px-4 text-sm text-muted-foreground">{statusLabel(it)}</td>
               </tr>
             );
           })}

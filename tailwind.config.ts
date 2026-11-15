@@ -118,6 +118,13 @@ export default {
         tabbar: "6rem",
       },
 
+      gridTemplateRows: {
+        // Desktop Home: the chart card spans the first two rows. A 1fr middle
+        // row takes its extra height, so the quick-actions row hugs its content
+        // and Recent sits right under it.
+        home: "auto 1fr auto",
+      },
+
       transitionDuration: {
         DEFAULT: "150ms",
         150: "150ms",

@@ -6,7 +6,8 @@ import { priceDelta } from "../inventoryView";
 import { rowMeta } from "./CardRow";
 
 // ── Inventory grid ──
-// 2 columns on a phone, 4–5 on desktop, 12px gap, CardTiles.
+// 2 columns on a phone, 4 on a tablet, 6–8 on desktop (tiles ~140–180px),
+// 12px gap, CardTiles.
 type Props = {
   items: Item[];
   priceOf: (it: Item) => number | null;
@@ -20,7 +21,7 @@ type Props = {
 
 export function InventoryGrid({ items, priceOf, costOf, selecting, selectedIds, onOpen, onToggle, onContext }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
       {items.map((it) => (
         <GridTile
           key={it.id}

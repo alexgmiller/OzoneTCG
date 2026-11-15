@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   rangeStartDay, filterByRange, realizedProfitByDay, cumulative, sum,
-  inStockCounts, topValuable, tileDelta, tileMeta, type StockItem,
+  inStockCounts, topValuable, tileDelta, tileMeta, valueHistory, type StockItem, type HistoryItem,
 } from "./home";
 
 const NOW = new Date("2026-10-16T12:00:00Z");
@@ -89,5 +89,54 @@ describe("tile helpers", () => {
     expect(tileMeta(item({ category: "slab", grade: "BGS 9.5" }))).toBe("BGS 9.5");
     expect(tileMeta(item({ category: "single", condition: "Lightly Played" }))).toBe("Lightly Played");
     expect(tileMeta(item({ category: "sealed" }))).toBeNull();
+  });
+});
+
+describe("valueHistory", () => {
+  const item = (o: Partial<HistoryItem>): HistoryItem => ({
+    status: "inventory", market: 100, created_at: "2026-10-10T15:00:00Z", acquired_date: null, sold_at: null, ...o,
+  });
+
+  it("is empty with no value at all", () => {
+    expect(valueHistory([], [], 0, NOW)).toEqual([]);
+  });
+
+  it("starts at 0 the day before the first item and ends on the live total", () => {
+    const pts = valueHistory([item({})], [], 120, NOW);
+    expect(pts[0]).toEqual({ date: "2026-10-09", value: 0, estimated: true });
+    expect(pts[1]).toEqual({ date: "2026-10-10", value: 100, estimated: true });
+    expect(pts.at(-1)).toEqual({ date: "2026-10-16", value: 120, estimated: false });
+    expect(pts).toHaveLength(8);
+  });
+
+  it("prefers acquired_date and drops sold items from their sale day", () => {
+    const pts = valueHistory([
+      item({ acquired_date: "2026-10-12", created_at: "2026-10-14T00:00:00Z" }),
+      item({ status: "sold", market: 50, created_at: "2026-10-11T00:00:00Z", sold_at: "2026-10-13T18:00:00Z" }),
+    ], [], 100, NOW);
+    const at = (d: string) => pts.find((p) => p.date === d)?.value;
+    expect(at("2026-10-11")).toBe(50);
+    expect(at("2026-10-12")).toBe(150);
+    expect(at("2026-10-13")).toBe(100);
+  });
+
+  it("uses a real snapshot on the days it exists", () => {
+    const pts = valueHistory([item({})], [{ date: "2026-10-12", total_fmv: 90, total_cost: 0, item_count: 1 }], 100, NOW);
+    expect(pts.find((p) => p.date === "2026-10-12")).toEqual({ date: "2026-10-12", value: 90, estimated: false });
+  });
+
+  it("skips grading, unpriced and undated sold items", () => {
+    const pts = valueHistory([
+      item({ status: "grading" }), item({ market: null }), item({ status: "sold", sold_at: null }),
+    ], [], 0, NOW);
+    expect(pts).toEqual([]);
+  });
+
+  it("draws a two-point line when everything arrived today", () => {
+    const pts = valueHistory([item({ created_at: "2026-10-16T09:00:00Z" })], [], 100, NOW);
+    expect(pts).toEqual([
+      { date: "2026-10-15", value: 0, estimated: true },
+      { date: "2026-10-16", value: 100, estimated: false },
+    ]);
   });
 });

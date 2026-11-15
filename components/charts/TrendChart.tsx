@@ -19,19 +19,23 @@ type Props = {
 };
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+// Points are UTC day keys ("2026-11-14"); format in UTC so the tooltip does
+// not show the previous day west of Greenwich
+const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
-export function TrendChart({ data, tone = "accent", height = 160, className, format = money.format }: Props) {
+// Height: pass `height` in px, or size the wrapper with classes (h-40 lg:h-72).
+export function TrendChart({ data, tone = "accent", height, className, format = money.format }: Props) {
   const id = useId();
   const gradient = `trend-${id.replace(/:/g, "")}`;
 
   return (
     <div
       className={cn(
+        "h-40",
         tone === "accent" ? "text-accent" : tone === "up" ? "text-up" : "text-down",
         className,
       )}
-      style={{ height }}
+      style={height ? { height } : undefined}
     >
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>

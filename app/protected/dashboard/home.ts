@@ -27,6 +27,66 @@ export function filterByRange<T extends { date: string }>(points: T[], range: Ho
   return start ? points.filter((p) => p.date >= start) : points;
 }
 
+// ── Value history ──
+// A daily in-stock value series rebuilt from when each item came in
+// (acquired_date, else created_at) and went out (sold_at), priced at today's
+// market. It draws the chart before the snapshot cron has written enough days.
+// Days that have a real snapshot use it; today is always the live total, so
+// the line ends on the hero number. The series starts the day before the
+// first item arrived, at 0, so even a same-day inventory draws a line.
+export type HistoryItem = {
+  status: string;
+  market: number | null;
+  created_at: string;
+  acquired_date: string | null;
+  sold_at: string | null;
+};
+export type ValuePoint = { date: string; value: number; estimated: boolean };
+
+const dayKey = (s: string) => s.slice(0, 10);
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export function valueHistory(
+  items: HistoryItem[], snapshots: SnapshotPoint[], todayValue: number, now = new Date(),
+): ValuePoint[] {
+  const today = now.toISOString().slice(0, 10);
+  const delta = new Map<string, number>();
+  const bump = (day: string, v: number) => delta.set(day, (delta.get(day) ?? 0) + v);
+  let first: string | null = null;
+
+  for (const it of items) {
+    const value = it.market ?? 0;
+    if (value <= 0) continue;
+    // Grading items are out of the in-stock total today, and a sale with no
+    // date has no place on the line
+    if (it.status !== "inventory" && !(it.status === "sold" && it.sold_at)) continue;
+    const inDay = dayKey(it.acquired_date ?? it.created_at);
+    const outDay = it.status === "sold" && it.sold_at ? dayKey(it.sold_at) : null;
+    if (inDay > today || (outDay && outDay <= inDay)) continue;
+    bump(inDay, value);
+    if (outDay) bump(outDay, -value);
+    if (!first || inDay < first) first = inDay;
+  }
+
+  const snapByDay = new Map(snapshots.map((s) => [dayKey(s.date), s.total_fmv]));
+  for (const s of snapshots) if (!first || dayKey(s.date) < first) first = dayKey(s.date);
+  if (!first) return todayValue > 0 ? [{ date: addDays(today, -1), value: 0, estimated: true }, { date: today, value: todayValue, estimated: false }] : [];
+
+  const out: ValuePoint[] = [];
+  let run = 0;
+  for (let day = addDays(first, -1); day <= today; day = addDays(day, 1)) {
+    run += delta.get(day) ?? 0;
+    if (day === today) out.push({ date: day, value: todayValue, estimated: false });
+    else if (snapByDay.has(day)) out.push({ date: day, value: snapByDay.get(day)!, estimated: false });
+    else out.push({ date: day, value: Math.max(0, run), estimated: true });
+  }
+  return out;
+}
+
 // ── Profit chart ──
 // Realized profit per day from sell rows: sale price minus the cost basis the
 // row carries. Trades out count their cash difference the same way.
