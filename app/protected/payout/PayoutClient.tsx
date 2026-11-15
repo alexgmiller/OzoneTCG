@@ -111,30 +111,38 @@ export default function PayoutClient({
         hasActivity={hasActivity}
       />
 
-      <ExpenseLists
-        alexExpenses={alexExpenses}
-        milaExpenses={milaExpenses}
-        alexItems={alexItems}
-        milaItems={milaItems}
-        pendingSolo={pendingSolo}
-        onKeepSolo={handleKeepSolo}
-      />
+      {/* Desktop (lg+): what happened this period on the left two thirds,
+          settling up and past periods on the right. Phone order unchanged. */}
+      <div className="space-y-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+        <div className="space-y-6 lg:col-span-2">
+          <ExpenseLists
+            alexExpenses={alexExpenses}
+            milaExpenses={milaExpenses}
+            alexItems={alexItems}
+            milaItems={milaItems}
+            pendingSolo={pendingSolo}
+            onKeepSolo={handleKeepSolo}
+          />
 
-      <SalesLists
-        sharedSales={sharedSales}
-        consignerSales={consignerSales}
-        soloSales={soloSales}
-        sharedSaleTotal={sharedSaleTotal}
-        consignerCutTotal={consignerCutTotal}
-        pendingShared={pendingShared}
-        pendingSolo={pendingSolo}
-        onMakeShared={handleMakeShared}
-        onKeepSolo={handleKeepSolo}
-      />
+          <SalesLists
+            sharedSales={sharedSales}
+            consignerSales={consignerSales}
+            soloSales={soloSales}
+            sharedSaleTotal={sharedSaleTotal}
+            consignerCutTotal={consignerCutTotal}
+            pendingShared={pendingShared}
+            pendingSolo={pendingSolo}
+            onMakeShared={handleMakeShared}
+            onKeepSolo={handleKeepSolo}
+          />
+        </div>
 
-      {hasActivity && <SettleForm netPayout={totals.netPayout} />}
+        <div className="space-y-6">
+          {hasActivity && <SettleForm netPayout={totals.netPayout} />}
 
-      <HistoryList history={history} />
+          <HistoryList history={history} />
+        </div>
+      </div>
     </div>
   );
 }

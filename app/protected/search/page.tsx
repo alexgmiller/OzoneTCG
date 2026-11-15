@@ -13,7 +13,7 @@ export default function SearchPage() {
   const [q, setQ] = useState("");
 
   return (
-    <div className="mx-auto w-full max-w-lg py-4">
+    <div className="mx-auto w-full max-w-lg py-4 lg:max-w-3xl">
       <SearchBar
         value={q}
         onChange={setQ}
@@ -25,7 +25,7 @@ export default function SearchPage() {
         title="Catalog coming"
         hint="Browse every Pokémon set in release order and open any card for prices. Until then, the camera icon still opens the cert scanner."
         preview={
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2 lg:grid-cols-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="aspect-[63/88] rounded-xl bg-surface-2" />
             ))}

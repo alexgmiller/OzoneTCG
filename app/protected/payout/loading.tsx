@@ -17,7 +17,7 @@ function Rows({ count }: { count: number }) {
 
 export default function PayoutLoading() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 py-4">
+    <div className="mx-auto w-full max-w-2xl space-y-5 py-4 lg:max-w-6xl">
       {/* Page title */}
       <Skeleton className="h-7 w-24 rounded-lg" />
 
@@ -37,31 +37,38 @@ export default function PayoutLoading() {
           <Rows count={2} />
         </div>
 
-        {/* Partner spend */}
-        <div className="space-y-3">
-          <Skeleton variant="text" className="w-28" />
-          <Rows count={3} />
-        </div>
+        {/* lg+: spend and sales on the left, settle up and history on the right */}
+        <div className="space-y-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+          <div className="space-y-6 lg:col-span-2">
+            {/* Partner spend */}
+            <div className="space-y-3">
+              <Skeleton variant="text" className="w-28" />
+              <Rows count={3} />
+            </div>
 
-        {/* Sales */}
-        <div className="space-y-3">
-          <Skeleton variant="text" className="w-16" />
-          <Rows count={2} />
-        </div>
+            {/* Sales */}
+            <div className="space-y-3">
+              <Skeleton variant="text" className="w-16" />
+              <Rows count={2} />
+            </div>
+          </div>
 
-        {/* Settle up */}
-        <div className="space-y-3">
-          <Skeleton variant="text" className="w-20" />
-          <Skeleton className="h-44" />
-        </div>
+          <div className="space-y-6">
+            {/* Settle up */}
+            <div className="space-y-3">
+              <Skeleton variant="text" className="w-20" />
+              <Skeleton className="h-44" />
+            </div>
 
-        {/* Past periods */}
-        <div className="space-y-3">
-          <Skeleton variant="text" className="w-28" />
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-14" />
-            ))}
+            {/* Past periods */}
+            <div className="space-y-3">
+              <Skeleton variant="text" className="w-28" />
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-14" />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

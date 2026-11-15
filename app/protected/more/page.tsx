@@ -9,6 +9,7 @@ import { MORE_GROUPS } from "@/components/shell/nav";
 // ── More ──
 // A simple grouped list of everything that is not a tab. Shows first.
 // The header carries the quick theme icon; the full toggle lives in Settings.
+// Desktop (lg+): the groups sit two per row.
 export default function MorePage() {
   const router = useRouter();
 
@@ -19,13 +20,13 @@ export default function MorePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-lg py-4">
+    <div className="mx-auto w-full max-w-lg py-4 lg:max-w-4xl">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-bold tracking-tight text-foreground">More</h1>
         <ThemeSwitcher />
       </div>
 
-      <div className="flex flex-col gap-5">
+      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
         {MORE_GROUPS.map((g) => (
           <section key={g.title}>
             <h2 className="section-label mb-2 px-1">{g.title}</h2>
