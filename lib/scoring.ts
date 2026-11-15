@@ -188,10 +188,7 @@ export function computeMomentum(soldComps: SoldComp[], now: Date = new Date()): 
  * (supply inflating, e.g. everyone cracking-and-regrading a hot card) is
  * penalized down to SCARCITY_MIN. NEUTRAL_POP_GROWTH/year is the 1.0 midpoint.
  */
-export function computeScarcity(
-  popSnapshots: PopSnapshot[],
-  now: Date = new Date(),
-): ScarcityResult {
+export function computeScarcity(popSnapshots: PopSnapshot[]): ScarcityResult {
   const valid = popSnapshots
     .map((s) => ({ population: s.population, t: new Date(s.snapshotDate).getTime() }))
     .filter((s) => !isNaN(s.t) && s.population >= 0)
@@ -391,7 +388,7 @@ export function computeBuyPassScore(input: ScoreInput): BuyPassScore {
   const comps = input.soldComps ?? [];
 
   const momentum = computeMomentum(comps, now);
-  const scarcity = computeScarcity(input.popSnapshots ?? [], now);
+  const scarcity = computeScarcity(input.popSnapshots ?? []);
 
   const factors: ScoreFactor[] = [
     dealFactor(input.askPrice, input.fmv),
