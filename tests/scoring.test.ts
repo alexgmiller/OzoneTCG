@@ -72,39 +72,39 @@ describe("computeMomentum", () => {
 
 describe("computeScarcity", () => {
   it("is neutral with fewer than 2 snapshots", () => {
-    const result = computeScarcity([snap(150, 10)], NOW);
+    const result = computeScarcity([snap(150, 10)]);
     expect(result.dataStatus).toBe("insufficient");
     expect(result.multiplier).toBe(1);
     expect(result.latestPopulation).toBe(150);
   });
 
   it("is neutral when snapshots span fewer than 14 days", () => {
-    const result = computeScarcity([snap(100, 5), snap(101, 1)], NOW);
+    const result = computeScarcity([snap(100, 5), snap(101, 1)]);
     expect(result.dataStatus).toBe("insufficient");
     expect(result.multiplier).toBe(1);
   });
 
   it("is ~1.0 at the neutral growth rate (10%/yr)", () => {
-    const result = computeScarcity([snap(100, 365), snap(110, 0)], NOW);
+    const result = computeScarcity([snap(100, 365), snap(110, 0)]);
     expect(result.dataStatus).toBe("ok");
     expect(result.annualizedPopGrowth).toBeCloseTo(0.1, 3);
     expect(result.multiplier).toBeCloseTo(1.0, 3);
   });
 
   it("awards a scarcity bonus for a frozen population", () => {
-    const result = computeScarcity([snap(100, 365), snap(100, 0)], NOW);
+    const result = computeScarcity([snap(100, 365), snap(100, 0)]);
     expect(result.annualizedPopGrowth).toBeCloseTo(0, 5);
     expect(result.multiplier).toBeCloseTo(1.05, 3);
   });
 
   it("clamps the penalty for fast-inflating supply at the floor", () => {
-    const result = computeScarcity([snap(100, 365), snap(200, 0)], NOW);
+    const result = computeScarcity([snap(100, 365), snap(200, 0)]);
     expect(result.annualizedPopGrowth).toBeCloseTo(1.0, 3);
     expect(result.multiplier).toBe(0.85);
   });
 
   it("is neutral when the earliest population is zero", () => {
-    const result = computeScarcity([snap(0, 100), snap(50, 0)], NOW);
+    const result = computeScarcity([snap(0, 100), snap(50, 0)]);
     expect(result.dataStatus).toBe("insufficient");
     expect(result.multiplier).toBe(1);
   });
