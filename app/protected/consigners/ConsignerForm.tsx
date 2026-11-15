@@ -1,12 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Modal, useToast } from "@/components/ui";
+import { Button, Input, Modal, Textarea, useToast } from "@/components/ui";
 import { createConsigner, updateConsigner } from "./actions";
-import {
-  type Consigner, errorMessage,
-  INPUT, TEXTAREA, FIELD_LABEL, BTN_PRIMARY, BTN_GHOST,
-} from "./shared";
+import { type Consigner, errorMessage, FIELD_LABEL } from "./shared";
 
 // ── Form state ──
 
@@ -81,9 +78,8 @@ export function ConsignerFormModal({
       <div className="space-y-3">
         <div className="space-y-1">
           <label htmlFor="consigner-name" className={FIELD_LABEL}>Name</label>
-          <input
+          <Input
             id="consigner-name"
-            className={INPUT}
             placeholder="Who is consigning?"
             value={form.name}
             autoFocus
@@ -95,9 +91,9 @@ export function ConsignerFormModal({
           <label htmlFor="consigner-rate" className={FIELD_LABEL}>Their share of each sale</label>
           <div className="flex items-center gap-3">
             <div className="relative w-28 shrink-0">
-              <input
+              <Input
                 id="consigner-rate"
-                className={`${INPUT} pr-8 tabular-nums`}
+                className="pr-8 tabular-nums"
                 inputMode="decimal"
                 value={form.rate}
                 onChange={(e) => setForm({ ...form, rate: e.target.value })}
@@ -112,9 +108,8 @@ export function ConsignerFormModal({
 
         <div className="space-y-1">
           <label htmlFor="consigner-phone" className={FIELD_LABEL}>Phone <span className="font-normal">(optional)</span></label>
-          <input
+          <Input
             id="consigner-phone"
-            className={INPUT}
             type="tel"
             placeholder="555-0100"
             value={form.phone}
@@ -124,9 +119,8 @@ export function ConsignerFormModal({
 
         <div className="space-y-1">
           <label htmlFor="consigner-notes" className={FIELD_LABEL}>Notes <span className="font-normal">(optional)</span></label>
-          <textarea
+          <Textarea
             id="consigner-notes"
-            className={TEXTAREA}
             rows={2}
             placeholder="Preferred payout method, reminders…"
             value={form.notes}
@@ -135,12 +129,12 @@ export function ConsignerFormModal({
         </div>
 
         <div className="flex gap-2 pt-1">
-          <button type="button" className={`${BTN_GHOST} flex-1`} onClick={onClose} disabled={busy}>
+          <Button variant="ghost" className="flex-1" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button type="button" className={`${BTN_PRIMARY} flex-1`} onClick={handleSave} disabled={!canSave}>
+          </Button>
+          <Button variant="primary" className="flex-1" onClick={handleSave} disabled={!canSave}>
             {busy ? "Saving…" : editing ? "Save" : "Add consigner"}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

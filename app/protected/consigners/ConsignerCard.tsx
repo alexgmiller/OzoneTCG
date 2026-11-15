@@ -3,12 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Link2, Plus } from "lucide-react";
-import { MoneyDisplay } from "@/components/ui";
+import { Button, MoneyDisplay } from "@/components/ui";
 import { PayoutHistory } from "./PayoutSection";
-import {
-  type Consigner, type SoldItem, fmtDate, initials,
-  BTN_SOFT, BTN_OUTLINE, BTN_GHOST, BTN_DANGER,
-} from "./shared";
+import { type Consigner, type SoldItem, fmtDate, initials } from "./shared";
 
 // ── Small stat cell (label over value) ──
 
@@ -146,18 +143,18 @@ export function ConsignerCard({
 
       {/* ── Actions ── */}
       <div className="grid grid-cols-2 gap-2 px-4 pb-4">
-        <button type="button" className={BTN_SOFT} onClick={onReceive} disabled={disabled}>
+        <Button variant="secondary" onClick={onReceive} disabled={disabled}>
           <Plus size={16} /> Receive cards
-        </button>
-        <button type="button" className={BTN_OUTLINE} onClick={onPayout} disabled={disabled}>
+        </Button>
+        <Button variant="outline" onClick={onPayout} disabled={disabled}>
           Record payout
-        </button>
-        <Link href="/protected/inventory" className={BTN_OUTLINE}>
-          View items
-        </Link>
-        <button type="button" className={BTN_OUTLINE} onClick={onCopyLink}>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/protected/inventory">View items</Link>
+        </Button>
+        <Button variant="outline" onClick={onCopyLink}>
           <Link2 size={16} /> Copy portal link
-        </button>
+        </Button>
       </div>
 
       {/* ── History ── */}
@@ -170,8 +167,8 @@ export function ConsignerCard({
           /consigner/{c.token.slice(0, 12)}…
         </span>
         <div className="flex shrink-0">
-          <button type="button" className={BTN_GHOST} onClick={onEdit} disabled={disabled}>Edit</button>
-          <button type="button" className={BTN_DANGER} onClick={onDelete} disabled={disabled}>Delete</button>
+          <Button variant="ghost" onClick={onEdit} disabled={disabled}>Edit</Button>
+          <Button variant="destructive-ghost" onClick={onDelete} disabled={disabled}>Delete</Button>
         </div>
       </div>
     </article>

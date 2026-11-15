@@ -2,15 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { EmptyState, Modal, MoneyDisplay, useConfirm, useToast } from "@/components/ui";
+import { Button, EmptyState, Input, Modal, MoneyDisplay, Select, useConfirm, useToast } from "@/components/ui";
 import { revertTransaction } from "@/app/protected/pos/actions";
 import { METHOD_LABELS, PAYMENT_METHODS, type PaymentMethod } from "@/app/protected/pos/ledger";
 import type { Deal } from "./deals";
 
 type Show = { id: string; name: string; date: string };
 
-const select =
-  "h-11 min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground";
 const fmtDate = (d: string) =>
   new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
@@ -74,23 +72,23 @@ export default function LedgerClient({ deals, shows }: { deals: Deal[]; shows: S
 
       {/* ── Filters ── */}
       <div className="grid grid-cols-3 gap-2">
-        <select className={select} value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Mode">
+        <Select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Mode">
           <option value="all">All types</option>
           <option value="buy">Buys</option>
           <option value="sell">Sells</option>
           <option value="trade">Trades</option>
-        </select>
-        <select className={select} value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Payment method">
+        </Select>
+        <Select value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Payment method">
           <option value="all">Any method</option>
           {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{METHOD_LABELS[m]}</option>)}
-        </select>
-        <select className={select} value={show} onChange={(e) => setShow(e.target.value)} aria-label="Show">
+        </Select>
+        <Select value={show} onChange={(e) => setShow(e.target.value)} aria-label="Show">
           <option value="all">Any show</option>
           <option value="none">No show</option>
           {shows.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <input type="date" className={`${select} col-span-3 sm:col-span-1`} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From" />
-        <input type="date" className={`${select} col-span-3 sm:col-span-1`} value={to} onChange={(e) => setTo(e.target.value)} aria-label="To" />
+        </Select>
+        <Input type="date" className="col-span-3 sm:col-span-1" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From" />
+        <Input type="date" className="col-span-3 sm:col-span-1" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To" />
       </div>
 
       {/* ── Deals ── */}
@@ -152,10 +150,9 @@ export default function LedgerClient({ deals, shows }: { deals: Deal[]; shows: S
                 ))}
               </div>
             )}
-            <button type="button" disabled={busy} onClick={() => revert(open)}
-              className="h-11 w-full rounded-lg border border-negative-border bg-negative-soft font-medium text-negative-strong transition-colors duration-150 hover:bg-negative/20 disabled:opacity-40 dark:text-negative">
+            <Button variant="destructive" disabled={busy} onClick={() => revert(open)} className="w-full">
               {busy ? "Reverting…" : "Revert"}
-            </button>
+            </Button>
           </div>
         )}
       </Modal>

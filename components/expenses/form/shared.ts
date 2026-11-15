@@ -85,19 +85,10 @@ export const CATEGORY_TOOLTIP = "Category determines which tax line this expense
 export const DEDUCTIBLE_TOOLTIP = "The portion the IRS lets you subtract from taxable income. Higher % = more tax savings.";
 export const MILEAGE_RATE_TOOLTIP = "IRS standard mileage rate for 2026 is $0.70/mi. Use this unless you track actual vehicle expenses separately.";
 
-// ── Shared field classes ──────────────────────────────────────────────────────
+// ── Shared label / text-link classes ─────────────────────────────────────────
+// Fields, chips and buttons come from @/components/ui (Input, Select, Chip, Button).
 
-export const FIELD_CLASS =
-  "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground " +
-  "placeholder:text-muted-foreground focus:border-accent-primary focus:outline-none";
 export const LABEL_CLASS = "mb-1.5 block text-xs text-muted-foreground";
-export const CHIP_CLASS =
-  "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm transition-colors duration-150";
-export const CHIP_ACTIVE = "border-accent-primary bg-accent-primary-soft text-accent-primary";
-export const CHIP_IDLE = "border-border text-muted-foreground hover:bg-muted";
-export const GHOST_BTN =
-  "inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-border px-3 text-sm " +
-  "text-foreground transition-colors duration-150 hover:bg-muted";
 export const LINK_BTN =
   "inline-flex h-11 items-center gap-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground";
 

@@ -1,16 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Modal } from "@/components/ui";
+import { Button, Input, Modal, Textarea } from "@/components/ui";
 
 export type ScheduleFields = {
   name: string; location: string; hours: string; startingCash: string; boothFee: string; notes: string;
 };
-
-const inputCls =
-  "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent-primary focus:outline-none";
 
 // ── Labelled field ────────────────────────────────────────────────────────────
 
@@ -76,9 +72,9 @@ export function ScheduleShowModal({
     <Modal open={open} onClose={onClose} title="Schedule Show">
       <div className="max-h-96 space-y-3 overflow-y-auto pb-1">
         <Field id="ssm-name" label="Show Name" required error={nameErr}>
-          <input
+          <Input
             id="ssm-name"
-            className={cn(inputCls, nameErr && "border-negative")}
+            className={cn(nameErr && "border-negative")}
             placeholder="e.g. Portland Card Show"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -87,19 +83,18 @@ export function ScheduleShowModal({
         </Field>
 
         <Field id="ssm-date" label="Date" required error={dateErr}>
-          <input
+          <Input
             id="ssm-date"
             type="date"
-            className={cn(inputCls, dateErr && "border-negative")}
+            className={cn(dateErr && "border-negative")}
             value={date}
             onChange={(e) => onDateChange(e.target.value)}
           />
         </Field>
 
         <Field id="ssm-venue" label="Venue">
-          <input
+          <Input
             id="ssm-venue"
-            className={inputCls}
             placeholder="e.g. Portland Convention Center"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
@@ -107,9 +102,8 @@ export function ScheduleShowModal({
         </Field>
 
         <Field id="ssm-hours" label="Hours">
-          <input
+          <Input
             id="ssm-hours"
-            className={inputCls}
             placeholder="e.g. 10am – 4pm"
             value={hours}
             onChange={(e) => setHours(e.target.value)}
@@ -117,11 +111,10 @@ export function ScheduleShowModal({
         </Field>
 
         <Field id="ssm-cash" label="Starting Cash">
-          <input
+          <Input
             id="ssm-cash"
             type="number"
             inputMode="decimal"
-            className={cn(inputCls, "tabular-nums")}
             placeholder="e.g. 500"
             min="0"
             step="0.01"
@@ -132,11 +125,10 @@ export function ScheduleShowModal({
 
         {/* Booth fee is logged as a show expense */}
         <Field id="ssm-fee" label="Booth Fee">
-          <input
+          <Input
             id="ssm-fee"
             type="number"
             inputMode="decimal"
-            className={cn(inputCls, "tabular-nums")}
             placeholder="e.g. 150"
             min="0"
             step="0.01"
@@ -146,9 +138,9 @@ export function ScheduleShowModal({
         </Field>
 
         <Field id="ssm-notes" label="Notes">
-          <textarea
+          <Textarea
             id="ssm-notes"
-            className={cn(inputCls, "h-auto min-h-20 resize-none py-2")}
+            className="min-h-20 resize-none"
             rows={2}
             placeholder="Any notes about this show…"
             value={notes}
@@ -161,22 +153,12 @@ export function ScheduleShowModal({
 
       {/* ── Footer ── */}
       <div className="mt-4 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row">
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          className="h-11 flex-1 rounded-lg border border-border text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted disabled:opacity-40"
-        >
+        <Button variant="outline" onClick={onClose} disabled={busy} className="flex-1">
           Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={busy}
-          className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
-        >
-          {busy ? <><Loader2 size={14} className="animate-spin" />Scheduling…</> : "Schedule Show"}
-        </button>
+        </Button>
+        <Button onClick={handleSubmit} loading={busy} className="flex-1">
+          {busy ? "Scheduling…" : "Schedule Show"}
+        </Button>
       </div>
     </Modal>
   );

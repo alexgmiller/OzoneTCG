@@ -4,10 +4,9 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import CardAutocomplete from "@/components/CardAutocomplete";
 import CertLookupWidget from "@/components/CertLookupWidget";
-import { EmptyState, MoneyDisplay } from "@/components/ui";
+import { Button, Chip, EmptyState, Input, MoneyDisplay } from "@/components/ui";
 import { offlineRecordBuy } from "@/lib/offlineAwareActions";
 import { round2, type NewCard } from "./ledger";
-import { BTN, ICON_BTN, INPUT, chip } from "./ui";
 import TransactionForm from "./TransactionForm";
 
 const CATEGORIES = ["single", "slab", "sealed"] as const;
@@ -28,10 +27,10 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
     <div className="space-y-2">
       <div className="flex gap-2" role="radiogroup" aria-label="Category">
         {CATEGORIES.map((c) => (
-          <button key={c} type="button" role="radio" aria-checked={category === c} onClick={() => setCategory(c)}
-            className={`${chip(category === c)} capitalize`}>
+          <Chip key={c} size="sm" selected={category === c} role="radio"
+            onClick={() => setCategory(c)} className="capitalize">
             {c}
-          </button>
+          </Chip>
         ))}
       </div>
       {category === "slab" && (
@@ -44,7 +43,6 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
       <div className="flex gap-2">
         <div className="min-w-0 flex-1">
           <CardAutocomplete value={name} placeholder="Card name"
-            className={`${INPUT} w-full`}
             onChange={(v) => { setName(v); setCard({}); }}
             onSelect={(c) => {
               setName(c.name);
@@ -52,12 +50,12 @@ export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
               if (c.market != null) setMarket(c.market.toFixed(2));
             }} />
         </div>
-        <input type="number" inputMode="decimal" value={market} onChange={(e) => setMarket(e.target.value)}
-          placeholder="Market" aria-label="Market price" className={`${INPUT} w-24 tabular-nums`} />
-        <button type="button" disabled={!name.trim()} className={BTN}
+        <Input type="number" inputMode="decimal" value={market} onChange={(e) => setMarket(e.target.value)}
+          placeholder="Market" aria-label="Market price" className="w-24" />
+        <Button variant="outline" disabled={!name.trim()} className="shrink-0"
           onClick={() => add({ ...card, name: name.trim(), category, market: market ? Number(market) : null })}>
           Add
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -73,9 +71,9 @@ export function CardList({ cards, onRemove }: { cards: NewCard[]; onRemove: (i: 
           {c.market != null
             ? <MoneyDisplay amount={c.market} tone="neutral" className="shrink-0 text-foreground" />
             : <span className="shrink-0 text-muted-foreground">—</span>}
-          <button type="button" aria-label={`Remove ${c.name}`} onClick={() => onRemove(i)} className={ICON_BTN}>
+          <Button variant="ghost" size="icon" aria-label={`Remove ${c.name}`} onClick={() => onRemove(i)} className="shrink-0">
             <X size={16} />
-          </button>
+          </Button>
         </div>
       ))}
     </div>

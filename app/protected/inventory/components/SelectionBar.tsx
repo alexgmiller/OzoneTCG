@@ -1,6 +1,6 @@
 "use client";
 
-import { btnPrimary, btnOutline } from "../utils";
+import { Button } from "@/components/ui";
 
 // ── Bulk action bar (fixed above the mobile tab bar) ──
 // Sold rows can't be sold again or price-refreshed, so those actions hide when any is selected.
@@ -30,22 +30,22 @@ export function SelectionBar({
       <div className="mx-auto w-full max-w-3xl space-y-2 px-4 py-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground tabular-nums">{count} selected</span>
-          <button className="h-11 px-2 text-sm text-muted-foreground hover:text-foreground" onClick={onClear}>Clear</button>
+          <Button variant="ghost" size="sm" className="px-2" onClick={onClear}>Clear</Button>
         </div>
         <div className={`grid gap-2 ${soldSelected ? "grid-cols-2" : "grid-cols-5"}`}>
           {!soldSelected && (
             <>
-              <button className={`${btnPrimary} col-span-2 px-2`} onClick={onSell} disabled={busy}>Sell</button>
-              <button className={`${btnOutline} px-2`} onClick={onRefresh} disabled={busy} title="Refresh prices">↻</button>
+              <Button className="col-span-2 px-2" onClick={onSell} disabled={busy}>Sell</Button>
+              <Button variant="outline" className="px-2" onClick={onRefresh} disabled={busy} title="Refresh prices">↻</Button>
             </>
           )}
-          <button className={`${btnOutline} px-2`} onClick={onSetCost} disabled={busy}>Cost</button>
+          <Button variant="outline" className="px-2" onClick={onSetCost} disabled={busy}>Cost</Button>
           {/* Sold rows keep their sale fields; undo a sale from Transactions instead */}
-          {!soldSelected && <button className={`${btnOutline} px-2`} onClick={onEdit} disabled={busy}>Edit</button>}
+          {!soldSelected && <Button variant="outline" className="px-2" onClick={onEdit} disabled={busy}>Edit</Button>}
         </div>
-        <button className="h-11 w-full text-sm font-medium text-negative" onClick={onDelete} disabled={busy}>
+        <Button variant="destructive-ghost" className="w-full" onClick={onDelete} disabled={busy}>
           Delete {count} item{count !== 1 ? "s" : ""}
-        </button>
+        </Button>
       </div>
     </div>
   );

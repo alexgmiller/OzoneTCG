@@ -74,6 +74,7 @@ export function ExpenseStats({
             return (
               <button
                 key={cat}
+                type="button"
                 onClick={() => onPickCategory(cat)}
                 className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-3 transition-colors duration-150 hover:bg-muted ${
                   i > 0 ? "border-l border-border" : ""

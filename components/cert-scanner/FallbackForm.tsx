@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertCircle } from "lucide-react";
 import type { FallbackFields } from "./useCertLookup";
-import { btnOutline, btnPrimary, inputClass } from "./shared";
+import { Button, Input } from "@/components/ui";
 
 // ── FallbackForm ──
 // Shown when the cert lookup fails: enter card details by hand to get pricing.
@@ -28,12 +28,11 @@ function Field({
   return (
     <label className={`block ${className ?? ""}`}>
       <span className="mb-1 block text-xs text-muted-foreground">{label}</span>
-      <input
+      <Input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={inputClass}
         autoFocus={autoFocus}
       />
     </label>
@@ -74,12 +73,12 @@ export function FallbackForm({
       </div>
 
       <div className="flex gap-2">
-        <button type="button" onClick={() => onSubmit(f)} disabled={!canSubmit} className={`${btnPrimary} flex-1`}>
+        <Button size="lg" onClick={() => onSubmit(f)} disabled={!canSubmit} className="flex-1">
           Get pricing
-        </button>
-        <button type="button" onClick={onCancel} className={btnOutline}>
+        </Button>
+        <Button variant="outline" size="lg" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );

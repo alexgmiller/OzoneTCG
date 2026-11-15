@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { SectionHeader } from "@/components/ui";
-import { MoneyOrDash, OFFER_PRESETS, inputClass, offerValue } from "./shared";
+import { Input, SectionHeader } from "@/components/ui";
+import { MoneyOrDash, OFFER_PRESETS, offerValue } from "./shared";
 
 // ── OfferCalc ──
 // Percent-of-market presets plus a custom percent input.
@@ -47,7 +47,7 @@ export function OfferCalc({
       </div>
       <div className="mt-2 flex items-center gap-3">
         <span className="text-xs text-muted-foreground">Custom %</span>
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           min={1}
@@ -57,7 +57,7 @@ export function OfferCalc({
           onBlur={applyCustom}
           onKeyDown={(e) => { if (e.key === "Enter") applyCustom(); }}
           placeholder="e.g. 72"
-          className={`${inputClass} w-24 text-center tabular-nums`}
+          className="w-24 text-center"
         />
         {customVal && !OFFER_PRESETS.includes(customNum) && (
           <span className="text-sm font-semibold">

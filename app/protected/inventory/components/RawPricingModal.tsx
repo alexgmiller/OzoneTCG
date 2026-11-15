@@ -1,10 +1,10 @@
 "use client";
 
-import { Modal, MoneyDisplay } from "@/components/ui";
+import { Badge, Button, Modal, MoneyDisplay, Segmented } from "@/components/ui";
 import type { RawCardPrice } from "../InventoryServer";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import type { HistoryDuration, Item } from "../types";
-import { fmt, fmtDate, getMovement, MovementBadge, setLine, btnOutline, pillClass } from "../utils";
+import { fmt, fmtDate, getMovement, MovementBadge, setLine } from "../utils";
 import { Sparkline } from "./Sparkline";
 
 const CONDITIONS: { label: string; key: "nm" | "lp" | "mp" | "hp" | "dmg" }[] = [
@@ -71,7 +71,7 @@ export function RawPricingModal({
           <div className="truncate text-sm font-semibold leading-tight text-foreground">{it.name}</div>
           {setLine(it) && <div className="mt-0.5 text-xs text-muted-foreground">{setLine(it)}</div>}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {it.condition && <span className={pillClass}>{it.condition}</span>}
+            {it.condition && <Badge>{it.condition}</Badge>}
             {rcp && itemPrice != null ? (
               <div className="flex items-baseline gap-2">
                 <MoneyDisplay amount={itemPrice} tone="neutral" className="text-base font-bold" />
@@ -88,7 +88,7 @@ export function RawPricingModal({
             </div>
           )}
         </div>
-        <button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" onClick={close} aria-label="Close">✕</button>
+        <Button variant="ghost" size="icon" className="shrink-0" onClick={close} aria-label="Close">✕</Button>
       </div>
 
       {/* ── Condition prices ── */}
@@ -120,7 +120,7 @@ export function RawPricingModal({
 
       {/* ── Price history ── */}
       <div className="border-t border-border pt-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="font-mono text-xs uppercase tracking-[0.18em] text-neutral">History · NM</div>
           <div className="flex items-center gap-1">
             {pctChange != null && (
@@ -128,13 +128,12 @@ export function RawPricingModal({
                 {pctChange >= 0 ? "+" : ""}{pctChange.toFixed(1)}%
               </span>
             )}
-            {DURATIONS.map((d) => (
-              <button
-                key={d.key}
-                className={`h-11 min-w-11 rounded-lg px-2 text-xs font-medium transition-colors duration-150 ${historyDuration === d.key ? "bg-accent-primary-soft text-accent-primary" : "text-muted-foreground hover:bg-muted"}`}
-                onClick={() => setHistoryDuration(d.key)}
-              >{d.key}</button>
-            ))}
+            <Segmented
+              aria-label="History period"
+              options={DURATIONS.map((d) => d.key)}
+              value={historyDuration}
+              onChange={setHistoryDuration}
+            />
           </div>
         </div>
         {allHistory.length === 0 ? (
@@ -159,9 +158,9 @@ export function RawPricingModal({
           {rcp?.last_updated ? `Updated ${fmtDate(rcp.last_updated)}` : ""}
           {rcp?.printing && rcp.printing !== "Normal" && <span className="ml-1">· {rcp.printing}</span>}
         </div>
-        <button className={btnOutline} disabled={isRefreshing} onClick={() => handleRefreshRawCardPrice(it)}>
+        <Button variant="outline" disabled={isRefreshing} onClick={() => handleRefreshRawCardPrice(it)}>
           {isRefreshing ? "Fetching…" : "↺ Refresh"}
-        </button>
+        </Button>
       </div>
     </Modal>
   );

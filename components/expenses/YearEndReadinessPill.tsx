@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { CheckCircle2, TriangleAlert } from "lucide-react";
-import { Modal } from "@/components/ui";
+import { Badge, Button, Modal } from "@/components/ui";
 import type { ExpenseRow } from "@/app/protected/expenses/ExpensesServer";
 
 const RECEIPT_THRESHOLD = 75;
-const PILL = "inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-sm";
 
 type Issue = {
   id: string;
@@ -61,29 +60,34 @@ export function YearEndReadinessPill({
 
   if (yearExpenses.length === 0) {
     return (
-      <div className={`${PILL} border-border text-muted-foreground`}>
+      <Badge tone="neutral">
         No {year} expenses yet
-      </div>
+      </Badge>
     );
   }
 
   if (issues.length === 0) {
     return (
-      <div className={`${PILL} border-positive-border bg-positive-soft text-positive`}>
+      <Badge tone="positive">
         <CheckCircle2 size={14} />
         Ready to file
-      </div>
+      </Badge>
     );
   }
 
   return (
     <>
+      {/* Native wrapper: keeps the h-11 tap target around a read-only warning Badge
+          (no warning-tone Button/Chip primitive exists). */}
       <button
+        type="button"
         onClick={() => setModalOpen(true)}
-        className={`${PILL} border-warning-border bg-warning-soft text-warning transition-opacity duration-150 hover:opacity-90`}
+        className="inline-flex h-11 items-center rounded-full transition-opacity duration-150 hover:opacity-90"
       >
-        <TriangleAlert size={14} />
-        <span className="tabular-nums">{issues.length}</span> item{issues.length !== 1 ? "s" : ""} need review
+        <Badge tone="warning">
+          <TriangleAlert size={14} />
+          <span className="tabular-nums">{issues.length}</span> item{issues.length !== 1 ? "s" : ""} need review
+        </Badge>
       </button>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={`${year} Tax Readiness`}>
@@ -94,12 +98,13 @@ export function YearEndReadinessPill({
           {issues.map((issue) => (
             <li key={issue.id} className="flex items-center justify-between gap-3 text-sm">
               <span className="leading-relaxed text-muted-foreground">{issue.label}</span>
-              <button
+              <Button
+                variant="secondary"
                 onClick={() => { setModalOpen(false); onEditExpense(issue.id); }}
-                className="inline-flex h-11 shrink-0 items-center rounded-lg border border-accent-primary-border px-4 text-sm text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
+                className="shrink-0"
               >
                 Fix
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

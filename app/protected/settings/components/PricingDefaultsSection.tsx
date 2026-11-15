@@ -1,9 +1,10 @@
 "use client";
 
 import { TrendingUp } from "lucide-react";
+import { Segmented } from "@/components/ui";
 import type { UserSettings } from "../actions";
 import {
-  Section, SettingRow, RowGroupLabel, NumInput, Segmented,
+  Section, SettingRow, RowGroupLabel, NumInput,
   type SettingsUpdate,
 } from "./SettingsPrimitives";
 
@@ -60,9 +61,12 @@ export function PricingDefaultsSection({
       <RowGroupLabel>FMV strategy</RowGroupLabel>
       <SettingRow stack label="Slab pricing strategy" description="Which percentile to use as FMV for graded cards">
         <Segmented
+          kind="radio"
           value={settings.pricing_strategy}
           options={STRATEGIES}
           onChange={(v) => onChange("pricing_strategy", v)}
+          aria-label="Slab pricing strategy"
+          className="w-full sm:w-auto"
         />
       </SettingRow>
     </Section>

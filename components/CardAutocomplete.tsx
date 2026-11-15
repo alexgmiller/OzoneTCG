@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
-import { MoneyDisplay } from "@/components/ui";
+import { Input, MoneyDisplay } from "@/components/ui";
 
 export type AutocompleteCard = {
   name: string;
@@ -233,7 +233,7 @@ export default function CardAutocomplete({
 
   return (
     <div ref={containerRef} className="relative">
-      <input
+      <Input
         className={className}
         placeholder={placeholder}
         value={value}

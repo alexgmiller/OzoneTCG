@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
-import { useConfirm, useToast } from "@/components/ui";
+import { Button, Select, useConfirm, useToast } from "@/components/ui";
 import { ExpenseForm, type ExpenseFormPayload } from "@/components/expenses/ExpenseForm";
 import { YearEndReadinessPill } from "@/components/expenses/YearEndReadinessPill";
 import { compressImage } from "@/components/expenses/compressImage";
@@ -275,35 +275,35 @@ export default function ExpensesClient({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/protected/expenses/tax-report"
-            className="inline-flex h-11 items-center rounded-lg border border-accent-primary-border px-3 text-sm text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
-          >
-            Tax Report →
-          </Link>
-          <select
+          <Button asChild variant="secondary" size="sm">
+            <Link href="/protected/expenses/tax-report">
+              Tax Report →
+            </Link>
+          </Button>
+          <Select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm tabular-nums text-foreground"
+            className="w-auto font-mono tabular-nums"
             aria-label="Year"
           >
             {yearOptions.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
       {/* ── Readiness row ── */}
       <div className="flex items-center justify-between gap-2">
         {docsExplained ? (
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setDocsModalOpen(true)}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground"
             aria-label="About documentation"
           >
             <Info size={16} />
-          </button>
+          </Button>
         ) : <span />}
         <YearEndReadinessPill expenses={initialExpenses} onEditExpense={openEditById} />
       </div>

@@ -1,9 +1,9 @@
 "use client";
 
 import type { CertLookupResult } from "@/app/api/cert-lookup/route";
-import { Modal } from "@/components/ui";
+import { Button, Modal, Select } from "@/components/ui";
 import { METHOD_LABELS, PAYMENT_METHODS, type PaymentMethod } from "@/app/protected/pos/ledger";
-import { MoneyOrDash, btnPrimary, gradeString, inputClass, offerValue, type Owner } from "./shared";
+import { MoneyOrDash, gradeString, offerValue, type Owner } from "./shared";
 
 // ── BuyModal ──
 // Confirms a single-card or bulk buy: payment method + owner, then records it.
@@ -79,33 +79,31 @@ export function BuyModal({
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="mb-1 block text-xs text-muted-foreground">Payment</span>
-            <select
+            <Select
               value={payment}
               onChange={(e) => onPaymentChange(e.target.value as PaymentMethod)}
-              className={inputClass}
             >
               {PAYMENT_METHODS.map((m) => (
                 <option key={m} value={m}>{METHOD_LABELS[m]}</option>
               ))}
-            </select>
+            </Select>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs text-muted-foreground">Owner</span>
-            <select
+            <Select
               value={owner}
               onChange={(e) => onOwnerChange(e.target.value as Owner)}
-              className={inputClass}
             >
               {OWNERS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
-            </select>
+            </Select>
           </label>
         </div>
 
-        <button type="button" onClick={onConfirm} disabled={loading} className={`${btnPrimary} w-full`}>
+        <Button size="lg" onClick={onConfirm} disabled={loading} className="w-full">
           {loading ? "Recording…" : "Confirm buy"}
-        </button>
+        </Button>
       </div>
     </Modal>
   );

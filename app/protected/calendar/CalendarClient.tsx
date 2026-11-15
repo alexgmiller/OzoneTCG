@@ -2,8 +2,7 @@
 
 import { useState, useCallback, useTransition, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Plus, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui";
+import { Button, Segmented, Skeleton } from "@/components/ui";
 import {
   getCalendarMonthData,
   getDayDetail,
@@ -19,8 +18,10 @@ import { DayDetailPanel } from "./components/DayDetail";
 import { ScheduleShowModal, type ScheduleFields } from "./components/ScheduleShowModal";
 import { Lightbox } from "./components/Lightbox";
 
-const iconBtn =
-  "flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted disabled:opacity-40";
+const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+];
 
 // ── Calendar page client ──────────────────────────────────────────────────────
 
@@ -180,53 +181,31 @@ export default function CalendarClient({
       {/* ── Calendar header ── */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <button type="button" onClick={prevMonth} className={iconBtn} disabled={monthLoading} aria-label="Previous month">
+          <Button variant="ghost" size="icon" onClick={prevMonth} disabled={monthLoading} aria-label="Previous month">
             <ChevronLeft size={18} />
-          </button>
+          </Button>
           <div className="flex min-w-36 items-center justify-center gap-2">
             <h2 className="text-sm font-semibold text-foreground">
               {MONTH_NAMES[currentMonth - 1]} <span className="tabular-nums">{currentYear}</span>
             </h2>
             {monthLoading && <Loader2 size={14} className="shrink-0 animate-spin text-muted-foreground" />}
           </div>
-          <button type="button" onClick={nextMonth} className={iconBtn} disabled={monthLoading} aria-label="Next month">
+          <Button variant="ghost" size="icon" onClick={nextMonth} disabled={monthLoading} aria-label="Next month">
             <ChevronRight size={18} />
-          </button>
+          </Button>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={goToday}
-            className="h-11 rounded-lg bg-muted px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
-          >
+          <Button variant="outline" size="sm" onClick={goToday}>
             Today
-          </button>
+          </Button>
 
-          <div className="flex h-11 items-center overflow-hidden rounded-lg border border-border">
-            {(["week", "month"] as ViewMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setView(mode)}
-                className={cn(
-                  "h-full px-3 text-sm font-semibold capitalize transition-colors duration-150",
-                  viewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
+          <Segmented options={VIEW_OPTIONS} value={viewMode} onChange={setView} aria-label="Calendar view" />
 
-          <button
-            type="button"
-            onClick={() => openScheduleModal(selectedDate ?? todayStr)}
-            className="flex h-11 items-center gap-1 rounded-lg bg-accent-primary-soft px-3 text-sm font-semibold text-accent-primary transition-colors duration-150 hover:bg-accent-primary-border"
-          >
+          <Button variant="secondary" size="sm" onClick={() => openScheduleModal(selectedDate ?? todayStr)} className="gap-1">
             <Plus size={16} />
             Show
-          </button>
+          </Button>
         </div>
       </div>
 

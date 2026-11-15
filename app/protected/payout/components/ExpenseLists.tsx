@@ -1,9 +1,9 @@
 "use client";
 
-import { SectionHeader } from "@/components/ui";
+import { Button, SectionHeader } from "@/components/ui";
 import type { ExpenseEntry, ItemCostEntry } from "../PayoutServer";
 import { CollapsibleSection, LedgerRow } from "./CollapsibleSection";
-import { BTN_OUTLINE, fmtDate } from "./payoutMeta";
+import { fmtDate } from "./payoutMeta";
 
 // ── Partner spend: expenses + unsold inventory each partner fronted ──
 
@@ -50,14 +50,15 @@ function PurchaseSection({
             sub={`Inventory cost · ${fmtDate(item.created_at)}`}
             amount={item.cost}
             action={
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 disabled={pending}
                 onClick={() => onKeepSolo(item.id)}
-                className={`${BTN_OUTLINE} shrink-0 text-xs`}
+                className="shrink-0 text-xs"
               >
                 {pending ? "Saving…" : "Keep solo"}
-              </button>
+              </Button>
             }
           />
         );

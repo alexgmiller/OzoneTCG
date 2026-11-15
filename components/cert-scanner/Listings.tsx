@@ -1,21 +1,21 @@
 "use client";
 
 import { ExternalLink } from "lucide-react";
-import { SectionHeader, Skeleton } from "@/components/ui";
+import { Badge, Button, SectionHeader, Skeleton } from "@/components/ui";
 import { MoneyOrDash, shortDate, type ActiveListingsState, type SoldState } from "./shared";
 
 // ── ListingTypeBadge ──
 
 function ListingTypeBadge({ types }: { types: string[] }) {
-  const [label, cls] = types.includes("AUCTION")
-    ? ["Auction", "bg-warning-soft text-warning-strong"]
+  const [label, tone] = types.includes("AUCTION")
+    ? (["Auction", "warning"] as const)
     : types.includes("BEST_OFFER")
-      ? ["Best offer", "bg-positive-soft text-positive-strong"]
-      : ["Fixed", "bg-muted text-muted-foreground"];
+      ? (["Best offer", "positive"] as const)
+      : (["Fixed", "neutral"] as const);
   return (
-    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>
+    <Badge tone={tone} className="shrink-0">
       {label}
-    </span>
+    </Badge>
   );
 }
 
@@ -53,26 +53,23 @@ export function RecentSales({
               <div className="flex-1" />
               <span className="text-sm font-semibold"><MoneyOrDash amount={s.price} /></span>
               {s.itemUrl && (
-                <a
-                  href={s.itemUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Open listing"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 hover:text-foreground"
-                >
-                  <ExternalLink size={14} />
-                </a>
+                <Button asChild variant="ghost" size="icon" className="shrink-0">
+                  <a
+                    href={s.itemUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open listing"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                </Button>
               )}
             </div>
           ))}
           {sold.items.length > 5 && (
-            <button
-              type="button"
-              onClick={onToggleShowAll}
-              className="h-11 w-full text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
-            >
+            <Button variant="ghost" onClick={onToggleShowAll} className="w-full rounded-none">
               {sold.showAll ? "Show less" : `${sold.items.length - 5} more`}
-            </button>
+            </Button>
           )}
         </div>
       )}

@@ -8,7 +8,7 @@ import { recordBuy } from "@/app/protected/pos/actions";
 import type { PaymentMethod } from "@/app/protected/pos/ledger";
 import { getActiveShow } from "@/app/protected/shows/actions";
 import type { PricingStrategyOverride } from "@/lib/fmv";
-import { useConfirm, useToast } from "@/components/ui";
+import { Button, useConfirm, useToast } from "@/components/ui";
 import { useCertLookup } from "./useCertLookup";
 import { CompanyPicker } from "./CompanyPicker";
 import { ScanIdle } from "./ScanIdle";
@@ -217,14 +217,14 @@ export default function CertScanner({
       <div className="flex items-center justify-between pt-2">
         <h1 className="text-lg font-semibold">Cert scan</h1>
         {history.length > 0 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setHistoryOpen(true)}
             aria-label="Scan history"
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
           >
             <History size={18} />
-          </button>
+          </Button>
         )}
       </div>
 

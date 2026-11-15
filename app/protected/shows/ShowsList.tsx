@@ -4,10 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { EmptyState, MoneyDisplay, SectionHeader, useToast } from "@/components/ui";
+import { Button, EmptyState, MoneyDisplay, SectionHeader, useToast } from "@/components/ui";
 import { startShow, type ShowSession } from "./actions";
 import ActiveShowCard from "./ActiveShowCard";
-import { btnPrimary, fmtDate, showVenue, todayLocalISO } from "./shared";
+import { fmtDate, showVenue, todayLocalISO } from "./shared";
 
 // One list: live show pinned, then upcoming soonest-first, then past most-recent-first
 export default function ShowsList({ shows }: { shows: ShowSession[] }) {
@@ -94,14 +94,9 @@ function ScheduledRow({ show, hasActive }: { show: ShowSession; hasActive: boole
         </div>
         <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
       </Link>
-      <button
-        type="button"
-        onClick={start}
-        disabled={busy || hasActive}
-        className={`${btnPrimary} shrink-0`}
-      >
+      <Button onClick={start} disabled={busy || hasActive} className="shrink-0">
         {busy ? "Starting…" : "Start"}
-      </button>
+      </Button>
     </li>
   );
 }

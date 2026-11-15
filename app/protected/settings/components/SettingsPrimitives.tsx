@@ -3,16 +3,11 @@
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SectionHeader } from "@/components/ui";
+import { Input, SectionHeader } from "@/components/ui";
 import type { UserSettings } from "../actions";
 
 // ── Shared types ──
 export type SettingsUpdate = <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => void;
-
-// ── Shared classes ──
-export const inputClass =
-  "h-11 rounded-lg border border-border bg-background px-3 text-sm text-foreground " +
-  "placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
 
 // ── Section ──
 export function Section({
@@ -144,13 +139,13 @@ export function NumInput({
 
   return (
     <div className="flex items-center gap-2">
-      <input
+      <Input
         type="number"
         inputMode="decimal"
         min={min}
         max={max}
         value={local}
-        className={cn(inputClass, "w-24 text-right tabular-nums")}
+        className="w-24 text-right"
         onChange={(e) => setLocal(e.target.value)}
         onBlur={() => {
           const n = Number(local);
@@ -160,64 +155,5 @@ export function NumInput({
       />
       <span className="w-3 text-xs text-muted-foreground">{unit}</span>
     </div>
-  );
-}
-
-// ── Segmented control ──
-export function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div role="radiogroup" className="flex w-full overflow-hidden rounded-lg border border-border sm:w-auto">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={value === o.value}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "h-11 flex-1 px-4 text-sm transition-colors duration-150 sm:flex-none",
-            value === o.value
-              ? "bg-primary font-medium text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ── Action button ──
-export function ActionButton({
-  tone = "default",
-  className,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: "default" | "primary" | "danger" }) {
-  const toneClass = {
-    default: "border border-border bg-background text-foreground hover:bg-muted",
-    primary: "bg-primary text-primary-foreground hover:bg-accent-primary-hover",
-    danger: "border border-negative-border text-negative-strong hover:bg-negative-soft",
-  }[tone];
-
-  return (
-    <button
-      type="button"
-      className={cn(
-        "inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium",
-        "transition-colors duration-150 disabled:pointer-events-none disabled:opacity-40",
-        toneClass,
-        className,
-      )}
-      {...props}
-    />
   );
 }

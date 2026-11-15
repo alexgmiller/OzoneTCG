@@ -1,8 +1,8 @@
 "use client";
 
-import { Modal, MoneyDisplay } from "@/components/ui";
+import { Button, Input, Modal, MoneyDisplay, Select } from "@/components/ui";
 import type { ConsignerOption, Item, ItemForm } from "../types";
-import { toNum, fmt, fieldClass, btnOutline, btnPrimary, btnDanger } from "../utils";
+import { toNum, fmt } from "../utils";
 import ItemFormFields from "./ItemFormFields";
 
 // ── Edit modal ──
@@ -37,28 +37,28 @@ export function EditItemModal({
     <Modal open onClose={closeEdit} title="Edit item" className="max-h-full overflow-y-auto">
       <div className="space-y-4">
         <ItemFormFields form={editForm} setForm={setEditForm} consigners={consigners} />
-        <button type="button" className={`${btnOutline} w-full`} onClick={() => setEditImagePickerOpen(true)} disabled={busy}>
+        <Button variant="outline" className="w-full" onClick={() => setEditImagePickerOpen(true)} disabled={busy}>
           Find image
-        </button>
+        </Button>
         {editForm.category === "single" && editingItem?.status === "inventory" && (
-          <button type="button" className={`${btnOutline} w-full`} onClick={handleGradeItem} disabled={busy}>
+          <Button variant="outline" className="w-full" onClick={handleGradeItem} disabled={busy}>
             Send to grading
-          </button>
+          </Button>
         )}
         {deleteConfirm ? (
           <div className="flex items-center gap-2 rounded-xl border border-negative-border bg-negative-soft p-3">
             <span className="flex-1 text-sm text-negative">Delete this item?</span>
-            <button className={btnDanger} onClick={handleDeleteItem} disabled={busy}>Delete</button>
-            <button className={btnOutline} onClick={() => setDeleteConfirm(false)}>Cancel</button>
+            <Button variant="destructive" onClick={handleDeleteItem} disabled={busy}>Delete</Button>
+            <Button variant="outline" onClick={() => setDeleteConfirm(false)}>Cancel</Button>
           </div>
         ) : (
-          <button type="button" className="h-11 w-full text-sm font-medium text-negative" onClick={() => setDeleteConfirm(true)} disabled={busy}>
+          <Button variant="destructive-ghost" className="w-full" onClick={() => setDeleteConfirm(true)} disabled={busy}>
             Delete item
-          </button>
+          </Button>
         )}
         <div className="flex gap-2">
-          <button className={`${btnPrimary} flex-1`} onClick={onSaveEdit} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
-          <button className={btnOutline} onClick={closeEdit} disabled={busy}>Cancel</button>
+          <Button className="flex-1" onClick={onSaveEdit} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+          <Button variant="outline" onClick={closeEdit} disabled={busy}>Cancel</Button>
         </div>
       </div>
     </Modal>
@@ -99,7 +99,7 @@ export function MassEditModal({
         <div className="space-y-3">
           <label className="block">
             <span className="mb-1 block text-xs text-muted-foreground">Owner</span>
-            <select className={fieldClass} value={massOwner} onChange={(e) => setMassOwner(e.target.value)}>
+            <Select value={massOwner} onChange={(e) => setMassOwner(e.target.value)}>
               <option value="">— no change —</option>
               <option value="shared">Shared</option>
               <option value="alex">Alex</option>
@@ -111,31 +111,31 @@ export function MassEditModal({
                   ))}
                 </optgroup>
               )}
-            </select>
+            </Select>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs text-muted-foreground">Status</span>
-            <select className={fieldClass} value={massStatus} onChange={(e) => setMassStatus(e.target.value)}>
+            <Select value={massStatus} onChange={(e) => setMassStatus(e.target.value)}>
               <option value="">— no change —</option>
               <option value="inventory">Inventory</option>
               <option value="grading">Grading</option>
-            </select>
+            </Select>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs text-muted-foreground">Type</span>
-            <select className={fieldClass} value={massCategory} onChange={(e) => setMassCategory(e.target.value)}>
+            <Select value={massCategory} onChange={(e) => setMassCategory(e.target.value)}>
               <option value="">— no change —</option>
               <option value="single">Single</option>
               <option value="slab">Slab</option>
               <option value="sealed">Sealed</option>
-            </select>
+            </Select>
           </label>
         </div>
         <div className="flex gap-2">
-          <button className={`${btnPrimary} flex-1`} onClick={onMassEdit} disabled={busy || (!massOwner && !massStatus && !massCategory)}>
+          <Button className="flex-1" onClick={onMassEdit} disabled={busy || (!massOwner && !massStatus && !massCategory)}>
             {busy ? "Saving…" : `Apply to ${selectedIds.size} items`}
-          </button>
-          <button className={btnOutline} onClick={close} disabled={busy}>Cancel</button>
+          </Button>
+          <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
         </div>
       </div>
     </Modal>
@@ -196,7 +196,7 @@ export function SellModal({
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     {isManual ? (
-                      <button type="button" className="flex h-11 w-8 items-center justify-center text-muted-foreground hover:text-foreground" onClick={() => resetCardPrice(it.id)} title="Reset to auto">↺</button>
+                      <Button variant="ghost" size="sm" className="w-8 px-0" onClick={() => resetCardPrice(it.id)} title="Reset to auto">↺</Button>
                     ) : (
                       <span className="w-8 text-center text-xs text-muted-foreground">auto</span>
                     )}
@@ -234,22 +234,22 @@ export function SellModal({
           <div className="mb-1 flex items-center justify-between">
             <label className="text-sm font-medium text-foreground">Total sale price</label>
             {totalMarket > 0 && (
-              <button type="button" className="h-11 text-xs font-medium text-accent-primary" onClick={() => { setSalePrice(totalMarket.toFixed(2)); setManualPrices({}); }}>
+              <Button variant="link" className="h-11 text-xs" onClick={() => { setSalePrice(totalMarket.toFixed(2)); setManualPrices({}); }}>
                 Use market <MoneyDisplay amount={totalMarket} tone="neutral" />
-              </button>
+              </Button>
             )}
           </div>
-          <input className={`${fieldClass} tabular-nums`} placeholder="0.00" inputMode="decimal" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} autoFocus />
+          <Input className="tabular-nums" placeholder="0.00" inputMode="decimal" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} autoFocus />
           <div className="mt-1 text-xs text-muted-foreground">
             {Object.keys(manualPrices).length > 0 ? "Manual prices locked · auto items fill the rest" : "Split proportionally by market value"}
           </div>
         </div>
 
         <div className="flex gap-2">
-          <button className={`${btnPrimary} flex-1`} onClick={onConfirmSale} disabled={busy || salePriceNum <= 0}>
+          <Button className="flex-1" onClick={onConfirmSale} disabled={busy || salePriceNum <= 0}>
             {busy ? "Saving…" : "Confirm sale"}
-          </button>
-          <button className={btnOutline} onClick={close} disabled={busy}>Cancel</button>
+          </Button>
+          <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
         </div>
       </div>
     </Modal>
@@ -283,7 +283,7 @@ export function BulkCostModal({
       <div className="space-y-4">
         <label className="block">
           <span className="mb-1 block text-xs text-muted-foreground">{bulkCostSplit ? "Total paid (split evenly)" : "Cost per item"}</span>
-          <input className={`${fieldClass} tabular-nums`} placeholder="0.00" inputMode="decimal" value={bulkCostVal} onChange={(e) => setBulkCostVal(e.target.value)} autoFocus />
+          <Input className="tabular-nums" placeholder="0.00" inputMode="decimal" value={bulkCostVal} onChange={(e) => setBulkCostVal(e.target.value)} autoFocus />
           {bulkCostSplit && n != null && (
             <span className="mt-1 block text-xs text-muted-foreground tabular-nums">= {fmt(Math.round((n / selectedIds.size) * 100) / 100)} per item</span>
           )}
@@ -293,10 +293,10 @@ export function BulkCostModal({
           Split total evenly across {selectedIds.size} items
         </label>
         <div className="flex gap-2">
-          <button className={`${btnPrimary} flex-1`} onClick={onBulkSetCost} disabled={busy || !bulkCostVal || n === null}>
+          <Button className="flex-1" onClick={onBulkSetCost} disabled={busy || !bulkCostVal || n === null}>
             {busy ? "Saving…" : `Apply to ${selectedIds.size} items`}
-          </button>
-          <button className={btnOutline} onClick={close} disabled={busy}>Cancel</button>
+          </Button>
+          <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
         </div>
       </div>
     </Modal>

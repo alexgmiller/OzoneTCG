@@ -1,8 +1,8 @@
 "use client";
 
-import { MoneyDisplay, SectionHeader } from "@/components/ui";
+import { Badge, Button, MoneyDisplay, SectionHeader } from "@/components/ui";
 import type { Item, Status, Psa10Entry } from "../types";
-import { fmt, effectiveCost, setLine, btnOutline, pillWarning } from "../utils";
+import { fmt, effectiveCost, setLine } from "../utils";
 
 // ── Grading section ──
 export default function GradingSection({
@@ -49,7 +49,7 @@ export default function GradingSection({
                   <div className="truncate text-sm font-semibold text-foreground">{it.name}</div>
                   {setLine(it) && <div className="truncate text-xs text-muted-foreground">{setLine(it)}</div>}
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground tabular-nums">
-                    <span className={pillWarning}>Grading</span>
+                    <Badge tone="warning">Grading</Badge>
                     {costBasis > 0 && <span>Cost {fmt(costBasis)}</span>}
                     {it.market != null && it.market !== costBasis && <span>Raw {fmt(it.market)}</span>}
                     {psa?.loading && <span className="animate-pulse">Fetching PSA 10…</span>}
@@ -65,10 +65,10 @@ export default function GradingSection({
                 </div>
               </div>
               <div className="mt-3 flex gap-2">
-                <button className={`${btnOutline} flex-1`} onClick={() => onQuickStatus(it.id, "inventory")} disabled={busy}>Return to inventory</button>
-                <button className={btnOutline} onClick={() => openEdit(it)}>Edit</button>
+                <Button variant="outline" className="flex-1" onClick={() => onQuickStatus(it.id, "inventory")} disabled={busy}>Return to inventory</Button>
+                <Button variant="outline" onClick={() => openEdit(it)}>Edit</Button>
                 {psa?.fetched && (
-                  <button className={`${btnOutline} w-11 px-0`} onClick={() => fetchPsa10(it.id, it.name, it.set_name)} title="Refresh PSA 10 price">↻</button>
+                  <Button variant="outline" className="w-11 px-0" onClick={() => fetchPsa10(it.id, it.name, it.set_name)} title="Refresh PSA 10 price">↻</Button>
                 )}
               </div>
             </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { Modal, MoneyDisplay } from "@/components/ui";
+import { Button, Input, Modal, MoneyDisplay } from "@/components/ui";
 
 export type CardSearchResult = {
   name: string;
@@ -21,9 +21,6 @@ type Props = {
   initialSetName?: string;
   initialCardNumber?: string;
 };
-
-const fieldClass =
-  "h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground";
 
 // ── CardSearchPicker ──
 // Modal card search (name / set / number / year) → picks a CardSearchResult.
@@ -119,19 +116,19 @@ export default function CardSearchPicker({
 
   return (
     <Modal open={open} onClose={handleClose} title="Find Card" className="flex max-h-full max-w-lg flex-col">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={handleClose}
         aria-label="Close"
-        className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+        className="absolute right-3 top-3"
       >
         <X size={18} />
-      </button>
+      </Button>
 
       {/* Search form */}
       <div className="shrink-0 space-y-2 border-b border-border pb-3">
-        <input
-          className={fieldClass}
+        <Input
           placeholder="Card name *"
           value={searchName}
           onChange={(e) => setSearchName(e.target.value)}
@@ -139,22 +136,19 @@ export default function CardSearchPicker({
           autoFocus
         />
         <div className="grid grid-cols-3 gap-2">
-          <input
-            className={fieldClass}
+          <Input
             placeholder="Set name"
             value={searchSet}
             onChange={(e) => setSearchSet(e.target.value)}
             onKeyDown={onEnter}
           />
-          <input
-            className={fieldClass}
+          <Input
             placeholder="Card #"
             value={searchNumber}
             onChange={(e) => setSearchNumber(e.target.value)}
             onKeyDown={onEnter}
           />
-          <input
-            className={fieldClass}
+          <Input
             placeholder="Year"
             inputMode="numeric"
             maxLength={4}
@@ -163,14 +157,13 @@ export default function CardSearchPicker({
             onKeyDown={onEnter}
           />
         </div>
-        <button
-          type="button"
-          className="h-11 w-full rounded-lg bg-accent-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+        <Button
+          className="w-full"
           onClick={search}
           disabled={loading || !searchName.trim()}
         >
           {loading ? "Searching…" : "Search"}
-        </button>
+        </Button>
       </div>
 
       {/* Results */}

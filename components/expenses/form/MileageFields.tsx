@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { ExternalLink, X } from "lucide-react";
 import type { SavedLocation } from "@/app/protected/expenses/actions";
 import type { ShowSessionSummary } from "@/app/protected/expenses/ExpensesServer";
-import { MoneyDisplay } from "@/components/ui";
+import { Button, Chip, Input, MoneyDisplay } from "@/components/ui";
 import { estimateTaxSavings } from "@/lib/taxEstimate";
 import { ExpenseTooltip } from "../ExpenseTooltip";
 import {
-  CHIP_ACTIVE, CHIP_CLASS, CHIP_IDLE, FIELD_CLASS, LABEL_CLASS, MILEAGE_RATE_TOOLTIP,
+  LABEL_CLASS, MILEAGE_RATE_TOOLTIP,
   type FormState, type LocationChip, type SetField,
 } from "./shared";
 
@@ -33,16 +33,15 @@ function ChipRow({
   return (
     <div className="mb-2 flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
       {chips.map((chip) => (
-        <button
+        <Chip
           key={chip.address}
-          type="button"
           title={chip.title}
+          selected={selected === chip.address}
           onClick={() => onPick(chip.address)}
-          className={`${CHIP_CLASS} ${selected === chip.address ? CHIP_ACTIVE : CHIP_IDLE}`}
         >
           <span>{chip.icon}</span>
           <span>{chip.label}</span>
-        </button>
+        </Chip>
       ))}
     </div>
   );
@@ -117,19 +116,19 @@ export function MileageFields({
                 Set home address →
               </a>
             </span>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={dismissHomeTip}
               aria-label="Dismiss tip"
-              className="-my-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+              className="-my-2 shrink-0"
             >
               <X size={14} />
-            </button>
+            </Button>
           </div>
         )}
         <label className={LABEL_CLASS}>From</label>
-        <input
-          className={FIELD_CLASS}
+        <Input
           placeholder="123 Main St, Sacramento, CA"
           value={form.mileage_from}
           onChange={(e) => setField("mileage_from", e.target.value)}
@@ -141,8 +140,7 @@ export function MileageFields({
       <div>
         <ChipRow chips={buildChips("to")} selected={form.mileage_to} onPick={(a) => setField("mileage_to", a)} />
         <label className={LABEL_CLASS}>To</label>
-        <input
-          className={FIELD_CLASS}
+        <Input
           placeholder="Convention Center, San Jose, CA"
           value={form.mileage_to}
           onChange={(e) => setField("mileage_to", e.target.value)}
@@ -172,23 +170,23 @@ export function MileageFields({
       {/* ── Miles ── */}
       <div>
         <label className={LABEL_CLASS}>Miles (one-way)</label>
-        <input
+        <Input
           type="number"
           inputMode="decimal"
-          className={`${FIELD_CLASS} font-mono tabular-nums`}
+          className="font-mono"
           placeholder="0"
           value={form.mileage_miles}
           onChange={(e) => setField("mileage_miles", e.target.value)}
         />
         <p className="mt-1 text-xs text-muted-foreground">Distance shown on Google Maps, typically the one-way trip</p>
         {lastShowMileage && (
-          <button
-            type="button"
+          <Button
+            variant="link"
             onClick={() => setField("mileage_miles", lastShowMileage.miles)}
-            className="inline-flex h-11 items-center text-sm text-accent-primary underline underline-offset-2 transition-colors duration-150 hover:text-accent-primary-hover"
+            className="h-11 underline"
           >
             Same as last entry ({lastShowMileage.miles} mi)
-          </button>
+          </Button>
         )}
       </div>
 
@@ -208,10 +206,10 @@ export function MileageFields({
             <label className="text-xs text-muted-foreground">Rate ($/mi)</label>
             <ExpenseTooltip content={MILEAGE_RATE_TOOLTIP} />
           </div>
-          <input
+          <Input
             type="number"
             inputMode="decimal"
-            className={`${FIELD_CLASS} font-mono tabular-nums`}
+            className="font-mono"
             value={form.mileage_rate}
             onChange={(e) => setField("mileage_rate", e.target.value)}
           />

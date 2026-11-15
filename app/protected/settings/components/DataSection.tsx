@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Database, Download } from "lucide-react";
-import { useToast } from "@/components/ui";
+import { Button, useToast } from "@/components/ui";
 import { exportInventoryCSV } from "../actions";
-import { Section, SettingRow, ActionButton } from "./SettingsPrimitives";
+import { Section, SettingRow } from "./SettingsPrimitives";
 
 type ExportKind = "inventory";
 
@@ -56,14 +56,14 @@ export function DataSection() {
     <Section icon={Database} title="Data">
       {EXPORTS.map(({ kind, label, description, run }) => (
         <SettingRow key={kind} label={label} description={description}>
-          <ActionButton
+          <Button variant="outline"
             onClick={() => handleExport(kind, run)}
             disabled={busy !== null}
             aria-label={`${label} as CSV`}
           >
             <Download size={14} />
             {busy === kind ? "Exporting…" : "CSV"}
-          </ActionButton>
+          </Button>
         </SettingRow>
       ))}
     </Section>

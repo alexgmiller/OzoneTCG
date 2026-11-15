@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui";
 import type { DayActivity } from "../actions";
 import { DAY_ABBREVS, addDays, truncateName } from "./helpers";
 import { DotRow, Legend, activityKinds } from "./ActivityDots";
@@ -76,15 +77,12 @@ export function WeekStrip({
   const weekDays: string[] = [];
   for (let i = 0; i < 7; i++) weekDays.push(addDays(weekStart, i));
 
-  const navCls =
-    "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted";
-
   return (
     <div>
       <div className="flex items-center gap-1">
-        <button type="button" onClick={onPrev} className={navCls} aria-label="Previous week">
+        <Button variant="ghost" size="icon" onClick={onPrev} className="shrink-0" aria-label="Previous week">
           <ChevronLeft size={18} />
-        </button>
+        </Button>
         <div className="flex min-w-0 flex-1 gap-1">
           {weekDays.map((dateStr) => (
             <WeekCell
@@ -97,9 +95,9 @@ export function WeekStrip({
             />
           ))}
         </div>
-        <button type="button" onClick={onNext} className={navCls} aria-label="Next week">
+        <Button variant="ghost" size="icon" onClick={onNext} className="shrink-0" aria-label="Next week">
           <ChevronRight size={18} />
-        </button>
+        </Button>
       </div>
       <div className="mt-2 flex justify-end px-1"><Legend /></div>
     </div>

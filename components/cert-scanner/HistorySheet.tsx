@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import { Modal } from "@/components/ui";
+import { Button, Modal } from "@/components/ui";
 import { MoneyOrDash, shortDate, type HistoryEntry } from "./shared";
 
 // ── HistorySheet ──
@@ -23,13 +23,9 @@ export function HistorySheet({
   return (
     <Modal open={open} onClose={onClose} title="Recent scans">
       <div className="mb-3 flex justify-end">
-        <button
-          type="button"
-          onClick={onClear}
-          className="h-11 px-3 text-sm text-muted-foreground transition-colors duration-150 hover:text-negative"
-        >
+        <Button variant="ghost" size="sm" onClick={onClear} className="hover:text-negative">
           Clear history
-        </button>
+        </Button>
       </div>
       <div className="max-h-96 divide-y divide-border overflow-y-auto rounded-xl border border-border">
         {history.map((h) => (

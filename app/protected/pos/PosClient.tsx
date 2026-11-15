@@ -3,16 +3,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { MoneyDisplay, useToast } from "@/components/ui";
+import { Button, Input, MoneyDisplay, Segmented, useToast } from "@/components/ui";
 import { startAutoSync } from "@/lib/offlineSync";
 import { endShowSession, startShow, type ActiveShowInfo } from "@/app/protected/shows/actions";
 import type { Mode, PickItem } from "./ledger";
-import { BTN, INPUT } from "./ui";
 import BuyMode from "./BuyMode";
 import SellMode from "./SellMode";
 import TradeMode from "./TradeMode";
 
-const MODES = ["buy", "sell", "trade"] as const;
+const MODES: { value: Mode; label: string }[] = [
+  { value: "buy", label: "Buy" },
+  { value: "sell", label: "Sell" },
+  { value: "trade", label: "Trade" },
+];
 
 export default function PosClient({ activeShow, scheduled, items, buyPct, initialMode, preselected }: {
   activeShow: ActiveShowInfo | null;
@@ -75,49 +78,40 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
             <span className="shrink-0 text-sm text-muted-foreground">
               <MoneyDisplay amount={activeShow.expected_cash} tone="neutral" className="font-semibold text-foreground" />
             </span>
-            <button type="button" className={BTN} onClick={() => setEnding((e) => !e)} aria-expanded={ending}>End</button>
+            <Button variant="outline" className="shrink-0" onClick={() => setEnding((e) => !e)} aria-expanded={ending}>End</Button>
           </div>
         ) : (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">No show running · start one to attach deals</p>
-            <input className={`${INPUT} w-full`} value={showName} onChange={(e) => setShowName(e.target.value)} placeholder="Show name" />
+            <Input value={showName} onChange={(e) => setShowName(e.target.value)} placeholder="Show name" />
             <div className="flex gap-2">
-              <input className={`${INPUT} flex-1 tabular-nums`} type="number" inputMode="decimal" value={cash}
+              <Input className="flex-1" type="number" inputMode="decimal" value={cash}
                 onChange={(e) => setCash(e.target.value)} placeholder="Starting cash" aria-label="Starting cash" />
-              <button type="button" className={BTN} disabled={busy || !showName.trim()}
+              <Button variant="outline" className="shrink-0" disabled={busy || !showName.trim()}
                 onClick={() => run(() => startShow({
                   scheduledId: scheduled && showName === scheduled.name ? scheduled.id : null,
                   name: showName, starting_cash: cash ? Number(cash) : null,
                   date: new Date().toLocaleDateString("en-CA"),
                 }))}>
                 Start show
-              </button>
+              </Button>
             </div>
           </div>
         )}
         {activeShow && ending && (
           <div className="flex gap-2">
-            <input className={`${INPUT} flex-1 tabular-nums`} type="number" inputMode="decimal" value={cash}
+            <Input className="flex-1" type="number" inputMode="decimal" value={cash}
               onChange={(e) => setCash(e.target.value)} placeholder="Counted cash (optional)" aria-label="Counted cash" />
-            <button type="button" className={BTN} disabled={busy}
+            <Button variant="outline" className="shrink-0" disabled={busy}
               onClick={() => run(() => endShowSession(activeShow.id, cash ? Number(cash) : null))}>
               End show
-            </button>
+            </Button>
           </div>
         )}
       </header>
 
       {/* ── Mode ── */}
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1" role="tablist" aria-label="Deal type">
-        {MODES.map((m) => (
-          <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-            className={`h-12 rounded-lg text-sm font-semibold capitalize transition-colors duration-150 ${
-              mode === m ? "bg-accent-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}>
-            {m}
-          </button>
-        ))}
-      </div>
+      <Segmented size="lg" options={MODES} value={mode} onChange={setMode} aria-label="Deal type" />
 
       {mode === "buy" && <BuyMode showId={showId} buyPct={buyPct} />}
       {mode === "sell" && <SellMode showId={showId} items={items} initial={initialMode === "sell" ? preselected : []} />}

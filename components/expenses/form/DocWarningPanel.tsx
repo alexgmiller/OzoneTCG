@@ -1,8 +1,8 @@
 "use client";
 
 import { Camera, FileText, TriangleAlert } from "lucide-react";
-import { MoneyDisplay } from "@/components/ui";
-import { GHOST_BTN, RECEIPT_REQUIRED_THRESHOLD } from "./shared";
+import { Button, MoneyDisplay } from "@/components/ui";
+import { RECEIPT_REQUIRED_THRESHOLD } from "./shared";
 
 // ── $75+ documentation warning (in-panel step, replaces the form body) ────────
 
@@ -38,23 +38,15 @@ export function DocWarningPanel({
       </div>
 
       <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover"
-          onClick={onAddPhoto}
-        >
+        <Button onClick={onAddPhoto}>
           <Camera size={16} /> Add photo
-        </button>
-        <button type="button" className={GHOST_BTN} onClick={onAddNote}>
+        </Button>
+        <Button variant="outline" size="sm" onClick={onAddNote}>
           <FileText size={16} /> Add note
-        </button>
-        <button
-          type="button"
-          className="inline-flex h-11 items-center justify-center text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
-          onClick={onSaveAnyway}
-        >
+        </Button>
+        <Button variant="ghost" className="text-xs" onClick={onSaveAnyway}>
           Save anyway (no documentation)
-        </button>
+        </Button>
       </div>
     </div>
   );

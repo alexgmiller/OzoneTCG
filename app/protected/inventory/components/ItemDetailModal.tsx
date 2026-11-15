@@ -1,13 +1,13 @@
 "use client";
 
-import { Modal, MoneyDisplay } from "@/components/ui";
+import { Badge, Button, Input, Modal, MoneyDisplay } from "@/components/ui";
 import type { SlabPrice, RawCardPrice } from "../InventoryServer";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { type FMVResult } from "@/lib/fmv";
 import type { ConsignerOption, Item } from "../types";
 import {
   effectiveCost, fmt, fmtDate, getMovement, MovementBadge, sealedTypeLabel, conditionShort, statusLabel, setLine,
-  slabKeyFor, rawConditionPrice, ebayLinks, btnOutline, btnPrimary, pillClass, pillAccent, pillWarning, pillPositive, fieldClass,
+  slabKeyFor, rawConditionPrice, ebayLinks,
 } from "../utils";
 
 // ── Item Detail Modal ──
@@ -86,10 +86,10 @@ export function ItemDetailModal({
           <div className="text-base font-bold leading-snug text-foreground">{it.name}</div>
           {setLine(it) && <div className="mt-0.5 text-sm text-muted-foreground">{setLine(it)}</div>}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {it.grade && <span className={pillAccent}>{it.grade}</span>}
-            {it.category === "single" && it.condition && <span className={pillClass}>{conditionShort(it.condition)}</span>}
-            {it.category === "sealed" && <span className={pillClass}>{sealedTypeLabel(it.product_type)}{it.quantity > 1 ? ` ×${it.quantity}` : ""}</span>}
-            <span className={sold ? pillPositive : it.owner === "consigner" ? pillWarning : pillClass}>{statusLabel(it)}{consigner ? ` · ${consigner.name}` : ""}</span>
+            {it.grade && <Badge tone="accent">{it.grade}</Badge>}
+            {it.category === "single" && it.condition && <Badge>{conditionShort(it.condition)}</Badge>}
+            {it.category === "sealed" && <Badge>{sealedTypeLabel(it.product_type)}{it.quantity > 1 ? ` ×${it.quantity}` : ""}</Badge>}
+            <Badge tone={sold ? "positive" : it.owner === "consigner" ? "warning" : "neutral"}>{statusLabel(it)}{consigner ? ` · ${consigner.name}` : ""}</Badge>
           </div>
         </div>
       </div>
@@ -106,9 +106,9 @@ export function ItemDetailModal({
             {!sold && (
               <>
                 <MovementBadge pct={getMovement(displayPrice, it.acquired_market_price)} />
-                <button className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" title="Refresh price" onClick={() => handleRefresh(it)} disabled={refreshing}>
+                <Button variant="ghost" size="icon" title="Refresh price" onClick={() => handleRefresh(it)} disabled={refreshing}>
                   <span className={refreshing ? "inline-block animate-spin" : ""}>↻</span>
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -117,9 +117,9 @@ export function ItemDetailModal({
         <div className="flex min-h-11 items-center justify-between">
           <span className="font-mono text-xs uppercase tracking-[0.18em] text-neutral">Cost</span>
           {inlineCostId === it.id ? (
-            <input
+            <Input
               autoFocus
-              className={`${fieldClass} w-28 text-right tabular-nums`}
+              className="w-28 text-right tabular-nums"
               value={inlineCostVal}
               inputMode="decimal"
               onChange={(e) => setInlineCostVal(e.target.value)}
@@ -127,12 +127,12 @@ export function ItemDetailModal({
               onKeyDown={(e) => { if (e.key === "Enter") handleSaveInlineCost(it.id); if (e.key === "Escape") setInlineCostId(null); }}
             />
           ) : cost != null ? (
-            <button className="flex h-11 flex-col items-end justify-center" onClick={() => { setInlineCostId(it.id); setInlineCostVal(String(it.cost ?? "")); }}>
+            <button type="button" className="flex h-11 flex-col items-end justify-center" onClick={() => { setInlineCostId(it.id); setInlineCostVal(String(it.cost ?? "")); }}>
               <MoneyDisplay amount={cost} tone="neutral" className="text-sm font-semibold" />
               {it.cost_basis != null && <span className="text-xs text-muted-foreground">trade chain</span>}
             </button>
           ) : (
-            <button className="h-11 text-sm font-medium text-accent-primary" onClick={() => { setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</button>
+            <Button variant="link" className="h-11" onClick={() => { setInlineCostId(it.id); setInlineCostVal(""); }}>+ add cost</Button>
           )}
         </div>
 
@@ -165,14 +165,14 @@ export function ItemDetailModal({
       {/* ── Actions ── */}
       <div className="mt-2 space-y-2 border-t border-border pt-4">
         {it.category === "slab" && slabKey && (
-          <button className={`${btnOutline} w-full`} onClick={() => { onClose(); openSlabComps(it, slabKey); }}>View comps</button>
+          <Button variant="outline" className="w-full" onClick={() => { onClose(); openSlabComps(it, slabKey); }}>View comps</Button>
         )}
         {it.category === "single" && (
-          <button className={`${btnOutline} w-full`} onClick={() => { onClose(); openRawCardModal(it); }}>Price history</button>
+          <Button variant="outline" className="w-full" onClick={() => { onClose(); openRawCardModal(it); }}>Price history</Button>
         )}
         <div className="flex gap-2">
-          <button className={`${btnPrimary} flex-1`} onClick={() => { onClose(); openEdit(it); }}>Edit</button>
-          <button className={`${btnOutline} flex-1`} onClick={() => { onClose(); toggleSelect(it.id); }}>{selected ? "Deselect" : "Select"}</button>
+          <Button className="flex-1" onClick={() => { onClose(); openEdit(it); }}>Edit</Button>
+          <Button variant="outline" className="flex-1" onClick={() => { onClose(); toggleSelect(it.id); }}>{selected ? "Deselect" : "Select"}</Button>
         </div>
       </div>
     </Modal>

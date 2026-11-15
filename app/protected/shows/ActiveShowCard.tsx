@@ -3,10 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { MoneyDisplay } from "@/components/ui";
+import { Badge, Button, MoneyDisplay } from "@/components/ui";
 import type { ShowSession } from "./actions";
 import EndShowPanel from "./EndShowPanel";
-import { btnPrimary, btnSecondary, fmtDate, pillCls, showVenue, STATUS_PILL } from "./shared";
+import { fmtDate, showVenue, STATUS_PILL } from "./shared";
 
 // Pinned card for the live show: totals, Open POS, End
 export default function ActiveShowCard({ show }: { show: ShowSession }) {
@@ -22,7 +22,7 @@ export default function ActiveShowCard({ show }: { show: ShowSession }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-warning" aria-hidden />
-            <span className={`${pillCls} ${STATUS_PILL.active.cls}`}>{STATUS_PILL.active.label}</span>
+            <Badge mono tone={STATUS_PILL.active.tone}>{STATUS_PILL.active.label}</Badge>
           </div>
           <h2 className="mt-2 truncate text-lg font-semibold text-foreground">{show.name}</h2>
           <div className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -40,10 +40,10 @@ export default function ActiveShowCard({ show }: { show: ShowSession }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Link href="/protected/pos" className={btnPrimary}>Open POS</Link>
-        <button type="button" onClick={() => setEnding((v) => !v)} className={btnSecondary}>
+        <Button asChild><Link href="/protected/pos">Open POS</Link></Button>
+        <Button variant="outline" onClick={() => setEnding((v) => !v)}>
           {ending ? "Cancel" : "End show"}
-        </button>
+        </Button>
       </div>
 
       {ending && <EndShowPanel showId={show.id} />}

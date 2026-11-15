@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { Check, Flag, Loader2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge, Button } from "@/components/ui";
 
 // ── CardImage ──
 // Shows the card image when available, otherwise a token-styled placeholder.
@@ -20,12 +21,6 @@ type Props = {
   // Badge for images that came from automated sources.
   unverified?: boolean;
 };
-
-const badgeClass =
-  "pointer-events-none absolute top-2 rounded-full border px-2 py-0.5 font-mono text-xs font-semibold";
-
-const iconButtonClass =
-  "flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground disabled:opacity-40";
 
 export default function CardImage({
   src,
@@ -64,39 +59,27 @@ export default function CardImage({
           onError={() => setFailed(true)}
         />
         {unverified && (
-          <span
-            className={cn(
-              badgeClass,
-              "left-2 border-warning-border bg-warning-soft text-warning-strong dark:text-warning",
-            )}
-          >
+          <Badge tone="warning" className="pointer-events-none absolute left-2 top-2 font-mono">
             Unverified
-          </span>
+          </Badge>
         )}
         {onReport && !reported && (
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="icon"
             onClick={handleReport}
             disabled={reporting}
             title="Report wrong image"
             aria-label="Report wrong image"
-            className={cn(
-              iconButtonClass,
-              "absolute right-2 top-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100",
-            )}
+            className="absolute right-2 top-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100"
           >
             {reporting ? <Loader2 size={16} className="animate-spin" /> : <Flag size={16} />}
-          </button>
+          </Button>
         )}
         {reported && (
-          <span
-            className={cn(
-              badgeClass,
-              "right-2 border-negative-border bg-negative-soft text-negative-strong dark:text-negative",
-            )}
-          >
+          <Badge tone="negative" className="pointer-events-none absolute right-2 top-2 font-mono">
             Reported
-          </span>
+          </Badge>
         )}
       </div>
     );
@@ -180,13 +163,13 @@ function CardPlaceholder({
               className="hidden"
               onChange={handleFile}
             />
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="icon"
               title="Upload image"
               aria-label="Upload image"
               disabled={uploading || done}
               onClick={() => inputRef.current?.click()}
-              className={iconButtonClass}
             >
               {uploading ? (
                 <Loader2 size={16} className="animate-spin" />
@@ -195,7 +178,7 @@ function CardPlaceholder({
               ) : (
                 <Upload size={16} />
               )}
-            </button>
+            </Button>
           </>
         )}
       </div>

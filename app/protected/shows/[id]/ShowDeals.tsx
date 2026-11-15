@@ -1,12 +1,11 @@
-import { MoneyDisplay } from "@/components/ui";
+import { Badge, MoneyDisplay } from "@/components/ui";
 import type { Deal } from "@/app/protected/transactions/deals";
 import { METHOD_LABELS } from "@/app/protected/pos/ledger";
-import { pillCls } from "../shared";
 
-const MODE: Record<Deal["mode"], { label: string; cls: string }> = {
-  buy: { label: "Buy", cls: "border-negative-border bg-negative-soft text-negative" },
-  sell: { label: "Sell", cls: "border-positive-border bg-positive-soft text-positive" },
-  trade: { label: "Trade", cls: "border-accent-primary-border bg-accent-primary-soft text-accent-primary" },
+const MODE: Record<Deal["mode"], { label: string; tone: "negative" | "positive" | "accent" }> = {
+  buy: { label: "Buy", tone: "negative" },
+  sell: { label: "Sell", tone: "positive" },
+  trade: { label: "Trade", tone: "accent" },
 };
 
 function methodLabel(m: string | null) {
@@ -24,7 +23,7 @@ export default function ShowDeals({ deals }: { deals: Deal[] }) {
         const meta = [d.counterparty, methodLabel(d.method)].filter(Boolean).join(" · ");
         return (
           <li key={d.id} className="flex items-start gap-3 p-3">
-            <span className={`${pillCls} ${MODE[d.mode].cls} mt-0.5 shrink-0`}>{MODE[d.mode].label}</span>
+            <Badge mono tone={MODE[d.mode].tone} className="mt-0.5 shrink-0">{MODE[d.mode].label}</Badge>
             <div className="min-w-0 flex-1">
               {d.cards.map((c, i) => (
                 <div key={i} className="truncate text-sm text-foreground">

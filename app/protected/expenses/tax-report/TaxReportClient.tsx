@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download } from "lucide-react";
-import { MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
+import { Button, MoneyDisplay, SectionHeader, Select, StatCard } from "@/components/ui";
 import type { ExpenseCategory } from "../actions";
 
 // ── IRS Schedule C line mapping ───────────────────────────────────────────────
@@ -130,24 +130,20 @@ export default function TaxReportClient({ year, availableYears, summary }: Props
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="flex items-center gap-2 text-sm font-medium">
           Tax year
-          <select
+          <Select
             value={year}
             onChange={handleYearChange}
-            className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm tabular-nums text-foreground"
+            className="w-auto font-mono tabular-nums"
           >
             {availableYears.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
-          </select>
+          </Select>
         </label>
-        <button
-          onClick={exportCSV}
-          disabled={exporting}
-          className="inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
-        >
+        <Button onClick={exportCSV} disabled={exporting}>
           <Download size={16} />
           {exporting ? "Exporting…" : "Export Schedule C CSV"}
-        </button>
+        </Button>
       </div>
 
       {/* ── Summary cards ── */}

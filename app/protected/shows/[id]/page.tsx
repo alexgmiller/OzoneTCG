@@ -3,11 +3,11 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
-import { EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
+import { Badge, EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
 import { groupDeals, type TxRow } from "@/app/protected/transactions/deals";
 import { pnlFor, type FinanceTx } from "@/app/protected/finance/math";
 import type { ShowSession } from "../actions";
-import { fmtDate, pillCls, showVenue, STATUS_PILL } from "../shared";
+import { fmtDate, showVenue, STATUS_PILL } from "../shared";
 import ShowDeals from "./ShowDeals";
 import ShowDetailActions, { DeleteShowButton } from "./ShowDetailActions";
 
@@ -72,7 +72,7 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
 
       {/* ── Header ── */}
       <header className="space-y-2">
-        <span className={`${pillCls} ${pill.cls}`}>{pill.label}</span>
+        <Badge mono tone={pill.tone}>{pill.label}</Badge>
         <h1 className="text-xl font-bold tracking-tight text-foreground">{show.name}</h1>
         <div className="text-sm text-muted-foreground">
           {fmtDate(show.date, true)}

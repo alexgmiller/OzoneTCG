@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { Skeleton, useToast, useConfirm } from "@/components/ui";
+import { Button, Skeleton, useToast, useConfirm } from "@/components/ui";
 import { getPendingCount, clearAll } from "@/lib/offlineQueue";
 import { replayPendingActions } from "@/lib/offlineSync";
-import { Section, SettingRow, ActionButton } from "./SettingsPrimitives";
+import { Section, SettingRow } from "./SettingsPrimitives";
 
 // ── Offline sync ──
 export function OfflineSyncSection() {
@@ -70,14 +70,14 @@ export function OfflineSyncSection() {
         )}
       </SettingRow>
       <SettingRow label="Sync now" description="Push queued transactions to the server">
-        <ActionButton tone="primary" onClick={handleSync} disabled={syncing || count === 0}>
+        <Button onClick={handleSync} disabled={syncing || count === 0}>
           {syncing ? "Syncing…" : "Sync now"}
-        </ActionButton>
+        </Button>
       </SettingRow>
       <SettingRow label="Clear queue" description="Permanently discard everything waiting to sync">
-        <ActionButton tone="danger" onClick={handleClear} disabled={clearing || count === 0}>
+        <Button variant="destructive" onClick={handleClear} disabled={clearing || count === 0}>
           {clearing ? "Clearing…" : "Clear"}
-        </ActionButton>
+        </Button>
       </SettingRow>
     </Section>
   );

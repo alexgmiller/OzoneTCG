@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
+import { Badge, EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
 
 // ── Types ──
 
@@ -223,11 +223,9 @@ export default async function ConsignerPortalPage({
                       <div className="text-xs text-muted-foreground">
                         sold for <MoneyDisplay amount={it.sold_price ?? 0} tone="neutral" />
                       </div>
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                        isPaid ? "bg-positive-soft text-positive" : "bg-warning-soft text-warning"
-                      }`}>
+                      <Badge tone={isPaid ? "positive" : "warning"}>
                         {isPaid ? "Paid" : "Pending"}
-                      </span>
+                      </Badge>
                     </div>
                   </li>
                 );

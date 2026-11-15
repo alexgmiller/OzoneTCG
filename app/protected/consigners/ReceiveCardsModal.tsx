@@ -2,13 +2,10 @@
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
-import { Modal, useToast } from "@/components/ui";
+import { Button, Input, Modal, Select, useToast } from "@/components/ui";
 import { receiveCards } from "./actions";
 import type { ReceiveCardInput } from "./actions";
-import {
-  type Consigner, errorMessage,
-  INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_GHOST, BTN_SOFT,
-} from "./shared";
+import { type Consigner, errorMessage, FIELD_LABEL } from "./shared";
 
 // ── Card rows ──
 
@@ -93,33 +90,31 @@ export function ReceiveCardsModal({
             <div className="flex items-center justify-between">
               <span className={FIELD_LABEL}>Card {i + 1}</span>
               {cards.length > 1 && (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setCards((cs) => cs.filter((c) => c._id !== card._id))}
-                  className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:text-negative"
+                  className="hover:text-negative"
                   aria-label={`Remove card ${i + 1}`}
                 >
                   <X size={16} />
-                </button>
+                </Button>
               )}
             </div>
 
-            <input
-              className={INPUT}
+            <Input
               placeholder="Card name"
               value={card.name}
               onChange={(e) => updateCard(card._id, { name: e.target.value })}
             />
 
             <div className="grid grid-cols-2 gap-2">
-              <input
-                className={INPUT}
+              <Input
                 placeholder="Set"
                 value={card.set_name ?? ""}
                 onChange={(e) => updateCard(card._id, { set_name: e.target.value || null })}
               />
-              <input
-                className={INPUT}
+              <Input
                 placeholder="Card #"
                 value={card.card_number ?? ""}
                 onChange={(e) => updateCard(card._id, { card_number: e.target.value || null })}
@@ -127,38 +122,35 @@ export function ReceiveCardsModal({
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <select
-                className={INPUT}
+              <Select
                 value={card.category}
                 onChange={(e) => updateCard(card._id, { category: e.target.value as CardRow["category"], grade: null })}
               >
                 <option value="single">Single</option>
                 <option value="slab">Slab</option>
                 <option value="sealed">Sealed</option>
-              </select>
+              </Select>
               {card.category === "slab" ? (
-                <input
-                  className={INPUT}
+                <Input
                   placeholder="Grade (PSA 10)"
                   value={card.grade ?? ""}
                   onChange={(e) => updateCard(card._id, { grade: e.target.value || null })}
                 />
               ) : (
-                <select
-                  className={INPUT}
+                <Select
                   value={card.condition}
                   onChange={(e) => updateCard(card._id, { condition: e.target.value as CardRow["condition"] })}
                 >
                   {CONDITIONS.map((c) => <option key={c} value={c}>{COND_ABBR[c]} · {c}</option>)}
-                </select>
+                </Select>
               )}
             </div>
 
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-              <input
+              <Input
                 type="number" min="0" step="0.01" inputMode="decimal"
-                className={`${INPUT} pl-7 tabular-nums`}
+                className="pl-7"
                 placeholder="Asking price (optional)"
                 value={card.market ?? ""}
                 onChange={(e) => updateCard(card._id, { market: parseFloat(e.target.value) || null })}
@@ -167,26 +159,26 @@ export function ReceiveCardsModal({
           </div>
         ))}
 
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={() => setCards((cs) => [...cs, blankCard()])}
-          className={`${BTN_SOFT} w-full`}
+          className="w-full"
         >
           <Plus size={16} /> Add another card
-        </button>
+        </Button>
 
         <div className="flex gap-2 pt-1">
-          <button type="button" onClick={onClose} className={`${BTN_GHOST} flex-1`} disabled={busy}>
+          <Button variant="ghost" onClick={onClose} className="flex-1" disabled={busy}>
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
             onClick={handleSubmit}
             disabled={busy || validCount === 0}
-            className={`${BTN_PRIMARY} flex-1 tabular-nums`}
+            className="flex-1 tabular-nums"
           >
             {busy ? "Saving…" : validCount === 0 ? "Add cards" : `Add ${validCount} card${validCount === 1 ? "" : "s"}`}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

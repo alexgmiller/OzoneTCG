@@ -3,34 +3,33 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
+// ── Badge ──
+// Read-only status pill. Tone follows the color semantics in design-system §1.
+// For a tappable pill use <Chip />.
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium",
   {
     variants: {
-      variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive:
-          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-        outline: "text-foreground",
+      tone: {
+        neutral: "border-border bg-muted text-muted-foreground",
+        accent: "border-accent-primary-border bg-accent-primary-soft text-accent-primary",
+        positive: "border-positive-border bg-positive-soft text-positive",
+        warning: "border-warning-border bg-warning-soft text-warning",
+        negative: "border-negative-border bg-negative-soft text-negative",
       },
+      // mono = uppercase mono label style (status pills like "Live", "Completed")
+      mono: { true: "font-mono uppercase tracking-wide", false: "" },
     },
-    defaultVariants: {
-      variant: "default",
-    },
+    defaultVariants: { tone: "neutral", mono: false },
   },
 );
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
-  );
+function Badge({ className, tone, mono, ...props }: BadgeProps) {
+  return <span className={cn(badgeVariants({ tone, mono }), className)} {...props} />;
 }
 
 export { Badge, badgeVariants };

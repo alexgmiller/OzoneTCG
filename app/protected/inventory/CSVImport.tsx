@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import { Modal, useToast } from "@/components/ui";
+import { Button, Modal, Select, useToast } from "@/components/ui";
 import { importItems } from "./actions";
 import { refreshItemPrices } from "./pricingActions";
 import {
@@ -15,7 +15,6 @@ import {
 } from "@/lib/csvImport";
 import type { Category, Condition } from "@/lib/csvImport";
 import type { ConsignerOption } from "./types";
-import { fieldClass, btnOutline, btnPrimary } from "./utils";
 
 type ColMap = {
   name: number;
@@ -185,7 +184,7 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
 
   return (
     <>
-      <button className={btnOutline} onClick={() => setOpen(true)}>Import CSV</button>
+      <Button variant="outline" onClick={() => setOpen(true)}>Import CSV</Button>
 
       <Modal open={open} onClose={close} title="Import CSV" className="max-w-lg max-h-full overflow-y-auto">
         <div className="space-y-4">
@@ -206,10 +205,10 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
                 {COLUMNS.map(({ label, field }) => (
                   <label key={field} className="flex items-center gap-2">
                     <span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
-                    <select className={`${fieldClass} flex-1`} value={colMap[field]} onChange={(e) => setColMap((m) => ({ ...m, [field]: Number(e.target.value) }))}>
+                    <Select className="flex-1" value={colMap[field]} onChange={(e) => setColMap((m) => ({ ...m, [field]: Number(e.target.value) }))}>
                       <option value={-1}>— skip —</option>
                       {headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
-                    </select>
+                    </Select>
                   </label>
                 ))}
               </div>
@@ -258,7 +257,7 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
 
               <label className="block">
                 <span className="mb-1 block text-xs text-muted-foreground">Who owns these?</span>
-                <select className={fieldClass} value={ownerVal} onChange={(e) => setOwnerVal(e.target.value)}>
+                <Select value={ownerVal} onChange={(e) => setOwnerVal(e.target.value)}>
                   <option value="shared">Shared</option>
                   <option value="alex">Alex</option>
                   <option value="mila">Mila</option>
@@ -267,12 +266,12 @@ export default function CSVImport({ consigners }: { consigners: ConsignerOption[
                       {consigners.map((c) => <option key={c.id} value={`consigner:${c.id}`}>{c.name}</option>)}
                     </optgroup>
                   )}
-                </select>
+                </Select>
               </label>
 
               <div className="flex gap-2">
-                <button className={`${btnPrimary} flex-1`} onClick={onImport} disabled={busy || colMap.name < 0 || rows.length === 0}>{buttonLabel}</button>
-                <button className={btnOutline} onClick={close} disabled={busy}>Cancel</button>
+                <Button className="flex-1" onClick={onImport} disabled={busy || colMap.name < 0 || rows.length === 0}>{buttonLabel}</Button>
+                <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
               </div>
             </>
           )}

@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, CheckCircle2, LogOut } from "lucide-react";
-import { useToast } from "@/components/ui";
+import { Button, useToast } from "@/components/ui";
 import { sendPasswordResetEmail } from "../actions";
-import { Section, SettingRow, ActionButton } from "./SettingsPrimitives";
+import { Section, SettingRow } from "./SettingsPrimitives";
 
 // ── Account ──
 export function AccountSection() {
@@ -49,16 +49,16 @@ export function AccountSection() {
             Reset email sent
           </span>
         ) : (
-          <ActionButton onClick={handleReset} disabled={resetLoading}>
+          <Button variant="outline" onClick={handleReset} disabled={resetLoading}>
             {resetLoading ? "Sending…" : "Send reset email"}
-          </ActionButton>
+          </Button>
         )}
       </SettingRow>
       <SettingRow label="Sign out" description="Sign out of this device">
-        <ActionButton tone="danger" onClick={handleLogout} disabled={signingOut}>
+        <Button variant="destructive" onClick={handleLogout} disabled={signingOut}>
           <LogOut size={14} />
           {signingOut ? "Signing out…" : "Sign out"}
-        </ActionButton>
+        </Button>
       </SettingRow>
     </Section>
   );

@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { EmptyState, MoneyDisplay, useConfirm, useToast } from "@/components/ui";
+import { Button, EmptyState, MoneyDisplay, useConfirm, useToast } from "@/components/ui";
 import { deleteConsigner } from "./actions";
 import { ConsignerCard } from "./ConsignerCard";
 import { ConsignerFormModal } from "./ConsignerForm";
 import { ReceiveCardsModal } from "./ReceiveCardsModal";
 import { RecordPayoutModal } from "./PayoutSection";
-import { type Consigner, errorMessage, portalUrl, BTN_PRIMARY } from "./shared";
+import { type Consigner, errorMessage, portalUrl } from "./shared";
 
 export type { Consigner, SoldItem, PayoutRecord } from "./shared";
 
@@ -80,9 +80,9 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
             </p>
           )}
         </div>
-        <button type="button" className={BTN_PRIMARY} onClick={() => setFormTarget("new")} disabled={busy}>
+        <Button variant="primary" onClick={() => setFormTarget("new")} disabled={busy}>
           <Plus size={16} /> New
-        </button>
+        </Button>
       </div>
 
       {/* ── List ── */}
@@ -92,9 +92,9 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
           hint="When someone leaves cards with you to sell, add them here to track their items, sales and payouts."
           preview={<GhostCard />}
           cta={
-            <button type="button" className={`${BTN_PRIMARY} w-full`} onClick={() => setFormTarget("new")}>
+            <Button variant="primary" className="w-full" onClick={() => setFormTarget("new")}>
               <Plus size={16} /> Add your first consigner
-            </button>
+            </Button>
           }
         />
       ) : (

@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { MoneyDisplay, SectionHeader, useConfirm, useToast } from "@/components/ui";
-import { cn } from "@/lib/utils";
+import { Button, MoneyDisplay, SectionHeader, Textarea, useConfirm, useToast } from "@/components/ui";
 import { settlePeriod } from "../actions";
-import { BTN_PRIMARY, NET_TONE, TEXTAREA, errorMessage, netLabel, netSide } from "./payoutMeta";
+import { NET_TONE, errorMessage, netLabel, netSide } from "./payoutMeta";
 
 // ── Settle the current period, with optional notes ──
 
@@ -49,10 +48,9 @@ export function SettleForm({ netPayout }: { netPayout: number }) {
           <label htmlFor="settle-notes" className="block text-xs font-medium text-muted-foreground">
             Notes <span className="font-normal">(optional)</span>
           </label>
-          <textarea
+          <Textarea
             id="settle-notes"
             rows={2}
-            className={TEXTAREA}
             placeholder="Paid via Venmo, squared up in cash…"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -60,14 +58,15 @@ export function SettleForm({ netPayout }: { netPayout: number }) {
           />
         </div>
 
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="lg"
           onClick={handleSettle}
           disabled={isPending}
-          className={cn(BTN_PRIMARY, "h-12 w-full font-semibold")}
+          className="w-full"
         >
           {isPending ? "Settling…" : "Mark as settled"}
-        </button>
+        </Button>
         <p className="text-xs text-muted-foreground">
           Closes the period and starts a new one from today. Settled periods appear below.
         </p>

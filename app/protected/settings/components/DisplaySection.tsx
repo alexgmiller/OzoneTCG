@@ -2,9 +2,9 @@
 
 import { Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
-import { cn } from "@/lib/utils";
+import { Segmented, Select } from "@/components/ui";
 import type { UserSettings } from "../actions";
-import { Section, SettingRow, Segmented, inputClass, type SettingsUpdate } from "./SettingsPrimitives";
+import { Section, SettingRow, type SettingsUpdate } from "./SettingsPrimitives";
 
 const THEMES = [
   { value: "light", label: "Light" },
@@ -29,27 +29,30 @@ export function DisplaySection({
     <Section icon={Monitor} title="Display">
       <SettingRow stack label="Theme" description="Light is the default; system follows your device">
         <Segmented
+          kind="radio"
           value={activeTheme}
           options={THEMES}
           onChange={(v) => { setTheme(v); onChange("theme", v); }}
+          aria-label="Theme"
+          className="w-full sm:w-auto"
         />
       </SettingRow>
       <SettingRow stack label="Currency">
-        <select
+        <Select
           value={settings.currency}
           onChange={(e) => onChange("currency", e.target.value)}
-          className={cn(inputClass, "w-full sm:w-auto")}
+          className="w-full sm:w-auto"
         >
           <option value="USD">USD ($)</option>
           <option value="CAD">CAD ($)</option>
           <option value="EUR">EUR (€)</option>
-        </select>
+        </Select>
       </SettingRow>
       <SettingRow stack label="Default sort" description="How inventory is ordered when you open it">
-        <select
+        <Select
           value={settings.default_sort}
           onChange={(e) => onChange("default_sort", e.target.value)}
-          className={cn(inputClass, "w-full sm:w-auto")}
+          className="w-full sm:w-auto"
         >
           <option value="date-desc">Recently Added</option>
           <option value="date-asc">Oldest First</option>
@@ -57,7 +60,7 @@ export function DisplaySection({
           <option value="name-desc">Name Z–A</option>
           <option value="market-desc">Price High–Low</option>
           <option value="market-asc">Price Low–High</option>
-        </select>
+        </Select>
       </SettingRow>
     </Section>
   );

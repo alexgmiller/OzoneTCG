@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { EmptyState, MoneyDisplay } from "@/components/ui";
+import { Button, EmptyState, MoneyDisplay } from "@/components/ui";
 import { fmtAgo, type DealMode, type RecentDeal } from "./activity";
 
 // ── Recent activity ──
@@ -25,12 +25,9 @@ export default function RecentActivity({ deals }: { deals: RecentDeal[] }) {
         title="No deals yet"
         hint="Buys, sells and trades from the POS show up here."
         cta={
-          <Link
-            href="/protected/pos"
-            className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover"
-          >
-            Open POS
-          </Link>
+          <Button asChild className="w-full">
+            <Link href="/protected/pos">Open POS</Link>
+          </Button>
         }
       />
     );

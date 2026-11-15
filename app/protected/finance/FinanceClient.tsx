@@ -3,15 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { EmptyState, MoneyDisplay, SectionHeader, StatCard, useToast } from "@/components/ui";
+import { Button, EmptyState, MoneyDisplay, Segmented, SectionHeader, StatCard, useToast } from "@/components/ui";
 import { exportExpensesCSV, exportTransactionsCSV } from "@/app/protected/settings/actions";
 import type { FinanceData, PayPeriodPnl } from "./actions";
 import type { MonthPnl } from "./math";
 
-const tab = (on: boolean) =>
-  `h-11 flex-1 rounded-lg text-sm font-semibold transition-colors duration-150 ${on ? "bg-background text-foreground" : "text-muted-foreground"}`;
-const btn =
-  "inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted disabled:opacity-40";
+const VIEWS: { value: "month" | "period"; label: string }[] = [
+  { value: "month", label: "By month" },
+  { value: "period", label: "By pay period" },
+];
 
 const fmtMonth = (ym: string) =>
   new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-US", { month: "short", year: "numeric" });
@@ -97,10 +97,7 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
 
       {/* ── P&L ── */}
       <section className="space-y-3">
-        <div className="flex gap-1 rounded-xl bg-muted p-1" role="tablist">
-          <button type="button" role="tab" aria-selected={view === "month"} className={tab(view === "month")} onClick={() => setView("month")}>By month</button>
-          <button type="button" role="tab" aria-selected={view === "period"} className={tab(view === "period")} onClick={() => setView("period")}>By pay period</button>
-        </div>
+        <Segmented options={VIEWS} value={view} onChange={setView} aria-label="P&L view" />
         <ul className="divide-y divide-border rounded-xl border border-border bg-card">
           {view === "month"
             ? months.map((m) => <PnlRow key={m.month} title={fmtMonth(m.month)} p={m} />)
@@ -111,7 +108,7 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
               ))}
         </ul>
         {view === "period" && (
-          <Link href="/protected/payout" className={`${btn} w-full`}>Settle up in Payout</Link>
+          <Button asChild variant="outline" className="w-full"><Link href="/protected/payout">Settle up in Payout</Link></Button>
         )}
       </section>
 
@@ -143,12 +140,12 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
       <section className="space-y-2">
         <SectionHeader>Export</SectionHeader>
         <div className="grid grid-cols-2 gap-3">
-          <button type="button" className={btn} disabled={busy !== null} onClick={() => exportCsv("transactions", exportTransactionsCSV)}>
+          <Button variant="outline" disabled={busy !== null} onClick={() => exportCsv("transactions", exportTransactionsCSV)}>
             <Download size={16} />{busy === "transactions" ? "Exporting…" : "Transactions CSV"}
-          </button>
-          <button type="button" className={btn} disabled={busy !== null} onClick={() => exportCsv("expenses", exportExpensesCSV)}>
+          </Button>
+          <Button variant="outline" disabled={busy !== null} onClick={() => exportCsv("expenses", exportExpensesCSV)}>
             <Download size={16} />{busy === "expenses" ? "Exporting…" : "Expenses CSV"}
-          </button>
+          </Button>
         </div>
       </section>
     </div>

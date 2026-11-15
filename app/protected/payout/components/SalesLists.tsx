@@ -1,9 +1,9 @@
 "use client";
 
-import { MoneyDisplay, SectionHeader } from "@/components/ui";
+import { Button, MoneyDisplay, SectionHeader } from "@/components/ui";
 import type { ConsignerSaleEntry, SharedSaleEntry, SoloSaleEntry } from "../PayoutServer";
 import { CollapsibleSection, LedgerRow } from "./CollapsibleSection";
-import { BTN_OUTLINE, BTN_SOFT, fmtDate } from "./payoutMeta";
+import { fmtDate } from "./payoutMeta";
 
 // ── Sales: shared revenue, our consigner cut, and solo sales awaiting a decision ──
 
@@ -53,22 +53,24 @@ function SoloSalesSection({
               />
             </div>
             <div className="flex gap-2">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 disabled={busy}
                 onClick={() => onMakeShared(s.id)}
-                className={`${BTN_SOFT} flex-1`}
+                className="flex-1"
               >
                 {adding ? "Adding…" : "Include in shared"}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 disabled={busy}
                 onClick={() => onKeepSolo(s.id)}
-                className={`${BTN_OUTLINE} flex-1`}
+                className="flex-1"
               >
                 {keeping ? "Saving…" : "Keep solo"}
-              </button>
+              </Button>
             </div>
           </div>
         );

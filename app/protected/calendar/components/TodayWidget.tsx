@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Zap } from "lucide-react";
-import { MoneyDisplay, SectionHeader } from "@/components/ui";
+import { Button, MoneyDisplay, SectionHeader } from "@/components/ui";
 import type { DayActivity } from "../actions";
 import { KIND_TEXT, fmtShortDate } from "./helpers";
 
@@ -67,14 +67,12 @@ export function TodayWidget({
             <MoneyDisplay amount={net} showSign className="text-lg font-semibold leading-none" />
           )}
           {activeShow && (
-            <Link
-              href="/protected/pos"
-              onClick={(e) => e.stopPropagation()}
-              className="flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border border-warning-border bg-card px-4 text-sm font-semibold text-warning transition-colors duration-150 hover:bg-warning-soft"
-            >
-              <Zap size={14} />
-              Go to Show
-            </Link>
+            <Button asChild variant="outline" className="gap-1.5 border-warning-border font-semibold text-warning hover:bg-warning-soft">
+              <Link href="/protected/pos" onClick={(e) => e.stopPropagation()}>
+                <Zap size={14} />
+                Go to Show
+              </Link>
+            </Button>
           )}
         </div>
       </div>

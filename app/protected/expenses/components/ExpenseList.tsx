@@ -1,6 +1,6 @@
 "use client";
 
-import { EmptyState } from "@/components/ui";
+import { Button, EmptyState } from "@/components/ui";
 import type { ExpenseRow } from "../ExpensesServer";
 import { ExpenseRowItem } from "./ExpenseRowItem";
 
@@ -42,12 +42,9 @@ export function ExpenseList({
         }
         cta={
           hasActiveFilters ? undefined : (
-            <button
-              onClick={onLogFirst}
-              className="h-11 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover"
-            >
+            <Button onClick={onLogFirst} className="w-full">
               Log first expense
-            </button>
+            </Button>
           )
         }
       />

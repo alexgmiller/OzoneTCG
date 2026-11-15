@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import { Modal } from "@/components/ui";
+import { Button, Modal } from "@/components/ui";
 import { RECEIPT_IRS_THRESHOLD } from "./expenseMeta";
 
 const DOC_EXAMPLES = [
@@ -24,19 +24,22 @@ export function DocsBanner({ onDismiss }: { onDismiss: () => void }) {
         <span className="min-w-0 flex-1 text-sm text-muted-foreground">
           Photos, screenshots, or notes all count as documentation.
         </span>
-        <button
+        <Button
+          variant="link"
           onClick={() => setExpanded((v) => !v)}
-          className="h-11 shrink-0 px-2 text-sm text-accent-primary transition-colors duration-150 hover:text-accent-primary-hover"
+          className="h-11 shrink-0 px-2"
         >
           {expanded ? "Less ↑" : "More ↓"}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          className="shrink-0"
         >
           <X size={16} />
-        </button>
+        </Button>
       </div>
       {expanded && (
         <div className="mt-2 space-y-1 border-t border-accent-primary-border pt-2 text-sm text-muted-foreground">
@@ -65,12 +68,9 @@ export function DocsModal({ open, onClose }: { open: boolean; onClose: () => voi
         <p className="text-xs leading-relaxed">
           Expenses ${RECEIPT_IRS_THRESHOLD} or more require documentation. Mileage is documented by your log — no receipt needed.
         </p>
-        <button
-          onClick={onClose}
-          className="h-11 w-full rounded-lg border border-border text-sm text-foreground transition-colors duration-150 hover:bg-muted"
-        >
+        <Button variant="outline" onClick={onClose} className="w-full">
           Got it
-        </button>
+        </Button>
       </div>
     </Modal>
   );

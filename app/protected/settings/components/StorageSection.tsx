@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { HardDrive } from "lucide-react";
-import { Skeleton, useToast } from "@/components/ui";
-import { Section, SettingRow, ActionButton } from "./SettingsPrimitives";
+import { Button, Skeleton, useToast } from "@/components/ui";
+import { Section, SettingRow } from "./SettingsPrimitives";
 
 const IMAGE_CACHE_NAME = "ozone-card-images-v1";
 
@@ -58,9 +58,9 @@ export function StorageSection() {
         )}
       </SettingRow>
       <SettingRow label="Clear image cache" description="Images re-download the next time they're viewed">
-        <ActionButton onClick={handleClear} disabled={clearing || !cacheSize}>
+        <Button variant="outline" onClick={handleClear} disabled={clearing || !cacheSize}>
           {clearing ? "Clearing…" : "Clear"}
-        </ActionButton>
+        </Button>
       </SettingRow>
     </Section>
   );

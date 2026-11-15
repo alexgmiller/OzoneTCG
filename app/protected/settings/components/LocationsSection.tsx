@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { MapPin, Pencil, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useToast, useConfirm } from "@/components/ui";
+import { Button, Input, useToast, useConfirm } from "@/components/ui";
 import {
   updateHomeAddress, updateSavedLocationLabel, deleteSavedLocation,
   type SavedLocation,
 } from "../actions";
-import { Section, ActionButton, inputClass } from "./SettingsPrimitives";
+import { Section } from "./SettingsPrimitives";
 
 // ── Locations ──
 export function LocationsSection({
@@ -51,20 +50,19 @@ function HomeAddressSection({ initial }: { initial: string | null }) {
   return (
     <Section icon={MapPin} title="Home Address">
       <div className="space-y-3 px-4 py-3">
-        <input
+        <Input
           type="text"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           placeholder="123 Main St, Sacramento, CA"
-          className={cn(inputClass, "w-full")}
         />
         <p className="text-xs leading-relaxed text-muted-foreground">
           Saved for quick reference when entering mileage. Only stored on your account, never shared.
         </p>
         <div className="flex justify-end">
-          <ActionButton tone="primary" onClick={handleSave} disabled={!isDirty || saving}>
+          <Button onClick={handleSave} disabled={!isDirty || saving}>
             {saving ? "Saving…" : "Save"}
-          </ActionButton>
+          </Button>
         </div>
       </div>
     </Section>
@@ -135,7 +133,7 @@ function SavedLocationsSection({ initial }: { initial: SavedLocation[] }) {
           <div key={loc.id} className="px-4 py-3">
             {editingId === loc.id ? (
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
+                <Input
                   autoFocus
                   value={editLabel}
                   onChange={(e) => setEditLabel(e.target.value)}
@@ -143,21 +141,20 @@ function SavedLocationsSection({ initial }: { initial: SavedLocation[] }) {
                     if (e.key === "Enter") handleSaveLabel(loc.id);
                     if (e.key === "Escape") setEditingId(null);
                   }}
-                  className={cn(inputClass, "w-full flex-1")}
+                  className="flex-1"
                   placeholder="Label"
                 />
                 <div className="flex gap-2">
-                  <ActionButton
-                    tone="primary"
+                  <Button
                     onClick={() => handleSaveLabel(loc.id)}
                     disabled={busyId === loc.id || !editLabel.trim()}
                     className="flex-1 sm:flex-none"
                   >
                     {busyId === loc.id ? "Saving…" : "Save"}
-                  </ActionButton>
-                  <ActionButton onClick={() => setEditingId(null)} className="flex-1 sm:flex-none">
+                  </Button>
+                  <Button variant="outline" onClick={() => setEditingId(null)} className="flex-1 sm:flex-none">
                     Cancel
-                  </ActionButton>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -170,23 +167,23 @@ function SavedLocationsSection({ initial }: { initial: SavedLocation[] }) {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => startEdit(loc)}
                     aria-label={`Rename ${loc.label}`}
-                    className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
                   >
                     <Pencil size={16} />
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
+                    variant="destructive-ghost"
+                    size="icon"
                     onClick={() => handleDelete(loc)}
                     disabled={busyId === loc.id}
                     aria-label={`Delete ${loc.label}`}
-                    className="flex h-11 w-11 items-center justify-center rounded-lg text-negative-strong transition-colors duration-150 hover:bg-negative-soft disabled:opacity-40"
                   >
                     <Trash2 size={16} />
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

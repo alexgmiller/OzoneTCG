@@ -4,10 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
-import { useConfirm, useToast } from "@/components/ui";
+import { Button, useConfirm, useToast } from "@/components/ui";
 import { deleteShowSession, startShow } from "../actions";
 import EndShowPanel from "../EndShowPanel";
-import { btnGhostDanger, btnPrimary, btnSecondary, todayLocalISO, type ShowStatus } from "../shared";
+import { todayLocalISO, type ShowStatus } from "../shared";
 
 type ShowSummary = {
   id: string;
@@ -37,9 +37,9 @@ export default function ShowDetailActions({ show, hasActive }: { show: ShowSumma
   if (show.status === "scheduled") {
     return (
       <div className="space-y-2">
-        <button type="button" onClick={start} disabled={busy || hasActive} className={`${btnPrimary} w-full`}>
+        <Button onClick={start} disabled={busy || hasActive} className="w-full">
           {busy ? "Starting…" : "Start show"}
-        </button>
+        </Button>
         {hasActive && (
           <p className="text-xs text-muted-foreground">End the live show before starting this one.</p>
         )}
@@ -51,10 +51,10 @@ export default function ShowDetailActions({ show, hasActive }: { show: ShowSumma
     return (
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
-          <Link href="/protected/pos" className={btnPrimary}>Open POS</Link>
-          <button type="button" onClick={() => setEnding((v) => !v)} className={btnSecondary}>
+          <Button asChild><Link href="/protected/pos">Open POS</Link></Button>
+          <Button variant="outline" onClick={() => setEnding((v) => !v)}>
             {ending ? "Cancel" : "End show"}
-          </button>
+          </Button>
         </div>
         {ending && <EndShowPanel showId={show.id} />}
       </div>
@@ -93,9 +93,9 @@ export function DeleteShowButton({ showId, showName }: { showId: string; showNam
   }
 
   return (
-    <button type="button" onClick={remove} disabled={busy} className={btnGhostDanger}>
+    <Button variant="destructive-ghost" onClick={remove} disabled={busy} className="w-full">
       <Trash2 size={16} />
       {busy ? "Deleting…" : "Delete show"}
-    </button>
+    </Button>
   );
 }

@@ -5,7 +5,8 @@ import { parseGrade } from "@/lib/ebay-client";
 import { uploadCardImage } from "../actions";
 import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
 import type { Category, Owner, Status, Condition, ConsignerOption, ItemForm } from "../types";
-import { GRADE_OPTIONS, GRADE_COMPANIES, fieldClass, btnOutline } from "../utils";
+import { Button, Input, Select, Textarea } from "@/components/ui";
+import { GRADE_OPTIONS, GRADE_COMPANIES } from "../utils";
 
 // ── Shared item form (add panel + edit modal) ──
 export default function ItemFormFields({
@@ -67,14 +68,13 @@ export default function ItemFormFields({
     <div className="space-y-3">
       {/* ── Type / owner / status / condition ── */}
       <div className="grid grid-cols-2 gap-2">
-        <select className={fieldClass} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as Category })}>
+        <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as Category })}>
           <option value="single">Single</option>
           <option value="slab">Slab</option>
           <option value="sealed">Sealed</option>
-        </select>
+        </Select>
 
-        <select
-          className={fieldClass}
+        <Select
           value={form.owner === "consigner" && form.consignerId ? `consigner:${form.consignerId}` : form.owner}
           onChange={(e) => {
             const v = e.target.value;
@@ -92,27 +92,27 @@ export default function ItemFormFields({
               ))}
             </optgroup>
           )}
-        </select>
+        </Select>
 
-        <select className={fieldClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Status })}>
+        <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Status })}>
           <option value="inventory">Inventory</option>
           {form.category === "single" && <option value="grading">Grading</option>}
-        </select>
+        </Select>
 
         {form.category === "slab" ? (
           <div className="flex gap-2">
-            <select className={`${fieldClass} w-20 flex-none`} value={gradeCompany} onChange={(e) => { setGradeCompany(e.target.value); setForm({ ...form, grade: "" }); }}>
+            <Select className="w-20 flex-none" value={gradeCompany} onChange={(e) => { setGradeCompany(e.target.value); setForm({ ...form, grade: "" }); }}>
               {GRADE_COMPANIES.map((co) => <option key={co} value={co}>{co}</option>)}
-            </select>
-            <select className={`${fieldClass} min-w-0 flex-1`} value={gradeScore} onChange={(e) => setForm({ ...form, grade: e.target.value ? `${gradeCompany} ${e.target.value}` : "" })}>
+            </Select>
+            <Select className="min-w-0 flex-1" value={gradeScore} onChange={(e) => setForm({ ...form, grade: e.target.value ? `${gradeCompany} ${e.target.value}` : "" })}>
               <option value="">— Grade —</option>
               {GRADE_OPTIONS[gradeCompany]?.top.map((g) => <option key={g} value={g}>{g}</option>)}
               <option disabled>──────</option>
               {GRADE_OPTIONS[gradeCompany]?.rest.map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
+            </Select>
           </div>
         ) : form.category === "sealed" ? (
-          <select className={fieldClass} value={form.productType} onChange={(e) => setForm({ ...form, productType: e.target.value })}>
+          <Select value={form.productType} onChange={(e) => setForm({ ...form, productType: e.target.value })}>
             <option value="">— Type —</option>
             <option value="booster_box">Booster Box</option>
             <option value="etb">Elite Trainer Box</option>
@@ -122,35 +122,34 @@ export default function ItemFormFields({
             <option value="booster_pack">Booster Pack</option>
             <option value="promo_box">Promo Box</option>
             <option value="other">Other</option>
-          </select>
+          </Select>
         ) : (
-          <select className={fieldClass} value={form.condition} onChange={(e) => setForm({ ...form, condition: e.target.value as Condition })}>
+          <Select value={form.condition} onChange={(e) => setForm({ ...form, condition: e.target.value as Condition })}>
             <option value="Near Mint">Near Mint</option>
             <option value="Lightly Played">Lightly Played</option>
             <option value="Moderately Played">Moderately Played</option>
             <option value="Heavily Played">Heavily Played</option>
             <option value="Damaged">Damaged</option>
-          </select>
+          </Select>
         )}
       </div>
 
       {form.category === "sealed" && (
         <div className="grid grid-cols-2 gap-2">
-          <input className={`${fieldClass} tabular-nums`} placeholder="Quantity" value={form.quantity} inputMode="numeric" onChange={(e) => setForm({ ...form, quantity: e.target.value.replace(/\D/g, "") || "1" })} />
-          <select className={fieldClass} value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })}>
+          <Input className="tabular-nums" placeholder="Quantity" value={form.quantity} inputMode="numeric" onChange={(e) => setForm({ ...form, quantity: e.target.value.replace(/\D/g, "") || "1" })} />
+          <Select value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })}>
             <option value="english">English</option>
             <option value="japanese">Japanese</option>
             <option value="korean">Korean</option>
             <option value="chinese">Chinese</option>
             <option value="other">Other</option>
-          </select>
+          </Select>
         </div>
       )}
 
       {/* ── Identification ── */}
       <div className="space-y-2">
         <CardAutocomplete
-          className={fieldClass}
           placeholder="Name *"
           value={form.name}
           onChange={(v) => setForm({ ...form, name: v })}
@@ -168,9 +167,9 @@ export default function ItemFormFields({
         />
         {onFind && (
           <div className="flex gap-2">
-            <input className={`${fieldClass} min-w-0 flex-1`} placeholder="Set name (optional)" value={form.setName} onChange={(e) => setForm({ ...form, setName: e.target.value })} />
-            <input className={`${fieldClass} w-24 min-w-0`} placeholder="Card #" value={form.cardNumber} onChange={(e) => setForm({ ...form, cardNumber: e.target.value })} />
-            <button type="button" onClick={onFind} className={`${btnOutline} shrink-0`}>Find</button>
+            <Input className="min-w-0 flex-1" placeholder="Set name (optional)" value={form.setName} onChange={(e) => setForm({ ...form, setName: e.target.value })} />
+            <Input className="w-24 min-w-0" placeholder="Card #" value={form.cardNumber} onChange={(e) => setForm({ ...form, cardNumber: e.target.value })} />
+            <Button variant="outline" onClick={onFind} className="shrink-0">Find</Button>
           </div>
         )}
         {findConfirmed && (
@@ -186,16 +185,16 @@ export default function ItemFormFields({
 
       {/* ── Prices ── */}
       <div className="grid grid-cols-2 gap-2">
-        <input className={`${fieldClass} tabular-nums`} placeholder="Market" value={form.market} inputMode="decimal" onChange={(e) => setForm({ ...form, market: e.target.value, cost: costFrom(e.target.value, form.buyPct) })} />
+        <Input className="tabular-nums" placeholder="Market" value={form.market} inputMode="decimal" onChange={(e) => setForm({ ...form, market: e.target.value, cost: costFrom(e.target.value, form.buyPct) })} />
         <div className="relative">
-          <input className={`${fieldClass} pr-8 tabular-nums`} placeholder="Buy %" value={form.buyPct} inputMode="decimal" onChange={(e) => setForm({ ...form, buyPct: e.target.value, cost: costFrom(form.market, e.target.value) })} />
+          <Input className="pr-8 tabular-nums" placeholder="Buy %" value={form.buyPct} inputMode="decimal" onChange={(e) => setForm({ ...form, buyPct: e.target.value, cost: costFrom(form.market, e.target.value) })} />
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
         </div>
-        <input className={`${fieldClass} col-span-2 tabular-nums`} placeholder={form.buyPct && form.market ? `Cost (auto: ${form.cost || "—"})` : "Cost"} value={form.cost} inputMode="decimal" onChange={(e) => setForm({ ...form, cost: e.target.value, buyPct: "" })} />
-        <input className={`${fieldClass} col-span-2 tabular-nums`} placeholder="Sticker price" value={form.stickerPrice} inputMode="decimal" onChange={(e) => setForm({ ...form, stickerPrice: e.target.value })} />
+        <Input className="col-span-2 tabular-nums" placeholder={form.buyPct && form.market ? `Cost (auto: ${form.cost || "—"})` : "Cost"} value={form.cost} inputMode="decimal" onChange={(e) => setForm({ ...form, cost: e.target.value, buyPct: "" })} />
+        <Input className="col-span-2 tabular-nums" placeholder="Sticker price" value={form.stickerPrice} inputMode="decimal" onChange={(e) => setForm({ ...form, stickerPrice: e.target.value })} />
       </div>
 
-      <textarea className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" placeholder="Notes" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+      <Textarea placeholder="Notes" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
 
       {/* ── Image ── */}
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
@@ -204,23 +203,23 @@ export default function ItemFormFields({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={form.imageUrl} alt="preview" className="h-32 w-auto shrink-0 rounded-lg border border-border object-contain" />
           <div className="flex-1 space-y-2">
-            <input className={fieldClass} placeholder="Image URL" value={form.imageUrl ?? ""} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
+            <Input placeholder="Image URL" value={form.imageUrl ?? ""} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
             <div className="flex gap-2">
-              <button type="button" className={btnOutline} onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
                 {uploadingImage ? "Uploading…" : "Replace photo"}
-              </button>
-              <button type="button" className="h-11 px-3 text-sm font-medium text-negative" onClick={() => setForm({ ...form, imageUrl: "" })}>
+              </Button>
+              <Button variant="destructive-ghost" size="sm" onClick={() => setForm({ ...form, imageUrl: "" })}>
                 Remove
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       ) : (
         <div className="space-y-2">
-          <input className={fieldClass} placeholder="Image URL (or use Find / Scan to auto-fill)" value={form.imageUrl ?? ""} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
-          <button type="button" className={btnOutline} onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
+          <Input placeholder="Image URL (or use Find / Scan to auto-fill)" value={form.imageUrl ?? ""} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
             {uploadingImage ? "Uploading…" : "Upload photo"}
-          </button>
+          </Button>
         </div>
       )}
     </div>

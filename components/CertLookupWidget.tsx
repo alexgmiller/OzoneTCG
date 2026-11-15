@@ -11,8 +11,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ScanLine, Camera, X, Loader2, AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { SectionHeader } from "@/components/ui";
+import { Button, Chip, Input, SectionHeader } from "@/components/ui";
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 
 export type CertWidgetResult = {
@@ -42,9 +41,6 @@ interface Props {
 }
 
 const COMPANIES: GradingCompany[] = ["PSA", "BGS", "CGC"];
-
-const iconButtonClass =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground";
 
 export default function CertLookupWidget({
   onResult,
@@ -215,14 +211,10 @@ export default function CertLookupWidget({
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-accent-primary-border px-3 text-sm font-medium text-accent-primary transition-colors duration-150 hover:bg-accent-primary-soft"
-      >
+      <Button variant="secondary" size="sm" onClick={() => setOpen(true)} className="shrink-0">
         <ScanLine size={16} />
         {label ?? "Scan cert"}
-      </button>
+      </Button>
     );
   }
 
@@ -249,7 +241,7 @@ export default function CertLookupWidget({
 
   const inputRow = (
     <div className="flex gap-2">
-      <input
+      <Input
         ref={inputRef}
         type="text"
         inputMode="numeric"
@@ -257,35 +249,30 @@ export default function CertLookupWidget({
         onChange={(e) => setCertInput(e.target.value.replace(/\D/g, ""))}
         onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
         placeholder="Cert number…"
-        className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-sm tracking-wider text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+        className="flex-1 font-mono tracking-wider"
         disabled={loading}
       />
-      <button
-        type="button"
+      <Chip
+        selected={cameraOn}
         onClick={() => setCameraOn((o) => !o)}
-        className={cn(
-          "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150",
-          cameraOn
-            ? "border-accent-primary bg-accent-primary text-primary-foreground"
-            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-        )}
+        className="w-11 px-0"
         title="Toggle camera"
         aria-label="Toggle camera"
         aria-pressed={cameraOn}
       >
         <Camera size={16} />
-      </button>
-      <button
-        type="button"
+      </Chip>
+      <Button
+        size="sm"
         onClick={handleSubmit}
         disabled={loading || certInput.length < 5}
-        className="flex h-11 shrink-0 items-center gap-1 rounded-lg bg-accent-primary px-3 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+        className="shrink-0"
       >
         {loading ? <Loader2 size={16} className="animate-spin" /> : "Look up"}
-      </button>
-      <button type="button" onClick={handleClose} className={iconButtonClass} aria-label="Close">
+      </Button>
+      <Button variant="ghost" size="icon" onClick={handleClose} className="shrink-0" aria-label="Close">
         <X size={16} />
-      </button>
+      </Button>
     </div>
   );
 
@@ -317,29 +304,24 @@ export default function CertLookupWidget({
         {!controlledCompany ? (
           <div className="flex gap-2" role="group" aria-label="Grading company">
             {COMPANIES.map((c) => (
-              <button
+              <Chip
                 key={c}
-                type="button"
+                size="sm"
+                selected={internalCompany === c}
                 onClick={() => setInternalCompany(c)}
                 aria-pressed={internalCompany === c}
-                className={cn(
-                  "h-11 rounded-lg border px-3 text-xs font-semibold transition-colors duration-150",
-                  internalCompany === c
-                    ? "border-accent-primary-border bg-accent-primary-soft text-accent-primary"
-                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
               >
                 {c}
-              </button>
+              </Chip>
             ))}
           </div>
         ) : (
           <SectionHeader>{controlledCompany} cert lookup</SectionHeader>
         )}
         {!embedded && (
-          <button type="button" onClick={handleClose} className={iconButtonClass} aria-label="Close">
+          <Button variant="ghost" size="icon" onClick={handleClose} className="shrink-0" aria-label="Close">
             <X size={16} />
-          </button>
+          </Button>
         )}
       </div>
 

@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
-import { EmptyState, MoneyDisplay } from "@/components/ui";
+import { EmptyState, Input, MoneyDisplay } from "@/components/ui";
 import type { PickItem } from "./ledger";
-import { INPUT } from "./ui";
 
 // Pick inventory by name, set, number or cert; selected items stay pinned on top
 export default function ItemPicker({ items, selected, onToggle }: {
@@ -45,8 +44,8 @@ export default function ItemPicker({ items, selected, onToggle }: {
   return (
     <div className="space-y-2">
       {selected.map((it) => row(it, true))}
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search inventory or cert #"
-        aria-label="Search inventory" className={`${INPUT} w-full`} />
+      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search inventory or cert #"
+        aria-label="Search inventory" />
       {terms.length === 0 && selected.length === 0 && (
         <EmptyState title="Pick cards from inventory" hint="Search by name, set, number or cert #." />
       )}

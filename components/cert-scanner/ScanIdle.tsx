@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { ScanLine } from "lucide-react";
 import { CAMERA_CONTAINER_ID, useCamera } from "./useCamera";
-import { CAMERA_PREF_KEY, btnOutline, btnPrimary, inputClass } from "./shared";
+import { Button, Input } from "@/components/ui";
+import { CAMERA_PREF_KEY } from "./shared";
 
 // ── ScanIdle ──
 // Viewfinder + manual cert entry. Camera defaults ON on phones, OFF on desktop,
@@ -57,30 +58,29 @@ export function ScanIdle({
 
       {/* Manual input */}
       <div className="flex gap-2">
-        <input
+        <Input
           type="text"
           inputMode="numeric"
           value={manualCert}
           onChange={(e) => onManualCertChange(e.target.value.replace(/\D/g, ""))}
           onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); }}
           placeholder="Cert number"
-          className={`${inputClass} flex-1 font-mono tracking-wider`}
+          className="flex-1 font-mono tracking-wider"
           autoComplete="off"
         />
-        <button
-          type="button"
+        <Button
           onClick={onSubmit}
           disabled={manualCert.length < 5}
-          className={`${btnPrimary} h-11 shrink-0`}
+          className="shrink-0"
         >
           Look up
-        </button>
+        </Button>
       </div>
 
-      <button type="button" onClick={toggleCamera} className={`${btnOutline} w-full`}>
+      <Button variant="outline" size="lg" onClick={toggleCamera} className="w-full">
         <ScanLine size={16} />
         {cameraEnabled ? "Stop camera" : "Scan with camera"}
-      </button>
+      </Button>
     </div>
   );
 }

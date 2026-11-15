@@ -3,34 +3,25 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeftRight, ArrowRight, Plus, X, Zap } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
+import { Badge, Button, EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
 import type {
   BuyEntry, DayDetail, ExpenseEntry, SellEntry, ShowEntry, TradeEntry,
 } from "../actions";
 import { DOT_BG, fmtLongDate, fmtTime, isFuture, type ActivityKind } from "./helpers";
 
-const softBtn =
-  "flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent-primary-soft px-4 text-sm font-semibold text-accent-primary transition-colors duration-150 hover:bg-accent-primary-border";
-
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-const STATUS_CLS: Record<string, string> = {
-  scheduled: "bg-accent-primary-soft text-accent-primary border-accent-primary-border",
-  active: "bg-warning-soft text-warning border-warning-border",
-  completed: "bg-positive-soft text-positive border-positive-border",
+const STATUS_TONE: Record<string, "accent" | "warning" | "positive"> = {
+  scheduled: "accent",
+  active: "warning",
+  completed: "positive",
 };
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={cn(
-        "rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide",
-        STATUS_CLS[status] ?? "border-border bg-muted text-muted-foreground",
-      )}
-    >
+    <Badge mono tone={STATUS_TONE[status] ?? "neutral"}>
       {status}
-    </span>
+    </Badge>
   );
 }
 
@@ -105,19 +96,20 @@ function ShowCard({ show }: { show: ShowEntry }) {
             </div>
           )}
           {show.status === "scheduled" && (
-            <Link href={`/protected/shows/${show.id}`} className={softBtn}>
-              <Zap size={14} />
-              Open Show
-            </Link>
+            <Button asChild variant="secondary" className="gap-1.5 font-semibold">
+              <Link href={`/protected/shows/${show.id}`}>
+                <Zap size={14} />
+                Open Show
+              </Link>
+            </Button>
           )}
           {show.status === "active" && (
-            <Link
-              href="/protected/pos"
-              className="flex h-11 items-center gap-1.5 whitespace-nowrap rounded-lg border border-warning-border bg-card px-4 text-sm font-semibold text-warning transition-colors duration-150 hover:bg-muted"
-            >
-              <ArrowRight size={14} />
-              Go to Show
-            </Link>
+            <Button asChild variant="outline" className="gap-1.5 border-warning-border font-semibold text-warning">
+              <Link href="/protected/pos">
+                <ArrowRight size={14} />
+                Go to Show
+              </Link>
+            </Button>
           )}
         </div>
       </div>
@@ -248,19 +240,14 @@ export function DayDetailPanel({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {(isFutureDay || isToday) && (
-            <button type="button" onClick={onScheduleShow} className={softBtn}>
+            <Button variant="secondary" onClick={onScheduleShow} className="gap-1.5 font-semibold">
               <Plus size={16} />
               Schedule
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted"
-          >
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
             <X size={18} />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -271,10 +258,10 @@ export function DayDetailPanel({
             title={isFutureDay ? "Nothing scheduled" : "No activity"}
             hint={isFutureDay ? "Schedule a show for this day to see it on the calendar." : "Buys, sells, trades and expenses recorded on this day will appear here."}
             cta={isFutureDay ? (
-              <button type="button" onClick={onScheduleShow} className={cn(softBtn, "w-full justify-center")}>
+              <Button variant="secondary" onClick={onScheduleShow} className="w-full gap-1.5 font-semibold">
                 <Plus size={16} />
                 Schedule a Show
-              </button>
+              </Button>
             ) : undefined}
           />
         )}

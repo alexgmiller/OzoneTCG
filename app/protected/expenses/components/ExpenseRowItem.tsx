@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { Camera, ChevronDown, ChevronUp, FileText, Paperclip, TriangleAlert } from "lucide-react";
-import { MoneyDisplay } from "@/components/ui";
+import { Badge, Button, MoneyDisplay } from "@/components/ui";
 import { estimateTaxSavings } from "@/lib/taxEstimate";
 import type { ExpenseRow } from "../ExpensesServer";
 import { CAT_TOKEN, RECEIPT_IRS_THRESHOLD, fmtDate } from "./expenseMeta";
 
+// Documentation-status tile (receipt thumbnail / note / missing / attach). Stays a
+// native button: it encodes doc state with tone-tinted, dashed borders no primitive offers.
 const ICON_BTN = "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150";
-const ACTION_BTN = "inline-flex h-11 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors duration-150";
 
 function Spinner() {
   return <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />;
@@ -49,6 +50,7 @@ export function ExpenseRowItem({
         {/* Documentation status */}
         {hasPhoto ? (
           <button
+            type="button"
             className={`${ICON_BTN} overflow-hidden border-border`}
             onClick={() => onLightbox(e.receipt_url!)}
             aria-label="View receipt"
@@ -58,6 +60,7 @@ export function ExpenseRowItem({
           </button>
         ) : hasNoteDoc ? (
           <button
+            type="button"
             className={`${ICON_BTN} border-positive-border bg-positive-soft text-positive`}
             onClick={onEdit}
             title="Written record attached"
@@ -66,6 +69,7 @@ export function ExpenseRowItem({
           </button>
         ) : missingReceipt ? (
           <button
+            type="button"
             className={`${ICON_BTN} border-dashed border-warning-border text-warning hover:bg-warning-soft`}
             onClick={onReceiptPick}
             title="Documentation needed — tap to add"
@@ -74,6 +78,7 @@ export function ExpenseRowItem({
           </button>
         ) : (
           <button
+            type="button"
             className={`${ICON_BTN} border-dashed border-border text-muted-foreground hover:bg-muted`}
             onClick={onReceiptPick}
             title="Attach documentation"
@@ -84,14 +89,15 @@ export function ExpenseRowItem({
 
         {/* Content column: tap anywhere to expand */}
         <button
+          type="button"
           onClick={() => setExpanded((v) => !v)}
           className="min-w-0 flex-1 text-left"
           aria-expanded={expanded}
         >
           <div className="mb-0.5 flex items-center gap-2">
-            <span className={`shrink-0 rounded-lg border px-1.5 font-mono text-xs font-bold uppercase tracking-wide ${tok.pill}`}>
+            <Badge tone={tok.tone} mono className="shrink-0">
               {tok.label}
-            </span>
+            </Badge>
             <span className="truncate text-sm font-medium">{e.vendor_name || e.description}</span>
             {e.vendor_name && e.description && (
               <span className="hidden truncate text-xs text-muted-foreground sm:inline">— {e.description}</span>
@@ -125,13 +131,15 @@ export function ExpenseRowItem({
           )}
         </div>
 
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setExpanded((v) => !v)}
           aria-label={expanded ? "Collapse" : "Expand"}
-          className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+          className="-mr-2 shrink-0"
         >
           {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </button>
+        </Button>
       </div>
 
       {/* ── Expanded detail strip ── */}
@@ -153,16 +161,16 @@ export function ExpenseRowItem({
           )}
           <div className="ml-auto flex gap-2">
             {!hasAnyDoc && (
-              <button onClick={onReceiptPick} className={`${ACTION_BTN} border-border text-foreground hover:bg-muted`}>
+              <Button variant="outline" size="sm" onClick={onReceiptPick}>
                 <Camera size={14} /> Add docs
-              </button>
+              </Button>
             )}
-            <button onClick={onEdit} className={`${ACTION_BTN} border-border text-foreground hover:bg-muted`}>
+            <Button variant="outline" size="sm" onClick={onEdit}>
               Edit
-            </button>
-            <button onClick={onDelete} className={`${ACTION_BTN} border-negative-border text-negative hover:bg-negative-soft`}>
+            </Button>
+            <Button variant="destructive" size="sm" onClick={onDelete}>
               Delete
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
+import { Button } from "@/components/ui";
 
 // ── Inline info tooltip (tap to toggle, tap outside to close) ─────────────────
 
@@ -26,14 +27,15 @@ export function ExpenseTooltip({ content }: { content: string }) {
 
   return (
     <div ref={ref} className="relative inline-flex items-center">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => setOpen((v) => !v)}
-        className="-my-3 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground"
+        className="-my-3"
         aria-label="More info"
       >
         <Info size={14} />
-      </button>
+      </Button>
       {open && (
         <div className="absolute left-8 top-0 z-10 w-56 rounded-xl border border-border bg-card p-3">
           <p className="text-xs leading-relaxed text-muted-foreground">{content}</p>

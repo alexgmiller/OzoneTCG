@@ -259,13 +259,3 @@ export const GRADE_OPTIONS: Record<string, { top: string[]; rest: string[] }> = 
   },
 };
 export const GRADE_COMPANIES = ["PSA", "BGS", "CGC", "TAG"] as const;
-
-// ── Shared class strings ──
-export const fieldClass = "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground";
-export const btnOutline = "inline-flex h-11 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted disabled:opacity-40";
-export const btnPrimary = "inline-flex h-11 items-center justify-center rounded-lg bg-accent-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40";
-export const btnDanger = "inline-flex h-11 items-center justify-center rounded-lg border border-negative-border bg-negative-soft px-4 text-sm font-semibold text-negative transition-colors duration-150 disabled:opacity-40";
-export const pillClass = "inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground";
-export const pillAccent = "inline-flex items-center rounded-full bg-accent-primary-soft px-2 py-0.5 text-xs font-medium text-accent-primary";
-export const pillWarning = "inline-flex items-center rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning-strong";
-export const pillPositive = "inline-flex items-center rounded-full bg-positive-soft px-2 py-0.5 text-xs font-medium text-positive-strong";

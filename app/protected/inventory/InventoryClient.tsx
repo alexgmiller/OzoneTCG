@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
-import { useToast, useConfirm } from "@/components/ui";
+import { Button, useToast, useConfirm } from "@/components/ui";
 import CardSearchPicker, { type CardSearchResult } from "@/components/CardSearchPicker";
 import { createItems, deleteItem, deleteItems, updateItem, markItemsAsSold, massUpdateItems, fetchCardData } from "./actions";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
@@ -375,9 +375,9 @@ export default function InventoryClient({
       <div className="flex min-h-11 items-center justify-between">
         <span className="font-mono text-xs uppercase tracking-[0.18em] text-neutral tabular-nums">{listLabel}</span>
         {displayedItems.length > 0 && (
-          <button className="h-11 px-2 text-sm font-medium text-accent-primary" onClick={selectAll}>
+          <Button variant="link" className="h-11 px-2" onClick={selectAll}>
             {selectedIds.size === displayedItems.length ? "Deselect all" : "Select all"}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -401,13 +401,14 @@ export default function InventoryClient({
 
       {/* ── Mobile add FAB ── */}
       {selectedIds.size === 0 && !addOpen && (
-        <button
-          className="fixed bottom-20 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent-primary text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover md:hidden"
+        <Button
+          size="icon"
+          className="fixed bottom-20 right-4 z-30 h-14 w-14 md:hidden"
           onClick={() => { openAdd(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
           aria-label="Add item"
         >
           <Plus size={24} />
-        </button>
+        </Button>
       )}
 
       {selectedIds.size > 0 && (

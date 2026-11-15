@@ -1,7 +1,8 @@
 "use client";
 
 import { ChevronDown, ChevronUp, ScanLine, Trash2, X } from "lucide-react";
-import { MoneyOrDash, btnOutline, btnPrimary, offerValue, type BatchItem } from "./shared";
+import { Button } from "@/components/ui";
+import { MoneyOrDash, offerValue, type BatchItem } from "./shared";
 
 // ── BatchList ──
 // Collapsible list of cards scanned this session, with totals and bulk actions.
@@ -71,14 +72,15 @@ export function BatchList({
                     {item.offerPct}% = <MoneyOrDash amount={offerValue(item.market, item.offerPct)} />
                   </div>
                 </div>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => onRemove(item.id)}
                   aria-label="Remove from batch"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                  className="shrink-0"
                 >
                   <X size={16} />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -93,21 +95,17 @@ export function BatchList({
               <span className="font-semibold text-accent-primary"><MoneyOrDash amount={totalOffer} /></span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={onAddAll} disabled={actionLoading} className={btnOutline}>
+              <Button variant="outline" size="lg" onClick={onAddAll} disabled={actionLoading}>
                 Add all
-              </button>
-              <button type="button" onClick={onBulkBuy} disabled={actionLoading} className={btnPrimary}>
+              </Button>
+              <Button size="lg" onClick={onBulkBuy} disabled={actionLoading}>
                 Bulk buy
-              </button>
+              </Button>
             </div>
-            <button
-              type="button"
-              onClick={onClear}
-              className="flex h-11 w-full items-center justify-center gap-1 text-sm text-muted-foreground transition-colors duration-150 hover:text-negative"
-            >
+            <Button variant="ghost" onClick={onClear} className="w-full hover:text-negative">
               <Trash2 size={14} />
               Clear list
-            </button>
+            </Button>
           </div>
         </div>
       )}

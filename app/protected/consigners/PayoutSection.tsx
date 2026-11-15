@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Modal, MoneyDisplay, useToast } from "@/components/ui";
+import { Button, Input, Modal, MoneyDisplay, Select, useToast } from "@/components/ui";
 import { recordPayout } from "./actions";
 import {
-  type Consigner, type PayoutRecord, errorMessage, fmtDate, todayISO,
-  INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_GHOST,
+  type Consigner, type PayoutRecord, errorMessage, fmtDate, todayISO, FIELD_LABEL,
 } from "./shared";
 
 // ── Payment methods ──
@@ -85,10 +84,10 @@ export function RecordPayoutModal({
           <label htmlFor="payout-amount" className={FIELD_LABEL}>Amount</label>
           <div className="relative">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-            <input
+            <Input
               id="payout-amount"
               type="number" min="0" step="0.01" inputMode="decimal"
-              className={`${INPUT} pl-7 tabular-nums`}
+              className="pl-7"
               placeholder="0.00"
               value={amountStr}
               onChange={(e) => setAmountStr(e.target.value)}
@@ -96,36 +95,35 @@ export function RecordPayoutModal({
             />
           </div>
           {differsFromPending && (
-            <button
-              type="button"
-              className="h-11 text-xs text-accent-primary underline-offset-2 hover:underline"
+            <Button
+              variant="link"
+              className="h-11 gap-0 text-xs"
               onClick={() => setAmountStr(consigner.pending_payout.toFixed(2))}
             >
               Use owed amount (<MoneyDisplay amount={consigner.pending_payout} tone="positive" />)
-            </button>
+            </Button>
           )}
         </div>
 
         <div className="space-y-1">
           <label htmlFor="payout-method" className={FIELD_LABEL}>Paid via</label>
-          <select
+          <Select
             id="payout-method"
-            className={INPUT}
             value={method}
             onChange={(e) => setMethod(e.target.value)}
           >
             {PAYMENT_METHODS.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="space-y-1">
           <label htmlFor="payout-date" className={FIELD_LABEL}>Date</label>
-          <input
+          <Input
             id="payout-date"
             type="date"
-            className={`${INPUT} tabular-nums`}
+            className="tabular-nums"
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
@@ -133,9 +131,8 @@ export function RecordPayoutModal({
 
         <div className="space-y-1">
           <label htmlFor="payout-notes" className={FIELD_LABEL}>Notes <span className="font-normal">(optional)</span></label>
-          <input
+          <Input
             id="payout-notes"
-            className={INPUT}
             placeholder="Memo, reference…"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -143,17 +140,17 @@ export function RecordPayoutModal({
         </div>
 
         <div className="flex gap-2 pt-1">
-          <button type="button" onClick={onClose} className={`${BTN_GHOST} flex-1`} disabled={busy}>
+          <Button variant="ghost" onClick={onClose} className="flex-1" disabled={busy}>
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
             onClick={handleSubmit}
             disabled={busy || amount <= 0}
-            className={`${BTN_PRIMARY} flex-1`}
+            className="flex-1"
           >
             {busy ? "Saving…" : "Record payout"}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

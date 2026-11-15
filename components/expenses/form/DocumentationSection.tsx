@@ -2,9 +2,9 @@
 
 import { Camera, CheckCircle2, FileText, Info, WifiOff, X } from "lucide-react";
 import type { ExpenseCategory } from "@/app/protected/expenses/actions";
-import { SectionHeader } from "@/components/ui";
+import { Button, Chip, SectionHeader, Textarea } from "@/components/ui";
 import {
-  CATEGORY_DOC_TIPS, CHIP_ACTIVE, CHIP_CLASS, CHIP_IDLE, GHOST_BTN, LINK_BTN, PHOTO_DOC_TYPES,
+  CATEGORY_DOC_TIPS, LINK_BTN, PHOTO_DOC_TYPES,
   type PhotoDocType,
 } from "./shared";
 
@@ -73,19 +73,20 @@ export function DocumentationSection({
           {/* Nothing attached, not skipped: three options */}
           {!hasAnyDoc && !docSkipped && (
             <div className="flex gap-2">
-              <button type="button" onClick={onPickPhoto} className={`${GHOST_BTN} flex-1`}>
+              <Button variant="outline" size="sm" onClick={onPickPhoto} className="flex-1">
                 <Camera size={16} /> Photo
-              </button>
-              <button type="button" onClick={onStartNote} className={`${GHOST_BTN} flex-1`}>
+              </Button>
+              <Button variant="outline" size="sm" onClick={onStartNote} className="flex-1">
                 <FileText size={16} /> Note
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => onSkip(true)}
-                className={`${GHOST_BTN} flex-1 text-muted-foreground`}
+                className="flex-1 text-muted-foreground"
               >
                 Skip
-              </button>
+              </Button>
             </div>
           )}
 
@@ -93,13 +94,13 @@ export function DocumentationSection({
           {!hasAnyDoc && docSkipped && (
             <div className="flex h-11 items-center justify-between rounded-lg border border-border bg-muted px-3 text-xs">
               <span className="text-muted-foreground">No documentation</span>
-              <button
-                type="button"
+              <Button
+                variant="link"
                 onClick={() => onSkip(false)}
-                className="h-11 px-2 text-accent-primary transition-colors duration-150 hover:text-accent-primary-hover"
+                className="h-11 px-2 text-xs"
               >
                 Undo
-              </button>
+              </Button>
             </div>
           )}
 
@@ -116,25 +117,26 @@ export function DocumentationSection({
                 <div className="flex flex-1 items-center gap-1.5 text-xs text-positive">
                   <CheckCircle2 size={14} /> Attached
                 </div>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={onClearPhoto}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                  className="shrink-0"
                   aria-label="Remove photo"
                 >
                   <X size={16} />
-                </button>
+                </Button>
               </div>
               <div className="flex flex-wrap gap-2">
                 {PHOTO_DOC_TYPES.map((t) => (
-                  <button
+                  <Chip
                     key={t.value}
-                    type="button"
+                    size="sm"
+                    selected={photoDocType === t.value}
                     onClick={() => onPhotoDocType(t.value)}
-                    className={`${CHIP_CLASS} text-xs ${photoDocType === t.value ? CHIP_ACTIVE : CHIP_IDLE}`}
                   >
                     {t.label}
-                  </button>
+                  </Chip>
                 ))}
               </div>
               {!hasNote && !noteMode && (
@@ -154,10 +156,8 @@ export function DocumentationSection({
                   {hasNote ? "Written record" : "Add a written record"}
                 </div>
               )}
-              <textarea
-                className={`min-h-24 w-full resize-none rounded-lg border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-accent-primary focus:outline-none ${
-                  hasNote ? "border-positive-border" : "border-border"
-                }`}
+              <Textarea
+                className={`min-h-24 resize-none leading-relaxed ${hasNote ? "border-positive-border" : ""}`}
                 placeholder="What happened? Who did you pay? Example: 'Paid John Smith $150 cash at Sacramento show for shared booth space. His phone: 555-1234.'"
                 value={notes}
                 onChange={(e) => onNoteChange(e.target.value)}

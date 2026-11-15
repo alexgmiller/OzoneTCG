@@ -1,9 +1,9 @@
 "use client";
 
 import type { ExpenseCategory } from "@/app/protected/expenses/actions";
-import { SectionHeader } from "@/components/ui";
+import { Chip, SectionHeader } from "@/components/ui";
 import { ExpenseTooltip } from "../ExpenseTooltip";
-import { CATEGORY_TOOLTIP, CHIP_ACTIVE, CHIP_CLASS, CHIP_IDLE, EXPENSE_CATEGORIES } from "./shared";
+import { CATEGORY_TOOLTIP, EXPENSE_CATEGORIES } from "./shared";
 
 // ── Category picker ───────────────────────────────────────────────────────────
 
@@ -24,14 +24,13 @@ export function CategoryPicker({
       </SectionHeader>
       <div className="flex flex-wrap gap-2">
         {EXPENSE_CATEGORIES.map((c) => (
-          <button
+          <Chip
             key={c.value}
-            type="button"
+            selected={value === c.value}
             onClick={() => onChange(c.value)}
-            className={`${CHIP_CLASS} ${value === c.value ? CHIP_ACTIVE : CHIP_IDLE}`}
           >
             {c.label}
-          </button>
+          </Chip>
         ))}
       </div>
     </div>

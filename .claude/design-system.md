@@ -138,8 +138,22 @@ The only shadow allowed: device-frame outer shadow in the mockup canvas. That's 
 
 ## 8. Canonical component patterns
 
-All in `components/ui/`:
+All in `components/ui/`, imported from `@/components/ui`:
 
+### Controls — never hand-style a button, field or pill
+- **`Button`** — the only button. `variant`: `primary` (violet fill) · `secondary` (soft violet) · `outline` (bordered card) · `ghost` (muted text) · `destructive` (soft rose) · `destructive-ghost` (rose text) · `link`. `size`: `default` / `sm` (h-11, px-4 / px-3) · `lg` (h-12) · `icon` (h-11 w-11, round). `loading` shows an inline spinner and disables. Defaults to `type="button"` — pass `type="submit"` in forms. Links that look like buttons: `<Button asChild><Link …/></Button>`.
+- **`Input` · `Textarea` · `Select`** — the only text fields. h-11, full width, violet focus border, `tabular-nums` on `type="number"`. `text-base` on phones (stops iOS zooming on focus), `text-sm` from md up. `Select` is native so phones get their own picker.
+- **`Chip`** — tappable pill for filters, presets and independent toggles. `selected` → soft violet. `size`: `default` / `sm`.
+- **`Segmented`** — one-of-N switcher (POS mode, period, list/grid). `options`, `value`, `onChange`, `aria-label`, `size`: `default` / `lg`.
+- **`Badge`** — read-only pill. `tone`: `neutral` · `accent` · `positive` · `warning` · `negative`. `mono` for uppercase status labels ("Live", "Completed").
+
+Still native, by design: whole-row / card / calendar-cell tap targets that wrap a layout block, nav tabs in `AppNav`, combobox option rows, and checkbox / radio / file inputs. Give every native `<button>` an explicit `type`.
+
+### Page structure
+- **`Page`** — page container. `width="narrow"` (`max-w-2xl`: Home, POS, Shows, Expenses, Settings, Consigners, Payout, Calendar) or `width="wide"` (`max-w-6xl`: Inventory, Finance, Transactions, Tax report). No other page widths.
+- **`PageHeader`** — `title` (text-xl semibold tight), optional `meta` line, optional `actions` on the right. Every protected page has one.
+
+### Display
 - **`StatCard`** — primary stat display (header totals, deal step summaries). Props: `label`, `value`, `delta?`, `tone?`.
 - **`MoneyDisplay`** — formatted amount with sign, color-coding, tabular nums. Props: `amount`, `tone?`, `showSign?`.
 - **`SectionHeader`** — uppercase mono label. Props: `children`, `action?`.
@@ -155,6 +169,8 @@ All in `components/ui/`:
 ## 9. Quick audit checklist
 
 Before opening a PR, grep your diff for:
+- New `<button` · `<input` · `<select` · `<textarea` with control styling → `Button` / `Input` / `Select` / `Textarea` / `Chip`
+- New `const btn… =` / `const INPUT =` / pill class strings → use or extend the primitive instead
 - `text-red-` · `text-blue-` · `text-green-` · `text-yellow-` → swap to semantic tokens
 - `rounded-md` · `rounded-sm` · `rounded ` → swap to scale
 - `shadow-` → remove

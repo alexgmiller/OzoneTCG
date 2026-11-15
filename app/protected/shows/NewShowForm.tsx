@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X } from "lucide-react";
-import { useToast } from "@/components/ui";
+import { Button, Input, useToast } from "@/components/ui";
 import { scheduleShow } from "@/app/protected/calendar/actions";
 import { startShow } from "./actions";
-import { btnPrimary, btnSecondary, inputCls, labelCls, todayLocalISO } from "./shared";
+import { labelCls, todayLocalISO } from "./shared";
 
 // Returns a rounded non-negative amount, null when blank; throws a user-facing message otherwise
 function parseMoney(raw: string, label: string): number | null {
@@ -81,10 +81,10 @@ export default function NewShowForm({ hasActive }: { hasActive: boolean }) {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className={`${btnPrimary} w-full`}>
+      <Button onClick={() => setOpen(true)} className="w-full">
         <Plus size={16} />
         New show
-      </button>
+      </Button>
     );
   }
 
@@ -92,26 +92,20 @@ export default function NewShowForm({ hasActive }: { hasActive: boolean }) {
     <section className="space-y-4 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-foreground">New show</h2>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          aria-label="Close"
-          className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-        >
+        <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close">
           <X size={18} />
-        </button>
+        </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor="show-name" className={labelCls}>Show name</label>
-          <input
+          <Input
             id="show-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Sacramento Card Show"
-            className={inputCls}
             disabled={busy !== null}
             autoFocus
           />
@@ -119,25 +113,23 @@ export default function NewShowForm({ hasActive }: { hasActive: boolean }) {
 
         <div>
           <label htmlFor="show-venue" className={labelCls}>Venue</label>
-          <input
+          <Input
             id="show-venue"
             type="text"
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
             placeholder="Optional"
-            className={inputCls}
             disabled={busy !== null}
           />
         </div>
 
         <div>
           <label htmlFor="show-date" className={labelCls}>Date</label>
-          <input
+          <Input
             id="show-date"
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className={inputCls}
             disabled={busy !== null}
           />
         </div>
@@ -147,18 +139,18 @@ export default function NewShowForm({ hasActive }: { hasActive: boolean }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
+        <Button
           onClick={schedule}
           disabled={!ready}
-          className={canStartNow ? btnSecondary : `${btnPrimary} col-span-2`}
+          variant={canStartNow ? "outline" : "primary"}
+          className={canStartNow ? undefined : "col-span-2"}
         >
           {busy === "schedule" ? "Scheduling…" : "Schedule"}
-        </button>
+        </Button>
         {canStartNow && (
-          <button type="button" onClick={startNow} disabled={!ready} className={btnPrimary}>
+          <Button onClick={startNow} disabled={!ready}>
             {busy === "start" ? "Starting…" : "Start now"}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -183,7 +175,7 @@ function MoneyField({ id, label, value, onChange, disabled }: {
       <label htmlFor={id} className={labelCls}>{label}</label>
       <div className="relative">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-        <input
+        <Input
           id={id}
           type="number"
           inputMode="decimal"
@@ -192,7 +184,7 @@ function MoneyField({ id, label, value, onChange, disabled }: {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="0.00"
-          className={`${inputCls} pl-7`}
+          className="pl-7"
           disabled={disabled}
         />
       </div>

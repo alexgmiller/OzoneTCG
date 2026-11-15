@@ -1,9 +1,10 @@
 "use client";
 
 import type { ShowSessionSummary } from "@/app/protected/expenses/ExpensesServer";
+import { Input, Select } from "@/components/ui";
 import { ExpenseTooltip } from "../ExpenseTooltip";
 import {
-  DEDUCTIBLE_TOOLTIP, FIELD_CLASS, LABEL_CLASS, fmtDate, validateDate,
+  DEDUCTIBLE_TOOLTIP, LABEL_CLASS, fmtDate, validateDate,
   type FormState, type SetField,
 } from "./shared";
 
@@ -25,9 +26,9 @@ export function CommonFields({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={LABEL_CLASS}>Date</label>
-          <input
+          <Input
             type="date"
-            className={`${FIELD_CLASS} ${dateError ? "border-negative" : ""}`}
+            className={dateError ? "border-negative" : undefined}
             value={form.expense_date}
             onChange={(e) => setField("expense_date", e.target.value)}
           />
@@ -35,15 +36,14 @@ export function CommonFields({
         </div>
         <div>
           <label className={LABEL_CLASS}>Paid by</label>
-          <select
-            className={FIELD_CLASS}
+          <Select
             value={form.paid_by}
             onChange={(e) => setField("paid_by", e.target.value as FormState["paid_by"])}
           >
             <option value="shared">Shared</option>
             <option value="alex">Alex</option>
             <option value="mila">Mila</option>
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -53,12 +53,12 @@ export function CommonFields({
             <label className="text-xs text-muted-foreground">Tax deductible %</label>
             <ExpenseTooltip content={DEDUCTIBLE_TOOLTIP} />
           </div>
-          <input
+          <Input
             type="number"
             inputMode="decimal"
             min={0}
             max={100}
-            className={`${FIELD_CLASS} font-mono tabular-nums`}
+            className="font-mono"
             value={form.deductible_percentage}
             onChange={(e) => setField("deductible_percentage", e.target.value)}
           />
@@ -68,8 +68,7 @@ export function CommonFields({
         </div>
         <div>
           <label className={LABEL_CLASS}>Payment method</label>
-          <input
-            className={FIELD_CLASS}
+          <Input
             placeholder="Visa ••••4242"
             value={form.payment_method}
             onChange={(e) => setField("payment_method", e.target.value)}
@@ -80,8 +79,7 @@ export function CommonFields({
       {showSessions.length > 0 && (
         <div>
           <label className={LABEL_CLASS}>Linked show</label>
-          <select
-            className={FIELD_CLASS}
+          <Select
             value={form.show_session_id}
             onChange={(e) => setField("show_session_id", e.target.value)}
           >
@@ -89,7 +87,7 @@ export function CommonFields({
             {showSessions.map((s) => (
               <option key={s.id} value={s.id}>{s.name} ({fmtDate(s.date)})</option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
     </>

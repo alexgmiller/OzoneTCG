@@ -1,11 +1,11 @@
 "use client";
 
-import { Modal, MoneyDisplay } from "@/components/ui";
+import { Badge, Button, Modal, MoneyDisplay } from "@/components/ui";
 import type { SlabPrice } from "../InventoryServer";
 import { type SlabSale } from "@/lib/ebay-client";
 import { type FMVResult } from "@/lib/fmv";
 import type { Item } from "../types";
-import { fmt, fmtDate, getMovement, MovementBadge, isSlabTierStale, setLine, btnOutline, pillClass, pillWarning } from "../utils";
+import { fmt, fmtDate, getMovement, MovementBadge, isSlabTierStale, setLine } from "../utils";
 
 // ── Helpers ──
 function pct(sorted: number[], p: number): number {
@@ -116,7 +116,7 @@ export function PricingDetailModal({
             <div className="truncate text-sm font-semibold leading-tight text-foreground">{pdi.name}</div>
             {setLine(pdi) && <div className="mt-0.5 text-xs text-muted-foreground">{setLine(pdi)}</div>}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {pdi.grade && <span className={pillClass}>{pdi.grade}</span>}
+              {pdi.grade && <Badge>{pdi.grade}</Badge>}
               {fmvVal != null ? (
                 <div className="flex items-baseline gap-2">
                   <MoneyDisplay amount={fmvVal} tone="neutral" className="text-base font-bold" />
@@ -141,7 +141,7 @@ export function PricingDetailModal({
             )}
           </div>
         </div>
-        <button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" onClick={close} aria-label="Close">✕</button>
+        <Button variant="ghost" size="icon" className="shrink-0" onClick={close} aria-label="Close">✕</Button>
       </div>
 
       {/* ── Recent sales ── */}
@@ -162,8 +162,8 @@ export function PricingDetailModal({
                 s={s}
                 left={
                   <>
-                    {soldTypesVary && hasOpt(s, "AUCTION") && <span className={pillClass}>Auction</span>}
-                    {soldTypesVary && hasOpt(s, "BEST_OFFER") && !hasOpt(s, "AUCTION") && <span className={pillWarning}>Offer</span>}
+                    {soldTypesVary && hasOpt(s, "AUCTION") && <Badge>Auction</Badge>}
+                    {soldTypesVary && hasOpt(s, "BEST_OFFER") && !hasOpt(s, "AUCTION") && <Badge tone="warning">Offer</Badge>}
                     <span className="truncate text-xs text-muted-foreground">{s.title}</span>
                   </>
                 }
@@ -176,7 +176,7 @@ export function PricingDetailModal({
               />
             ))}
             {soldLists.length > 5 && (
-              <button className="h-11 w-full border-t border-border text-center text-xs text-muted-foreground hover:text-foreground" onClick={() => setSoldExpanded((v) => !v)}>
+              <button type="button" className="h-11 w-full border-t border-border text-center text-xs text-muted-foreground hover:text-foreground" onClick={() => setSoldExpanded((v) => !v)}>
                 {soldExpanded ? "Show less" : `${soldLists.length - 5} more`}
               </button>
             )}
@@ -204,7 +204,7 @@ export function PricingDetailModal({
                     <>
                       {hasOpt(s, "AUCTION") && (
                         <div className="flex shrink-0 items-center gap-1">
-                          <span className={pillClass}>Auction</span>
+                          <Badge>Auction</Badge>
                           {s.soldDate && <span className="text-xs text-muted-foreground">{timeLeft(s.soldDate)}</span>}
                           {s.bidCount != null && <span className="text-xs text-muted-foreground tabular-nums">{s.bidCount}b</span>}
                         </div>
@@ -217,7 +217,7 @@ export function PricingDetailModal({
               );
             })}
             {activeLists.length > 5 && (
-              <button className="h-11 w-full border-t border-border text-center text-xs text-muted-foreground hover:text-foreground" onClick={() => setActiveExpanded((v) => !v)}>
+              <button type="button" className="h-11 w-full border-t border-border text-center text-xs text-muted-foreground hover:text-foreground" onClick={() => setActiveExpanded((v) => !v)}>
                 {activeExpanded ? "Show less" : `${activeLists.length - 5} more`}
               </button>
             )}
@@ -231,9 +231,9 @@ export function PricingDetailModal({
           {pdSp?.last_updated ? `Updated ${fmtDate(pdSp.last_updated)}` : ""}
           {isSlabTierStale(pdSp, fmvVal) && <span className="ml-1 text-warning-strong">· stale</span>}
         </div>
-        <button className={btnOutline} disabled={isModalRefreshing} onClick={() => handleRefreshSlabPrice(pdi)}>
+        <Button variant="outline" disabled={isModalRefreshing} onClick={() => handleRefreshSlabPrice(pdi)}>
           {isModalRefreshing ? "Fetching…" : "↺ Refresh"}
-        </button>
+        </Button>
       </div>
     </Modal>
   );

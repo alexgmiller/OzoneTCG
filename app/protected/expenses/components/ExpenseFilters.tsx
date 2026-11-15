@@ -2,14 +2,8 @@
 
 import type { ExpenseCategory } from "../actions";
 import type { ShowSessionSummary } from "../ExpensesServer";
+import { Button, Chip, Select } from "@/components/ui";
 import { CATEGORIES, CAT_TOKEN, ShowPill, catMeta, plural, type FilterState } from "./expenseMeta";
-
-const SELECT_CLASS =
-  "h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm text-foreground sm:w-auto";
-const PILL_CLASS =
-  "inline-flex h-11 shrink-0 items-center rounded-full border px-4 text-sm transition-colors duration-150";
-const PILL_ACTIVE = "border-accent-primary bg-accent-primary-soft text-accent-primary";
-const PILL_IDLE = "border-border text-muted-foreground hover:bg-muted";
 
 const QUICK_ADD: { cat: ExpenseCategory; label: string }[] = [
   { cat: "meals",     label: "Meal" },
@@ -63,43 +57,45 @@ export function ExpenseFilters({
         <span className="shrink-0 font-mono text-xs uppercase tracking-wide text-muted-foreground">+ Add</span>
         <ScrollRow>
           {QUICK_ADD.map(({ cat, label }) => (
-            <button
+            <Button
               key={cat}
+              variant="outline"
+              size="sm"
               onClick={() => onQuickAdd(cat)}
-              className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm text-foreground transition-colors duration-150 hover:bg-muted"
+              className="shrink-0 gap-1.5"
             >
               <span className={CAT_TOKEN[cat].text}>{catMeta(cat).icon}</span>
               {label}
-            </button>
+            </Button>
           ))}
         </ScrollRow>
       </div>
 
       {/* ── Category pills: "All" fixed, rest scrolls ── */}
       <div className="flex items-center gap-2">
-        <button
+        <Chip
+          selected={filters.category === "all"}
           onClick={() => onChange({ category: "all" })}
-          className={`${PILL_CLASS} ${filters.category === "all" ? PILL_ACTIVE : PILL_IDLE}`}
         >
           All
-        </button>
+        </Chip>
         <ScrollRow>
           {CATEGORIES.map((c) => (
-            <button
+            <Chip
               key={c.value}
+              selected={filters.category === c.value}
               onClick={() => onChange({ category: c.value })}
-              className={`${PILL_CLASS} ${filters.category === c.value ? PILL_ACTIVE : PILL_IDLE}`}
             >
               {c.label}
-            </button>
+            </Chip>
           ))}
         </ScrollRow>
       </div>
 
       {/* ── Dropdowns ── */}
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-        <select
-          className={SELECT_CLASS}
+        <Select
+          className="sm:w-auto"
           value={filters.show}
           onChange={(e) => onChange({ show: e.target.value })}
         >
@@ -108,22 +104,22 @@ export function ExpenseFilters({
           {showSessions.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
-        </select>
+        </Select>
 
         {!isHistoricalYear && (
-          <select
-            className={SELECT_CLASS}
+          <Select
+            className="sm:w-auto"
             value={filters.dateRange}
             onChange={(e) => onChange({ dateRange: e.target.value as FilterState["dateRange"] })}
           >
             <option value="month">This month</option>
             <option value="year">This year</option>
             <option value="all">All time</option>
-          </select>
+          </Select>
         )}
 
-        <select
-          className={SELECT_CLASS}
+        <Select
+          className="sm:w-auto"
           value={filters.paidBy}
           onChange={(e) => onChange({ paidBy: e.target.value as FilterState["paidBy"] })}
         >
@@ -131,17 +127,17 @@ export function ExpenseFilters({
           <option value="alex">Alex</option>
           <option value="mila">Mila</option>
           <option value="shared">Shared</option>
-        </select>
+        </Select>
 
-        <select
-          className={`${SELECT_CLASS} sm:ml-auto`}
+        <Select
+          className="sm:ml-auto sm:w-auto"
           value={filters.groupBy}
           onChange={(e) => onChange({ groupBy: e.target.value as FilterState["groupBy"] })}
         >
           <option value="flat">Flat list</option>
           <option value="category">By category</option>
           <option value="show">By show</option>
-        </select>
+        </Select>
       </div>
 
       {/* ── Result counter + active show ── */}

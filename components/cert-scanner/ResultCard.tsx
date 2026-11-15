@@ -3,12 +3,12 @@
 import { useEffect, useRef } from "react";
 import { Package, ScanLine, ShoppingCart } from "lucide-react";
 import type { CertLookupResult } from "@/app/api/cert-lookup/route";
-import { Skeleton, StatCard } from "@/components/ui";
+import { Badge, Button, Chip, Skeleton, StatCard } from "@/components/ui";
 import type { CertLookup } from "./useCertLookup";
 import { CompanyPicker } from "./CompanyPicker";
 import { OfferCalc } from "./OfferCalc";
 import { ActiveListings, RecentSales } from "./Listings";
-import { GRADE_LADDER, btnAccentOutline, btnOutline, btnPrimary, pillClass } from "./shared";
+import { GRADE_LADDER } from "./shared";
 
 // ── ResultCard ──
 // Everything shown after a successful lookup: card header, grade/company
@@ -54,20 +54,20 @@ export function ResultCard({
 
   return (
     <div className="space-y-4">
-      <button type="button" onClick={onPass} className={`${btnAccentOutline} w-full`}>
+      <Button variant="secondary" size="lg" onClick={onPass} className="w-full">
         <ScanLine size={16} />
         New scan
-      </button>
+      </Button>
 
       {/* ── Card header ── */}
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1 text-lg font-semibold leading-snug">{result.name || "—"}</div>
           <div className="flex shrink-0 flex-col items-end gap-0.5">
-            <span className="rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground tabular-nums">
+            <Badge tone="accent" className="tabular-nums">
               {result.company} {result.gradeLabel ?? ""} {result.grade}
               {result.population != null && <> · Pop {result.population.toLocaleString()}</>}
-            </span>
+            </Badge>
             {result.populationHigher === 0 && (
               <span className="text-xs font-semibold text-warning-strong">None graded higher</span>
             )}
@@ -92,18 +92,19 @@ export function ResultCard({
           const selected = g === selectedGrade;
           const fetching = !selected && lookup.isGradeFetching(g);
           return (
-            <button
+            <Chip
               key={g}
-              type="button"
+              size="sm"
+              selected={selected}
               data-grade={g}
               onClick={() => lookup.selectGrade(g)}
-              className={pillClass(selected, "relative min-w-11 shrink-0 tabular-nums")}
+              className="relative min-w-11 tabular-nums"
             >
               {g}
               {fetching && (
                 <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent-secondary" />
               )}
-            </button>
+            </Chip>
           );
         })}
       </div>
@@ -134,25 +135,21 @@ export function ResultCard({
 
       {/* ── Actions ── */}
       <div className="grid grid-cols-2 gap-3">
-        <button type="button" onClick={onAddToInventory} disabled={actionLoading} className={btnOutline}>
+        <Button variant="outline" size="lg" onClick={onAddToInventory} disabled={actionLoading}>
           <Package size={16} />
           Add to inventory
-        </button>
-        <button type="button" onClick={onRecordBuy} disabled={actionLoading} className={btnPrimary}>
+        </Button>
+        <Button size="lg" onClick={onRecordBuy} disabled={actionLoading}>
           <ShoppingCart size={16} />
           Record buy
-        </button>
-        <button type="button" onClick={onScanNext} className={`${btnAccentOutline} col-span-2`}>
+        </Button>
+        <Button variant="secondary" size="lg" onClick={onScanNext} className="col-span-2">
           <ScanLine size={16} />
           Scan next
-        </button>
-        <button
-          type="button"
-          onClick={onPass}
-          className="col-span-2 h-11 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
-        >
+        </Button>
+        <Button variant="ghost" onClick={onPass} className="col-span-2">
           Pass / dismiss
-        </button>
+        </Button>
       </div>
     </div>
   );

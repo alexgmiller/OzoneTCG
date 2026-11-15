@@ -8,6 +8,7 @@ import {
   Receipt, Users, Wallet, ArrowLeftRight, CalendarDays, Settings, LogOut, X, PieChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui";
 import { ThemeSwitcher } from "./theme-switcher";
 
 // ── Destinations ──
@@ -195,14 +196,15 @@ function MoreSheet({
       <div className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-border bg-card p-3 pb-5">
         <div className="flex h-11 items-center justify-between px-3">
           <span className="text-sm font-semibold text-foreground">More</span>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClose}
             aria-label="Close"
-            className="-mr-3 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="-mr-3"
           >
             <X size={18} />
-          </button>
+          </Button>
         </div>
         <div className="flex flex-col gap-1">
           {MORE.map((l) => (

@@ -7,7 +7,7 @@ import {
   type DocType, type ExpenseCategory, type SavedLocation,
 } from "@/app/protected/expenses/actions";
 import type { ShowSessionSummary } from "@/app/protected/expenses/ExpensesServer";
-import { Modal, useToast } from "@/components/ui";
+import { Button, Modal, useToast } from "@/components/ui";
 import { estimateTaxSavings } from "@/lib/taxEstimate";
 import { compressImage } from "./compressImage";
 import { CategoryPicker } from "./form/CategoryPicker";
@@ -265,14 +265,15 @@ export function ExpenseForm({
         <h2 className="text-lg font-semibold tracking-tight">
           {showDocWarning ? "Add documentation?" : title}
         </h2>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={onClose}
           aria-label="Close"
-          className="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+          className="-mr-2"
         >
           <X size={18} />
-        </button>
+        </Button>
       </div>
 
       {showDocWarning ? (
@@ -326,21 +327,19 @@ export function ExpenseForm({
 
           {/* ── Actions ── */}
           <div className="flex gap-2 pt-1">
-            <button
-              type="button"
-              className="h-11 flex-1 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-accent-primary-hover disabled:opacity-40"
+            <Button
+              className="flex-1"
               onClick={handleSaveClick}
               disabled={!canSave}
             >
               {saveLabel}
-            </button>
-            <button
-              type="button"
-              className="h-11 rounded-lg border border-border px-4 text-sm text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+            </Button>
+            <Button
+              variant="outline"
               onClick={onClose}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -2,7 +2,7 @@
 
 ## Read first
 - `.claude/design-system.md` — **required reading before any UI work**. Color tokens, spacing, type, radius, don'ts.
-- `components/ui/` — canonical primitives. Prefer these over raw Tailwind. If you're recreating `StatCard`, `Modal`, `Skeleton`, `EmptyState`, `SectionHeader`, `MoneyDisplay`, or `Toast` inline, stop and import instead.
+- `components/ui/` — canonical primitives. Prefer these over raw Tailwind. If you're recreating `Button`, `Input`, `Select`, `Textarea`, `Chip`, `Segmented`, `Badge`, `Page`, `PageHeader`, `StatCard`, `Modal`, `Skeleton`, `EmptyState`, `SectionHeader`, `MoneyDisplay`, or `Toast` inline, stop and import instead.
 
 ## Stack
 Next.js (App Router) + TypeScript + Tailwind + shadcn-style primitives.

@@ -1,8 +1,8 @@
 "use client";
 
-import { EmptyState, MoneyDisplay } from "@/components/ui";
+import { Badge, Button, EmptyState, MoneyDisplay } from "@/components/ui";
 import type { ConsignerOption, Item } from "../types";
-import { effectiveCost, sealedTypeLabel, conditionShort, statusLabel, setLine, fmtDate, btnPrimary, btnOutline, pillClass, pillAccent, pillWarning, pillPositive } from "../utils";
+import { effectiveCost, sealedTypeLabel, conditionShort, statusLabel, setLine, fmtDate } from "../utils";
 
 // ── Item card ──
 // `price` is the live market value, or the sale price for sold rows.
@@ -36,7 +36,7 @@ function ItemCard({
           aria-label={`Select ${it.name}`}
         />
       </label>
-      <button className="flex min-h-11 min-w-0 flex-1 items-center gap-3 py-3 pr-3 text-left" onClick={() => openDetail(it)}>
+      <button type="button" className="flex min-h-11 min-w-0 flex-1 items-center gap-3 py-3 pr-3 text-left" onClick={() => openDetail(it)}>
         <div className="w-14 shrink-0">
           {it.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -51,10 +51,10 @@ function ItemCard({
           <div className="truncate text-sm font-semibold text-foreground">{it.name}</div>
           {setLine(it) && <div className="truncate text-xs text-muted-foreground">{setLine(it)}</div>}
           <div className="flex flex-wrap items-center gap-1.5">
-            {it.grade && <span className={pillAccent}>{it.grade}</span>}
-            {it.category === "single" && it.condition && <span className={pillClass}>{conditionShort(it.condition)}</span>}
-            {it.category === "sealed" && <span className={pillClass}>{sealedTypeLabel(it.product_type)}{it.quantity > 1 ? ` ×${it.quantity}` : ""}</span>}
-            <span className={sold ? pillPositive : it.owner === "consigner" ? pillWarning : pillClass}>{statusLabel(it)}{consigner ? ` · ${consigner.name}` : ""}</span>
+            {it.grade && <Badge tone="accent">{it.grade}</Badge>}
+            {it.category === "single" && it.condition && <Badge>{conditionShort(it.condition)}</Badge>}
+            {it.category === "sealed" && <Badge>{sealedTypeLabel(it.product_type)}{it.quantity > 1 ? ` ×${it.quantity}` : ""}</Badge>}
+            <Badge tone={sold ? "positive" : it.owner === "consigner" ? "warning" : "neutral"}>{statusLabel(it)}{consigner ? ` · ${consigner.name}` : ""}</Badge>
             {sold && it.sold_at && <span className="text-xs text-muted-foreground">{fmtDate(it.sold_at)}</span>}
           </div>
         </div>
@@ -107,13 +107,13 @@ export function InventoryList({
       <EmptyState
         title="Nothing sold yet"
         hint="Items you sell from here or the POS show up in this list with their sale price."
-        cta={<button className={`${btnOutline} w-full`} onClick={onClearFilters}>Back to active items</button>}
+        cta={<Button variant="outline" className="w-full" onClick={onClearFilters}>Back to active items</Button>}
       />
     ) : (
       <EmptyState
         title="No items yet"
         hint="Add a card, slab or sealed product and it shows up here with live pricing."
-        cta={<button className={`${btnPrimary} w-full`} onClick={onAdd}>Add your first item</button>}
+        cta={<Button className="w-full" onClick={onAdd}>Add your first item</Button>}
       />
     );
   }
@@ -122,7 +122,7 @@ export function InventoryList({
       <EmptyState
         title="No items match"
         hint="Try a different search or clear the filters."
-        cta={<button className={`${btnOutline} w-full`} onClick={onClearFilters}>Clear filters</button>}
+        cta={<Button variant="outline" className="w-full" onClick={onClearFilters}>Clear filters</Button>}
       />
     );
   }

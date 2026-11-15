@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/components/ui";
+import { Button, Input, useToast } from "@/components/ui";
 import { endShowSession } from "./actions";
-import { btnDanger, inputCls } from "./shared";
 
 // Counted-cash input + confirm; used by the live card and the detail page
 export default function EndShowPanel({ showId }: { showId: string }) {
@@ -35,7 +34,7 @@ export default function EndShowPanel({ showId }: { showId: string }) {
     <div className="flex gap-2">
       <div className="relative min-w-0 flex-1">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           step="0.01"
@@ -45,13 +44,13 @@ export default function EndShowPanel({ showId }: { showId: string }) {
           onKeyDown={(e) => e.key === "Enter" && end()}
           placeholder="Counted cash (optional)"
           aria-label="Counted cash"
-          className={`${inputCls} pl-7`}
+          className="pl-7"
           disabled={busy}
         />
       </div>
-      <button type="button" onClick={end} disabled={busy} className={`${btnDanger} shrink-0`}>
+      <Button variant="destructive" onClick={end} disabled={busy} className="shrink-0">
         {busy ? "Ending…" : "Confirm end"}
-      </button>
+      </Button>
     </div>
   );
 }
