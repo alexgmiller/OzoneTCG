@@ -59,3 +59,26 @@ export function groupDeals(rows: TxRow[], photos: Map<string, string[]>): Deal[]
     };
   });
 }
+
+// ── Display helpers ── shared by the phone list and the desktop table
+
+// Money from our point of view: buys and cash we pay out are negative
+export const signedAmount = (d: Deal) => (d.mode === "sell" ? d.amount : -d.amount);
+
+// "A, B +3"
+export function cardSummary(d: Deal): string {
+  const names = d.cards.map((c) => c.name);
+  return names.length > 2 ? `${names.slice(0, 2).join(", ")} +${names.length - 2}` : names.join(", ");
+}
+
+export const fmtDealDate = (d: string) =>
+  new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+export type DealSort = { key: "date" | "amount"; dir: "asc" | "desc" };
+
+export function sortDeals(deals: Deal[], sort: DealSort): Deal[] {
+  const k = sort.dir === "asc" ? 1 : -1;
+  return [...deals].sort((a, b) => k * (sort.key === "date"
+    ? (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)
+    : signedAmount(a) - signedAmount(b)));
+}

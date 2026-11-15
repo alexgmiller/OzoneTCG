@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupDeals, type TxRow } from "./deals";
+import { cardSummary, groupDeals, signedAmount, sortDeals, type Deal, type TxRow } from "./deals";
 
 const row = (r: Partial<TxRow>): TxRow => ({
   id: "x", card_id: null, card: null, transaction_type: "buy", trade_group_id: null,
@@ -33,5 +33,34 @@ describe("groupDeals", () => {
 
     expect(deals.map((d) => [d.id, d.mode, d.amount])).toEqual([["s", "sell", 50], ["old", "buy", 15]]);
     expect(deals[1].cards[0].name).toBe("Deleted item");
+  });
+});
+
+describe("display helpers", () => {
+  const deal = (o: Partial<Deal>): Deal => ({
+    id: "d", mode: "sell", date: "2026-10-01T10:00:00Z", method: null, counterparty: null, notes: null,
+    paidBy: null, showId: null, amount: 0, cards: [], photos: [], ...o,
+  });
+
+  it("signs money from our side: sells in, buys and trade cash out", () => {
+    expect(signedAmount(deal({ mode: "sell", amount: 50 }))).toBe(50);
+    expect(signedAmount(deal({ mode: "buy", amount: 30 }))).toBe(-30);
+    expect(signedAmount(deal({ mode: "trade", amount: -10 }))).toBe(10);
+  });
+
+  it("summarises more than two cards with a count", () => {
+    const cards = ["A", "B", "C", "D"].map((name) => ({ name, direction: "out" as const, value: null }));
+    expect(cardSummary(deal({ cards }))).toBe("A, B +2");
+    expect(cardSummary(deal({ cards: cards.slice(0, 2) }))).toBe("A, B");
+  });
+
+  it("sorts by date or signed amount in either direction", () => {
+    const a = deal({ id: "a", date: "2026-10-01", mode: "sell", amount: 10 });
+    const b = deal({ id: "b", date: "2026-10-03", mode: "buy", amount: 50 });
+    const c = deal({ id: "c", date: "2026-10-02", mode: "sell", amount: 99 });
+    const ids = (ds: Deal[]) => ds.map((d) => d.id).join("");
+    expect(ids(sortDeals([a, b, c], { key: "date", dir: "desc" }))).toBe("bca");
+    expect(ids(sortDeals([a, b, c], { key: "amount", dir: "desc" }))).toBe("cab");
+    expect(ids(sortDeals([a, b, c], { key: "amount", dir: "asc" }))).toBe("bac");
   });
 });
