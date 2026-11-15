@@ -9,6 +9,7 @@ import { offlineRecordBuy } from "@/lib/offlineAwareActions";
 import { round2, type NewCard } from "./ledger";
 import { BTN, ICON_BTN, INPUT } from "./ui";
 import TransactionForm from "./TransactionForm";
+import DealColumns from "./DealColumns";
 
 const CATEGORIES = ["single", "slab", "sealed"] as const;
 
@@ -83,20 +84,23 @@ export default function BuyMode({ showId, buyPct }: { showId: string | null; buy
   const [cards, setCards] = useState<NewCard[]>([]);
   const market = cards.reduce((s, c) => s + (c.market ?? 0), 0);
 
+  const form = (
+    <TransactionForm mode="buy" ready={cards.length > 0} suggested={round2((market * buyPct) / 100)}
+      onDone={() => setCards([])}
+      submit={(f) => offlineRecordBuy({
+        cards, total: f.amount, paid_by: f.paid_by, show_session_id: showId,
+        payment_method: f.payment_method, counterparty: f.counterparty, notes: f.notes,
+      })} />
+  );
+
   return (
-    <div className="space-y-3">
+    <DealColumns form={form}>
       <CardEntry onAdd={(c) => setCards((cs) => [...cs, c])} />
       {cards.length === 0 ? (
         <EmptyState title="No cards added" hint="Search a card above, or pick Slab to scan a cert." />
       ) : (
         <CardList cards={cards} onRemove={(i) => setCards((cs) => cs.filter((_, j) => j !== i))} />
       )}
-      <TransactionForm mode="buy" ready={cards.length > 0} suggested={round2((market * buyPct) / 100)}
-        onDone={() => setCards([])}
-        submit={(f) => offlineRecordBuy({
-          cards, total: f.amount, paid_by: f.paid_by, show_session_id: showId,
-          payment_method: f.payment_method, counterparty: f.counterparty, notes: f.notes,
-        })} />
-    </div>
+    </DealColumns>
   );
 }

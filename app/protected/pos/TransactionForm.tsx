@@ -91,7 +91,8 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
             className="h-full w-full bg-transparent pl-1 text-2xl font-bold tabular-nums text-foreground placeholder:text-muted-foreground focus:outline-none" />
         </div>
 
-        <ChipRow>
+        {/* Scrolls sideways on a phone; wraps on desktop where the row would clip */}
+        <ChipRow className="lg:mx-0 lg:flex-wrap lg:px-0">
           {PAYMENT_METHODS.map((m) => (
             <Chip key={m} selected={method === m} onClick={() => setMethod(m)}>{METHOD_LABELS[m]}</Chip>
           ))}
