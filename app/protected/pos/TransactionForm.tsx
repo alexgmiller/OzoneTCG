@@ -117,10 +117,11 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
         <PhotoCapture photos={photos} onChange={setPhotos} />
       </div>
 
-      {/* ── Confirm ── pinned above the floating tab bar on phones */}
+      {/* ── Confirm ── pinned above the floating tab bar on phones (h-14, a big
+          thumb target); inline on md+ at h-11 to match the other controls */}
       <div className="above-tabbar fixed inset-x-4 z-30 md:static md:inset-auto">
         <button type="button" disabled={!ready || busy} onClick={confirm}
-          className="h-14 w-full rounded-full bg-accent text-base font-semibold text-bg shadow-tabbar transition-colors duration-150 disabled:opacity-40 md:shadow-none">
+          className="h-14 w-full rounded-full bg-accent text-base font-semibold text-bg shadow-tabbar transition-colors duration-150 disabled:opacity-40 md:h-11 md:text-sm md:shadow-none">
           {busy ? "Saving…" : `Confirm ${mode}`}
         </button>
       </div>
