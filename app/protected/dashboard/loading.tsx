@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // ── Home skeleton ── mirrors DashboardServer's layout so nothing shifts on resolve
 
@@ -14,7 +14,10 @@ function StatGrid({ count }: { count: number }) {
 
 export default function DashboardLoading() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6 py-4">
+    <Page>
+      {/* Page header */}
+      <Skeleton className="h-7 w-24 rounded-lg" />
+
       {/* Active show chip */}
       <Skeleton className="h-12" />
 
@@ -54,6 +57,6 @@ export default function DashboardLoading() {
         <StatGrid count={4} />
         <Skeleton className="h-12" />
       </div>
-    </div>
+    </Page>
   );
 }

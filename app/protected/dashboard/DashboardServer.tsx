@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { getActiveShow } from "@/app/protected/shows/actions";
-import { SectionHeader } from "@/components/ui";
+import { Page, PageHeader, SectionHeader } from "@/components/ui";
 import DashboardClient from "./DashboardClient";
 import ActiveShowChip from "./ActiveShowChip";
 import TodayStats from "./TodayStats";
@@ -58,8 +58,8 @@ export default async function DashboardServer() {
   // ── Layout ──
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6 py-4">
-      <h1 className="sr-only">Home</h1>
+    <Page>
+      <PageHeader title="Home" />
       <DashboardClient workspaceId={workspaceId} />
 
       <ActiveShowChip show={activeShow} />
@@ -77,6 +77,6 @@ export default async function DashboardServer() {
       </section>
 
       <LifetimeSection totals={totals} />
-    </div>
+    </Page>
   );
 }

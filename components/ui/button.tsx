@@ -63,7 +63,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {loading && <Loader2 size={16} className="animate-spin" aria-hidden />}
-        {children}
+        {/* An icon button swaps its icon for the spinner; a labelled one keeps the label */}
+        {loading && size === "icon" ? null : children}
       </button>
     );
   },

@@ -91,6 +91,10 @@ export default {
         },
       },
 
+      aspectRatio: {
+        card: "5 / 7", // trading card (63 × 88 mm)
+      },
+
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "ui-monospace", "monospace"],

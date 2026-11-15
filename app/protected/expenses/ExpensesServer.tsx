@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { Page } from "@/components/ui";
 import ExpensesClient from "./ExpensesClient";
 import type { ExpenseCategory, DocType, SavedLocation } from "./actions";
 
@@ -76,7 +77,7 @@ export default async function ExpensesServer() {
   const savedLocations = (locationsResult.data ?? []) as unknown as SavedLocation[];
 
   return (
-    <div className="w-full py-4 sm:py-6 space-y-4 max-w-4xl mx-auto overflow-x-hidden">
+    <Page className="overflow-x-hidden">
       <ExpensesClient
         workspaceId={workspaceId}
         initialExpenses={(expensesResult.data ?? []) as unknown as ExpenseRow[]}
@@ -84,6 +85,6 @@ export default async function ExpensesServer() {
         homeAddress={homeAddress}
         savedLocations={savedLocations}
       />
-    </div>
+    </Page>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui";
 
 // ── Bulk action bar (fixed above the mobile tab bar) ──
@@ -36,7 +37,7 @@ export function SelectionBar({
           {!soldSelected && (
             <>
               <Button className="col-span-2 px-2" onClick={onSell} disabled={busy}>Sell</Button>
-              <Button variant="outline" className="px-2" onClick={onRefresh} disabled={busy} title="Refresh prices">↻</Button>
+              <Button variant="outline" className="px-2" onClick={onRefresh} disabled={busy} title="Refresh prices" aria-label="Refresh prices"><RefreshCw size={16} /></Button>
             </>
           )}
           <Button variant="outline" className="px-2" onClick={onSetCost} disabled={busy}>Cost</Button>

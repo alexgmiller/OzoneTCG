@@ -1,9 +1,9 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // Mirrors ExpensesServer: header, stat cards, filter pills, then expense rows.
 export default function ExpensesLoading() {
   return (
-    <div className="w-full py-4 sm:py-6 space-y-4 max-w-4xl mx-auto overflow-x-hidden">
+    <Page className="overflow-x-hidden">
       {/* Header: title + tax report link + year select */}
       <div className="flex items-center justify-between">
         <Skeleton className="h-7 w-32 rounded-lg" />
@@ -45,6 +45,6 @@ export default function ExpensesLoading() {
           </div>
         ))}
       </div>
-    </div>
+    </Page>
   );
 }

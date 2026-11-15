@@ -1,9 +1,9 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // Mirrors ShowsServer: title, New show button, 3 stat cards, list rows
 export default function ShowsLoading() {
   return (
-    <div className="w-full max-w-2xl mx-auto py-4 space-y-5">
+    <Page>
       <Skeleton className="h-7 w-24 rounded-lg" />
       <Skeleton className="h-11 w-full rounded-lg" />
 
@@ -34,6 +34,6 @@ export default function ShowsLoading() {
           ))}
         </div>
       </div>
-    </div>
+    </Page>
   );
 }

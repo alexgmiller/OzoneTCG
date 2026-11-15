@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
-import { MoneyDisplay, StatCard } from "@/components/ui";
+import { MoneyDisplay, Page, PageHeader, StatCard } from "@/components/ui";
 import type { ShowSession } from "./actions";
 import NewShowForm from "./NewShowForm";
 import ShowsList from "./ShowsList";
@@ -26,8 +26,8 @@ export default async function ShowsServer() {
   const cardsSold = completed.reduce((sum, s) => sum + (s.cards_sold ?? 0), 0);
 
   return (
-    <div className="w-full max-w-2xl mx-auto py-4 space-y-5">
-      <h1 className="text-xl font-bold tracking-tight text-foreground">Shows</h1>
+    <Page>
+      <PageHeader title="Shows" />
 
       <NewShowForm hasActive={hasActive} />
 
@@ -48,6 +48,6 @@ export default async function ShowsServer() {
       )}
 
       <ShowsList shows={shows} />
-    </div>
+    </Page>
   );
 }

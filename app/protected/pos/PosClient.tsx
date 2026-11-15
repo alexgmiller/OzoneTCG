@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { Button, Input, MoneyDisplay, Segmented, useToast } from "@/components/ui";
+import { Button, Input, MoneyDisplay, Page, PageHeader, Segmented, useToast } from "@/components/ui";
 import { startAutoSync } from "@/lib/offlineSync";
 import { endShowSession, startShow, type ActiveShowInfo } from "@/app/protected/shows/actions";
 import type { Mode, PickItem } from "./ledger";
@@ -51,8 +51,8 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl space-y-4 py-4">
-      <h1 className="sr-only">POS</h1>
+    <Page>
+      <PageHeader title="POS" />
 
       {/* ── Show session ── */}
       <header className={`space-y-3 rounded-xl border p-3 ${
@@ -116,6 +116,6 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
       {mode === "buy" && <BuyMode showId={showId} buyPct={buyPct} />}
       {mode === "sell" && <SellMode showId={showId} items={items} initial={initialMode === "sell" ? preselected : []} />}
       {mode === "trade" && <TradeMode showId={showId} items={items} initial={initialMode === "trade" ? preselected : []} />}
-    </div>
+    </Page>
   );
 }

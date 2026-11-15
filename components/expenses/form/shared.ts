@@ -41,7 +41,7 @@ export type FormState = {
 
 export type SetField = <K extends keyof FormState>(key: K, val: FormState[K]) => void;
 
-export type LocationChip = { icon: string; label: string; address: string; title: string };
+export type LocationChip = { kind: "home" | "venue" | "saved"; label: string; address: string; title: string };
 
 // Photo-specific doc types (shown in the type picker when a photo is attached)
 export type PhotoDocType = "receipt" | "payment_screenshot" | "statement" | "email";

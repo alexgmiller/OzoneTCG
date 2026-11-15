@@ -1,10 +1,10 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // ── Finance skeleton ── mirrors FinanceClient: title, 4 stat tiles, tabs, rows
 
 export default function FinanceLoading() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 py-4">
+    <Page>
       <Skeleton className="h-7 w-28 rounded-lg" />
       <div className="grid grid-cols-2 gap-3">
         {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
@@ -20,6 +20,6 @@ export default function FinanceLoading() {
       </div>
       <Skeleton variant="text" className="w-36" />
       <Skeleton className="h-40" />
-    </div>
+    </Page>
   );
 }

@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { History, Loader2 } from "lucide-react";
+import { History } from "lucide-react";
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 import { createItem } from "@/app/protected/inventory/actions";
 import { recordBuy } from "@/app/protected/pos/actions";
 import type { PaymentMethod } from "@/app/protected/pos/ledger";
 import { getActiveShow } from "@/app/protected/shows/actions";
 import type { PricingStrategyOverride } from "@/lib/fmv";
-import { Button, useConfirm, useToast } from "@/components/ui";
+import { Button, Page, PageHeader, Skeleton, useConfirm, useToast } from "@/components/ui";
 import { useCertLookup } from "./useCertLookup";
 import { CompanyPicker } from "./CompanyPicker";
 import { ScanIdle } from "./ScanIdle";
@@ -213,20 +213,22 @@ export default function CertScanner({
   // ── Render ──
 
   return (
-    <div className="w-full max-w-lg mx-auto space-y-4 pb-24 overflow-x-hidden">
-      <div className="flex items-center justify-between pt-2">
-        <h1 className="text-lg font-semibold">Cert scan</h1>
-        {history.length > 0 && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setHistoryOpen(true)}
-            aria-label="Scan history"
-          >
-            <History size={18} />
-          </Button>
-        )}
-      </div>
+    <Page className="overflow-x-hidden pb-24">
+      <PageHeader
+        title="Scan cert"
+        actions={
+          history.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setHistoryOpen(true)}
+              aria-label="Scan history"
+            >
+              <History size={18} />
+            </Button>
+          )
+        }
+      />
 
       {(phase === "idle" || phase === "manual_details") && (
         <CompanyPicker value={company} onChange={setCompany} />
@@ -242,9 +244,22 @@ export default function CertScanner({
       )}
 
       {phase === "lookup" && (
-        <div className="flex flex-col items-center justify-center gap-3 py-16">
-          <Loader2 size={32} className="animate-spin text-muted-foreground" />
-          <div className="text-sm text-muted-foreground tabular-nums">Looking up #{lookup.manualCert}…</div>
+        <div className="space-y-3" aria-busy>
+          {/* Mirrors ResultCard: card image + details, price tiles, actions */}
+          <div className="flex gap-3 rounded-xl border border-border bg-card p-4">
+            <Skeleton className="aspect-card w-20 shrink-0 rounded-lg" />
+            <div className="flex-1 space-y-2 pt-1">
+              <Skeleton variant="text" className="w-3/4" />
+              <Skeleton variant="text" className="w-1/2" />
+              <Skeleton className="h-6 w-24 rounded-full" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+          </div>
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <p className="text-center text-sm text-muted-foreground tabular-nums">Looking up #{lookup.manualCert}…</p>
         </div>
       )}
 
@@ -313,6 +328,6 @@ export default function CertScanner({
         loading={actionLoading}
         onConfirm={handleConfirmBuy}
       />
-    </div>
+    </Page>
   );
 }

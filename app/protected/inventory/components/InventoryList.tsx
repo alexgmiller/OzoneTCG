@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, EmptyState, MoneyDisplay } from "@/components/ui";
+import { Badge, Button, EmptyState, MoneyDisplay, Skeleton } from "@/components/ui";
 import type { ConsignerOption, Item } from "../types";
 import { effectiveCost, sealedTypeLabel, conditionShort, statusLabel, setLine, fmtDate } from "../utils";
 
@@ -42,7 +42,7 @@ function ItemCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={it.image_url} alt="" loading="lazy" className="h-auto w-full rounded-lg object-cover" />
           ) : (
-            <div className="flex aspect-[5/7] w-full items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
+            <div className="flex aspect-card w-full items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
               {it.category === "sealed" ? "PKG" : "?"}
             </div>
           )}
@@ -60,7 +60,7 @@ function ItemCard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
           {refreshing ? (
-            <span className="inline-block animate-spin text-base text-muted-foreground">↻</span>
+            <Skeleton className="h-6 w-16" />
           ) : price != null ? (
             <MoneyDisplay amount={price} tone={sold ? "positive" : "neutral"} className="text-base font-semibold" />
           ) : (

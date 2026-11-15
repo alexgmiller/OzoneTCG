@@ -1,5 +1,6 @@
 "use client";
 
+import { RefreshCw } from "lucide-react";
 import { Badge, Button, MoneyDisplay, SectionHeader } from "@/components/ui";
 import type { Item, Status, Psa10Entry } from "../types";
 import { fmt, effectiveCost, setLine } from "../utils";
@@ -42,7 +43,7 @@ export default function GradingSection({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={it.image_url} alt="" loading="lazy" className="h-auto w-full rounded-lg object-cover" />
                   ) : (
-                    <div className="flex aspect-[5/7] w-full items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">?</div>
+                    <div className="flex aspect-card w-full items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">?</div>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -68,7 +69,7 @@ export default function GradingSection({
                 <Button variant="outline" className="flex-1" onClick={() => onQuickStatus(it.id, "inventory")} disabled={busy}>Return to inventory</Button>
                 <Button variant="outline" onClick={() => openEdit(it)}>Edit</Button>
                 {psa?.fetched && (
-                  <Button variant="outline" className="w-11 px-0" onClick={() => fetchPsa10(it.id, it.name, it.set_name)} title="Refresh PSA 10 price">↻</Button>
+                  <Button variant="outline" className="w-11 px-0" onClick={() => fetchPsa10(it.id, it.name, it.set_name)} title="Refresh PSA 10 price" aria-label="Refresh PSA 10 price"><RefreshCw size={16} /></Button>
                 )}
               </div>
             </div>

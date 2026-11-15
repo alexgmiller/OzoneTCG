@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, EmptyState, Input, Modal, MoneyDisplay, Select, useConfirm, useToast } from "@/components/ui";
+import { Button, EmptyState, Input, Modal, MoneyDisplay, Page, PageHeader, Select, useConfirm, useToast } from "@/components/ui";
 import { revertTransaction } from "@/app/protected/pos/actions";
 import { METHOD_LABELS, PAYMENT_METHODS, type PaymentMethod } from "@/app/protected/pos/ledger";
 import type { Deal } from "./deals";
@@ -67,8 +67,8 @@ export default function LedgerClient({ deals, shows }: { deals: Deal[]; shows: S
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 py-4">
-      <h1 className="text-xl font-semibold tracking-tight text-foreground">Transactions</h1>
+    <Page>
+      <PageHeader title="Transactions" />
 
       {/* ── Filters ── */}
       <div className="grid grid-cols-3 gap-2">
@@ -156,6 +156,6 @@ export default function LedgerClient({ deals, shows }: { deals: Deal[]; shows: S
           </div>
         )}
       </Modal>
-    </div>
+    </Page>
   );
 }

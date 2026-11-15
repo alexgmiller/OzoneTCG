@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 import { loadSettings, loadWorkspaceData, getSavedLocations } from "./actions";
 import SettingsClient from "./SettingsClient";
 
@@ -38,15 +38,15 @@ async function SettingsLoader() {
 // ── Fallback ──
 function SettingsSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6 py-6" aria-busy>
-      <div className="space-y-2">
+    <Page>
+      <div className="space-y-2" aria-busy>
         <Skeleton className="h-7 w-28" />
         <Skeleton variant="text" className="w-48" />
       </div>
       <Skeleton className="h-44 w-full" />
       <Skeleton className="h-72 w-full" />
       <Skeleton className="h-44 w-full" />
-    </div>
+    </Page>
   );
 }
 

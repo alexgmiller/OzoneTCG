@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, Home, MapPin, Pin, X } from "lucide-react";
+
+const CHIP_ICON = { home: Home, venue: MapPin, saved: Pin } as const;
 import type { SavedLocation } from "@/app/protected/expenses/actions";
 import type { ShowSessionSummary } from "@/app/protected/expenses/ExpensesServer";
 import { Button, Chip, Input, MoneyDisplay } from "@/components/ui";
@@ -32,17 +34,20 @@ function ChipRow({
   if (chips.length === 0) return null;
   return (
     <div className="mb-2 flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
-      {chips.map((chip) => (
-        <Chip
-          key={chip.address}
-          title={chip.title}
-          selected={selected === chip.address}
-          onClick={() => onPick(chip.address)}
-        >
-          <span>{chip.icon}</span>
-          <span>{chip.label}</span>
-        </Chip>
-      ))}
+      {chips.map((chip) => {
+        const Icon = CHIP_ICON[chip.kind];
+        return (
+          <Chip
+            key={chip.address}
+            title={chip.title}
+            selected={selected === chip.address}
+            onClick={() => onPick(chip.address)}
+          >
+            <Icon size={14} aria-hidden />
+            <span>{chip.label}</span>
+          </Chip>
+        );
+      })}
     </div>
   );
 }
@@ -86,13 +91,13 @@ export function MileageFields({
   function buildChips(field: "from" | "to"): LocationChip[] {
     const chips: LocationChip[] = [];
     if (homeAddress) {
-      chips.push({ icon: "🏠", label: "Home", address: homeAddress, title: homeAddress });
+      chips.push({ kind: "home", label: "Home", address: homeAddress, title: homeAddress });
     }
     if (field === "to" && venueAddress && currentShow) {
-      chips.push({ icon: "📍", label: shortLabel(currentShow.name), address: venueAddress, title: venueAddress });
+      chips.push({ kind: "venue", label: shortLabel(currentShow.name), address: venueAddress, title: venueAddress });
     }
     for (const loc of savedLocations.slice(0, MAX_CHIPS - chips.length)) {
-      chips.push({ icon: "📌", label: shortLabel(loc.label), address: loc.address, title: loc.address });
+      chips.push({ kind: "saved", label: shortLabel(loc.label), address: loc.address, title: loc.address });
     }
     return chips;
   }

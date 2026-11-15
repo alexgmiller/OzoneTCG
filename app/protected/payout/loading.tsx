@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // ── Payout skeleton ── mirrors PayoutServer + PayoutClient so nothing shifts on resolve
 
@@ -17,7 +17,7 @@ function Rows({ count }: { count: number }) {
 
 export default function PayoutLoading() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 py-4">
+    <Page>
       {/* Page title */}
       <Skeleton className="h-7 w-24 rounded-lg" />
 
@@ -65,6 +65,6 @@ export default function PayoutLoading() {
           </div>
         </div>
       </div>
-    </div>
+    </Page>
   );
 }

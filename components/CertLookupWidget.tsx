@@ -10,7 +10,7 @@
 //                       the close button calls onClose instead of collapsing.
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ScanLine, Camera, X, Loader2, AlertCircle } from "lucide-react";
+import { ScanLine, Camera, X, AlertCircle } from "lucide-react";
 import { Button, Chip, Input, SectionHeader } from "@/components/ui";
 import type { CertLookupResult, GradingCompany } from "@/app/api/cert-lookup/route";
 
@@ -265,10 +265,11 @@ export default function CertLookupWidget({
       <Button
         size="sm"
         onClick={handleSubmit}
-        disabled={loading || certInput.length < 5}
+        loading={loading}
+        disabled={certInput.length < 5}
         className="shrink-0"
       >
-        {loading ? <Loader2 size={16} className="animate-spin" /> : "Look up"}
+        Look up
       </Button>
       <Button variant="ghost" size="icon" onClick={handleClose} className="shrink-0" aria-label="Close">
         <X size={16} />

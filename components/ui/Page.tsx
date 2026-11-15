@@ -13,7 +13,7 @@ export function Page({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn("mx-auto w-full space-y-4 py-4", width === "wide" ? "max-w-6xl" : "max-w-2xl", className)}>
+    <div className={cn("mx-auto w-full space-y-5 py-4", width === "wide" ? "max-w-6xl" : "max-w-2xl", className)}>
       {children}
     </div>
   );

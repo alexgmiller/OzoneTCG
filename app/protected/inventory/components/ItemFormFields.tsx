@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { Check } from "lucide-react";
 import { parseGrade } from "@/lib/ebay-client";
 import { uploadCardImage } from "../actions";
 import CardAutocomplete, { type AutocompleteCard } from "@/components/CardAutocomplete";
@@ -174,7 +175,7 @@ export default function ItemFormFields({
         )}
         {findConfirmed && (
           <div className="flex items-center gap-2 rounded-lg border border-positive-border bg-positive-soft px-3 py-2 text-xs text-positive">
-            <span className="font-medium">✓</span>
+            <Check size={14} className="shrink-0" aria-hidden />
             <span className="truncate">{findConfirmed}</span>
           </div>
         )}

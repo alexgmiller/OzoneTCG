@@ -1,10 +1,10 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // ── Mirrors ConsignersClient: header row, then one card per consigner ──
 
 export default function ConsignersLoading() {
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 py-4">
+    <Page>
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-2">
           <Skeleton className="h-7 w-32 rounded-lg" />
@@ -40,6 +40,6 @@ export default function ConsignersLoading() {
           </div>
         ))}
       </div>
-    </div>
+    </Page>
   );
 }

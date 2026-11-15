@@ -1,5 +1,6 @@
 "use client";
 
+import { RefreshCw } from "lucide-react";
 import { Badge, Button, Input, Modal, MoneyDisplay } from "@/components/ui";
 import type { SlabPrice, RawCardPrice } from "../InventoryServer";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
@@ -79,7 +80,7 @@ export function ItemDetailModal({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={it.image_url} alt={it.name} className="h-auto w-full rounded-lg object-contain" />
           ) : (
-            <div className="flex aspect-[5/7] w-full items-center justify-center rounded-lg bg-muted text-xl text-muted-foreground">?</div>
+            <div className="flex aspect-card w-full items-center justify-center rounded-lg bg-muted text-xl text-muted-foreground">?</div>
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -106,8 +107,8 @@ export function ItemDetailModal({
             {!sold && (
               <>
                 <MovementBadge pct={getMovement(displayPrice, it.acquired_market_price)} />
-                <Button variant="ghost" size="icon" title="Refresh price" onClick={() => handleRefresh(it)} disabled={refreshing}>
-                  <span className={refreshing ? "inline-block animate-spin" : ""}>↻</span>
+                <Button variant="ghost" size="icon" title="Refresh price" aria-label="Refresh price" onClick={() => handleRefresh(it)} loading={refreshing}>
+                  <RefreshCw size={16} />
                 </Button>
               </>
             )}

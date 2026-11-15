@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { Button, EmptyState, MoneyDisplay, useConfirm, useToast } from "@/components/ui";
+import { Button, EmptyState, MoneyDisplay, PageHeader, useConfirm, useToast } from "@/components/ui";
 import { deleteConsigner } from "./actions";
 import { ConsignerCard } from "./ConsignerCard";
 import { ConsignerFormModal } from "./ConsignerForm";
@@ -68,22 +68,23 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
   }
 
   return (
-    <div className="space-y-4">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-foreground">Consigners</h1>
-          {consigners.length > 0 && (
-            <p className="text-xs tabular-nums text-muted-foreground">
+    <div className="space-y-5">
+      <PageHeader
+        title="Consigners"
+        meta={
+          consigners.length > 0 && (
+            <>
               {consigners.length} consigner{consigners.length === 1 ? "" : "s"} ·{" "}
               <MoneyDisplay amount={totalOwed} tone={totalOwed > 0 ? "positive" : "neutral"} /> owed
-            </p>
-          )}
-        </div>
-        <Button variant="primary" onClick={() => setFormTarget("new")} disabled={busy}>
-          <Plus size={16} /> New
-        </Button>
-      </div>
+            </>
+          )
+        }
+        actions={
+          <Button variant="primary" onClick={() => setFormTarget("new")} disabled={busy}>
+            <Plus size={16} /> New
+          </Button>
+        }
+      />
 
       {/* ── List ── */}
       {consigners.length === 0 ? (

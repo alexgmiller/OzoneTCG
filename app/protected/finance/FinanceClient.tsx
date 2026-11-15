@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { Button, EmptyState, MoneyDisplay, Segmented, SectionHeader, StatCard, useToast } from "@/components/ui";
+import { Button, EmptyState, MoneyDisplay, Page, PageHeader, Segmented, SectionHeader, StatCard, useToast } from "@/components/ui";
 import { exportExpensesCSV, exportTransactionsCSV } from "@/app/protected/settings/actions";
 import type { FinanceData, PayPeriodPnl } from "./actions";
 import type { MonthPnl } from "./math";
@@ -81,8 +81,8 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
   const periods = [data.current, ...data.periods];
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 py-4">
-      <h1 className="text-xl font-bold tracking-tight text-foreground">Finance</h1>
+    <Page>
+      <PageHeader title="Finance" />
 
       {/* ── Year to date ── */}
       <section className="space-y-2">
@@ -148,6 +148,6 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
           </Button>
         </div>
       </section>
-    </div>
+    </Page>
   );
 }

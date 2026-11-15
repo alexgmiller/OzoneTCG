@@ -4,6 +4,7 @@ import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { makeSlabPriceKey, type SlabSale } from "@/lib/ebay";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { loadSettings } from "@/app/protected/settings/actions";
+import { Page, PageHeader } from "@/components/ui";
 import InventoryClient from "./InventoryClient";
 import type { Item, ConsignerOption } from "./types";
 
@@ -141,19 +142,19 @@ export default async function InventoryServer() {
   const singleCount = (data ?? []).filter((i) => i.category === "single").length;
 
   return (
-    <div className="w-full space-y-4 py-4">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Inventory</h1>
-        <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-          {totalItems === 0
+    <Page width="wide">
+      <PageHeader
+        title="Inventory"
+        meta={
+          totalItems === 0
             ? "Nothing here yet — let's change that"
             : [
                 slabCount > 0 ? `${slabCount} slab${slabCount !== 1 ? "s" : ""}` : null,
                 sealedCount > 0 ? `${sealedCount} sealed` : null,
                 singleCount > 0 ? `${singleCount} single${singleCount !== 1 ? "s" : ""}` : null,
-              ].filter(Boolean).join(" · ")}
-        </p>
-      </div>
+              ].filter(Boolean).join(" · ")
+        }
+      />
 
       <InventoryClient
         items={[...(data ?? []), ...soldRows] as Item[]}
@@ -163,6 +164,6 @@ export default async function InventoryServer() {
         rawCardPrices={rawCardPriceMap}
         gradingCost={settings?.grading_cost ?? 20}
       />
-    </div>
+    </Page>
   );
 }

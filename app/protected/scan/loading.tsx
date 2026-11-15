@@ -1,9 +1,9 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // Mirrors CertScanner's idle phase: header, company pills, viewfinder, input.
 export default function ScanLoading() {
   return (
-    <div className="w-full max-w-lg mx-auto space-y-4 pb-24 overflow-x-hidden">
+    <Page className="overflow-x-hidden pb-24">
       {/* Header */}
       <div className="flex items-center justify-between pt-2">
         <Skeleton className="h-6 w-28 rounded-lg" />
@@ -28,6 +28,6 @@ export default function ScanLoading() {
 
       {/* Camera toggle */}
       <Skeleton className="h-12 w-full rounded-xl" />
-    </div>
+    </Page>
   );
 }

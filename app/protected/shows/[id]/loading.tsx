@@ -1,9 +1,9 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // Mirrors the show detail page: back link, header, 2x2 stats, deal rows
 export default function ShowDetailLoading() {
   return (
-    <div className="w-full max-w-2xl mx-auto py-4 space-y-5">
+    <Page>
       <Skeleton className="h-4 w-16 rounded-lg" />
 
       <div className="space-y-2">
@@ -37,6 +37,6 @@ export default function ShowDetailLoading() {
           ))}
         </div>
       </div>
-    </div>
+    </Page>
   );
 }

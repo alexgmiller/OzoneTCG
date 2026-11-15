@@ -1,10 +1,13 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // ── POS skeleton ── mirrors PosClient: show card, mode switch, entry row, form
 
 export default function PosLoading() {
   return (
-    <div className="mx-auto w-full max-w-xl space-y-4 py-4">
+    <Page>
+      {/* Page header */}
+      <Skeleton className="h-7 w-24 rounded-lg" />
+
       {/* Show session */}
       <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-3">
         <Skeleton className="h-11 flex-1 rounded-lg" />
@@ -43,6 +46,6 @@ export default function PosLoading() {
         <Skeleton className="h-16 rounded-lg" />
         <Skeleton className="h-14" />
       </div>
-    </div>
+    </Page>
   );
 }

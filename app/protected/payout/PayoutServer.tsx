@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { Page, PageHeader } from "@/components/ui";
 import PayoutClient from "./PayoutClient";
 import { partnerPosPayments } from "./posPayments";
 
@@ -149,8 +150,8 @@ export default async function PayoutServer() {
   const consignerSales = (consignerData ?? []) as ConsignerSaleEntry[];
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 py-4">
-      <h1 className="text-xl font-bold tracking-tight text-foreground">Payout</h1>
+    <Page>
+      <PageHeader title="Payout" />
       <PayoutClient
         alexExpenses={expenses.filter((e) => e.paid_by === "alex")}
         milaExpenses={expenses.filter((e) => e.paid_by === "mila")}
@@ -162,6 +163,6 @@ export default async function PayoutServer() {
         history={history}
         periodStart={lastEnd}
       />
-    </div>
+    </Page>
   );
 }

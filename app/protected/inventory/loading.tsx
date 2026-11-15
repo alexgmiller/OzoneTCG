@@ -1,8 +1,8 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 export default function InventoryLoading() {
   return (
-    <div className="w-full space-y-4 py-4">
+    <Page width="wide">
       {/* ── Page header ── */}
       <div className="space-y-2">
         <Skeleton className="h-6 w-28" />
@@ -37,6 +37,6 @@ export default function InventoryLoading() {
           </div>
         ))}
       </div>
-    </div>
+    </Page>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Camera, ChevronDown, ChevronUp, FileText, Paperclip, TriangleAlert } from "lucide-react";
+import { Camera, Loader2, ChevronDown, ChevronUp, FileText, Paperclip, TriangleAlert } from "lucide-react";
 import { Badge, Button, MoneyDisplay } from "@/components/ui";
 import { estimateTaxSavings } from "@/lib/taxEstimate";
 import type { ExpenseRow } from "../ExpensesServer";
@@ -12,7 +12,7 @@ import { CAT_TOKEN, RECEIPT_IRS_THRESHOLD, fmtDate } from "./expenseMeta";
 const ICON_BTN = "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150";
 
 function Spinner() {
-  return <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />;
+  return <Loader2 size={16} className="animate-spin" aria-hidden />;
 }
 
 // ── Single expense row ────────────────────────────────────────────────────────

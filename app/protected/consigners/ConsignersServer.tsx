@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { Page } from "@/components/ui";
 import ConsignersClient from "./ConsignersClient";
 import type { Consigner, SoldItem, PayoutRecord } from "./shared";
 
@@ -105,10 +106,9 @@ export default async function ConsignersServer() {
     };
   });
 
-  // ── Page shell (w-full: max-w + mx-auto alone collapses inside the layout's flex column) ──
   return (
-    <div className="mx-auto w-full max-w-3xl py-4">
+    <Page>
       <ConsignersClient consigners={consigners} />
-    </div>
+    </Page>
   );
 }

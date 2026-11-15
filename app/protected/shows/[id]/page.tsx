@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
-import { Badge, EmptyState, MoneyDisplay, SectionHeader, StatCard } from "@/components/ui";
+import { Badge, EmptyState, MoneyDisplay, Page, PageHeader, SectionHeader, StatCard } from "@/components/ui";
 import { groupDeals, type TxRow } from "@/app/protected/transactions/deals";
 import { pnlFor, type FinanceTx } from "@/app/protected/finance/math";
 import type { ShowSession } from "../actions";
@@ -61,26 +59,20 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
   const pill = STATUS_PILL[show.status];
 
   return (
-    <div className="w-full max-w-2xl mx-auto py-4 space-y-5">
-      <Link
-        href="/protected/shows"
-        className="inline-flex h-11 items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
-      >
-        <ArrowLeft size={16} />
-        Shows
-      </Link>
-
-      {/* ── Header ── */}
-      <header className="space-y-2">
-        <Badge mono tone={pill.tone}>{pill.label}</Badge>
-        <h1 className="text-xl font-bold tracking-tight text-foreground">{show.name}</h1>
-        <div className="text-sm text-muted-foreground">
-          {fmtDate(show.date, true)}
-          {venue && ` · ${venue}`}
-          {show.hours && ` · ${show.hours}`}
-        </div>
-        {show.notes && <p className="text-sm text-muted-foreground">{show.notes}</p>}
-      </header>
+    <Page>
+      <PageHeader
+        back={{ href: "/protected/shows", label: "Shows" }}
+        title={show.name}
+        badge={<Badge mono tone={pill.tone}>{pill.label}</Badge>}
+        meta={
+          <>
+            {fmtDate(show.date, true)}
+            {venue && ` · ${venue}`}
+            {show.hours && ` · ${show.hours}`}
+          </>
+        }
+      />
+      {show.notes && <p className="text-sm text-muted-foreground">{show.notes}</p>}
 
       <ShowDetailActions
         show={{ id: show.id, name: show.name, status: show.status, starting_cash: show.starting_cash }}
@@ -155,6 +147,6 @@ export default async function ShowDetailPage({ params }: { params: Promise<{ id:
       </section>
 
       <DeleteShowButton showId={show.id} showName={show.name} />
-    </div>
+    </Page>
   );
 }

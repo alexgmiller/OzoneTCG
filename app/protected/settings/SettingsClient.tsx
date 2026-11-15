@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Page, PageHeader } from "@/components/ui";
 import {
   saveSettings,
   type UserSettings, type WorkspaceData, type SavedLocation,
@@ -113,14 +114,12 @@ export default function SettingsClient({
   };
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6 py-6">
-      <header className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Settings</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">Your workspace and preferences</p>
-        </div>
-        <SaveIndicator status={saveStatus} />
-      </header>
+    <Page>
+      <PageHeader
+        title="Settings"
+        meta="Your workspace and preferences"
+        actions={<SaveIndicator status={saveStatus} />}
+      />
 
       <ProfileSection email={email} settings={settings} onChange={updateDebounced} />
       <PricingDefaultsSection settings={settings} onChange={updateImmediate} />
@@ -132,6 +131,6 @@ export default function SettingsClient({
       <OfflineSyncSection />
       <LocationsSection homeAddress={workspaceData.home_address} savedLocations={savedLocations} />
       <AccountSection />
-    </div>
+    </Page>
   );
 }

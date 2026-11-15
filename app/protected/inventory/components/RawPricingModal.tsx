@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { Badge, Button, Modal, MoneyDisplay, Segmented } from "@/components/ui";
 import type { RawCardPrice } from "../InventoryServer";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
@@ -88,7 +89,7 @@ export function RawPricingModal({
             </div>
           )}
         </div>
-        <Button variant="ghost" size="icon" className="shrink-0" onClick={close} aria-label="Close">✕</Button>
+        <Button variant="ghost" size="icon" className="shrink-0" onClick={close} aria-label="Close"><X size={18} /></Button>
       </div>
 
       {/* ── Condition prices ── */}

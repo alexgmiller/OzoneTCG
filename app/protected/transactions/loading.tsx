@@ -1,10 +1,10 @@
-import { Skeleton } from "@/components/ui";
+import { Page, Skeleton } from "@/components/ui";
 
 // ── Transactions skeleton ── mirrors LedgerClient: title, filter grid, list rows
 
 export default function TransactionsLoading() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 py-4">
+    <Page>
       <Skeleton className="h-7 w-36 rounded-lg" />
 
       {/* Filters: three selects, then two date inputs */}
@@ -29,6 +29,6 @@ export default function TransactionsLoading() {
           </div>
         ))}
       </div>
-    </div>
+    </Page>
   );
 }

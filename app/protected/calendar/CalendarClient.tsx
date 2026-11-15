@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useTransition, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Plus, Loader2 } from "lucide-react";
-import { Button, Segmented, Skeleton } from "@/components/ui";
+import { Button, Page, PageHeader, Segmented, Skeleton } from "@/components/ui";
 import {
   getCalendarMonthData,
   getDayDetail,
@@ -171,7 +171,8 @@ export default function CalendarClient({
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 pb-28 pt-4">
+    <Page className="pb-28">
+      <PageHeader title="Calendar" />
       <TodayWidget
         todayStr={todayStr}
         activity={activityMap.get(todayStr)}
@@ -261,6 +262,6 @@ export default function CalendarClient({
       />
 
       <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
-    </div>
+    </Page>
   );
 }

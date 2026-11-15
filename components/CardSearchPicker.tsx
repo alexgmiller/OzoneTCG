@@ -202,7 +202,7 @@ export default function CardSearchPicker({
                     className="h-auto w-full rounded-lg object-contain"
                   />
                 ) : (
-                  <div className="flex aspect-[5/7] w-full items-center justify-center rounded-lg bg-muted">
+                  <div className="flex aspect-card w-full items-center justify-center rounded-lg bg-muted">
                     <span className="text-xs text-muted-foreground">No image</span>
                   </div>
                 )}

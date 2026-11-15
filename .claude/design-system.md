@@ -150,8 +150,10 @@ All in `components/ui/`, imported from `@/components/ui`:
 Still native, by design: whole-row / card / calendar-cell tap targets that wrap a layout block, nav tabs in `AppNav`, combobox option rows, and checkbox / radio / file inputs. Give every native `<button>` an explicit `type`.
 
 ### Page structure
-- **`Page`** — page container. `width="narrow"` (`max-w-2xl`: Home, POS, Shows, Expenses, Settings, Consigners, Payout, Calendar) or `width="wide"` (`max-w-6xl`: Inventory, Finance, Transactions, Tax report). No other page widths.
-- **`PageHeader`** — `title` (text-xl semibold tight), optional `meta` line, optional `actions` on the right. Every protected page has one.
+- **`Page`** — page container: `mx-auto w-full space-y-5 py-4`. `width="narrow"` (`max-w-2xl`, the default) for flows and single-column lists: Home, POS, Scan, Shows, Expenses, Settings, Consigners, Payout, Calendar, Finance, Transactions. `width="wide"` (`max-w-6xl`) only for screens with a real multi-column layout: Inventory, Tax report. Move a page to wide when it gets one — don't stretch a single column across a laptop. No other page widths; `className` is for extras like `pb-28` above a floating button.
+- **`PageHeader`** — `title` (text-xl semibold tight), optional `back` link (`{ href, label }`), `badge` beside the title (kept outside the `<h1>`), `meta` line, `actions` on the right. Every protected page has one. The loading screen for a page uses the same `Page` width and starts with an `h-7` title skeleton.
+- **Loading:** shape-matched `Skeleton`s for anything that replaces content. A spinner only appears inside the control doing the work — `Button loading`, or a small inline `Loader2` next to a label (month switch, autocomplete search).
+- **Icons:** lucide only. No emoji or text glyphs (↻ ✕ ✓) as icons.
 
 ### Display
 - **`StatCard`** — primary stat display (header totals, deal step summaries). Props: `label`, `value`, `delta?`, `tone?`.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { Check, Flag, Loader2, Upload } from "lucide-react";
+import { Check, Flag, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge, Button } from "@/components/ui";
 
@@ -68,12 +68,12 @@ export default function CardImage({
             variant="outline"
             size="icon"
             onClick={handleReport}
-            disabled={reporting}
+            loading={reporting}
             title="Report wrong image"
             aria-label="Report wrong image"
             className="absolute right-2 top-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100"
           >
-            {reporting ? <Loader2 size={16} className="animate-spin" /> : <Flag size={16} />}
+            <Flag size={16} />
           </Button>
         )}
         {reported && (
@@ -133,7 +133,7 @@ function CardPlaceholder({
   return (
     <div
       className={cn(
-        "relative flex aspect-[5/7] w-full select-none flex-col items-center justify-between overflow-hidden rounded-lg border border-border bg-gradient-to-br from-muted to-muted/60 p-2",
+        "relative flex aspect-card w-full select-none flex-col items-center justify-between overflow-hidden rounded-lg border border-border bg-gradient-to-br from-muted to-muted/60 p-2",
         className,
       )}
     >
@@ -168,12 +168,11 @@ function CardPlaceholder({
               size="icon"
               title="Upload image"
               aria-label="Upload image"
-              disabled={uploading || done}
+              loading={uploading}
+              disabled={done}
               onClick={() => inputRef.current?.click()}
             >
-              {uploading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : done ? (
+              {done ? (
                 <Check size={16} className="text-positive-strong dark:text-positive" />
               ) : (
                 <Upload size={16} />
