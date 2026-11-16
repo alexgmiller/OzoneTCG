@@ -15,22 +15,24 @@ export async function refreshItemPrice(
   const { lookupCard } = await import("@/lib/pokemonPriceTracker");
   const result = await lookupCard(name, category, options ?? undefined);
   if (!result) return { updated: false };
-
-  const patch: Record<string, unknown> = {};
-  if (result.imageUrl) patch.image_url = result.imageUrl;
-  if (result.market != null) patch.market = result.market;
-  if (Object.keys(patch).length === 0) return { updated: false };
+  if (!result.imageUrl && result.market == null) return { updated: false };
 
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
-  const { error } = await supabase
-    .from("items")
-    .update(patch)
-    .eq("id", id)
-    .eq("workspace_id", workspaceId);
-
-  if (error) throw new Error(error.message);
+  // A looked-up image only fills a blank: it never replaces art the item has
+  if (result.imageUrl) {
+    await supabase.from("items").update({ image_url: result.imageUrl })
+      .eq("id", id).eq("workspace_id", workspaceId).is("image_url", null);
+  }
+  if (result.market != null) {
+    const { error } = await supabase
+      .from("items")
+      .update({ market: result.market })
+      .eq("id", id)
+      .eq("workspace_id", workspaceId);
+    if (error) throw new Error(error.message);
+  }
   revalidatePath("/protected/inventory");
   return { updated: true };
 }
@@ -238,8 +240,12 @@ export async function refreshItemPrices(
       items.slice(i, i + BATCH).map(async (item) => {
         const result = await lookupCard(item.name, item.category, { setName: item.setName, cardNumber: item.cardNumber });
         if (!result) return;
+        // A looked-up image only fills a blank: it never replaces art the item has
+        if (result.imageUrl) {
+          await supabase.from("items").update({ image_url: result.imageUrl })
+            .eq("id", item.id).eq("workspace_id", workspaceId).is("image_url", null);
+        }
         const patch: Record<string, unknown> = {};
-        if (result.imageUrl) patch.image_url = result.imageUrl;
         if (result.market != null) patch.market = result.market;
         if (Object.keys(patch).length === 0) return;
         if (result.market != null) {

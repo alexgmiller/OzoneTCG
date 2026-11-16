@@ -6,6 +6,7 @@
  */
 
 import { createAdminClient } from "./supabase/admin";
+import { normNum } from "./cardArtMatch";
 
 /** Normalize name + set + number into a stable cache key */
 export function makeLookupKey(
@@ -87,18 +88,19 @@ export async function findManualCacheEntry(
     const admin = createAdminClient();
     const num = (cardNumber ?? "").split("/")[0].trim();
 
+    // Same name + number in the same set: a manual pick for "Pikachu #27" in
+    // one set says nothing about "Pikachu #27" in another
     if (num) {
-      const { data } = await admin
+      let q = admin
         .from("card_image_cache")
         .select("image_url")
         .ilike("name", name.trim())
         .ilike("card_number", num)
         .in("source", ["manual", "manual_admin"])
-        .not("image_url", "is", null)
-        .order("cached_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (data?.image_url) return data.image_url as string;
+        .not("image_url", "is", null);
+      if (setName) q = q.ilike("set_name", setName.trim());
+      const { data } = await q.order("cached_at", { ascending: false }).limit(1).maybeSingle();
+      return (data?.image_url as string) ?? null;
     }
 
     if (setName) {
@@ -122,37 +124,33 @@ export async function findManualCacheEntry(
 }
 
 /**
- * Look up a manually-added image from the pokemon_cards table.
- * Tries name + card_number first, then name alone.
+ * Art for this exact card from the synced catalog (pokemon_cards): same name
+ * and number, in one of the item's TCGdex sets (`setIds`, from
+ * cardArtMatch.resolveSetIds). With no known set, only a single printing with
+ * that number counts. No number → null: a name alone can't pick the printing.
  */
 export async function getManualImage(
   name: string,
-  cardNumber?: string | null
+  cardNumber: string | null | undefined,
+  setIds: string[],
 ): Promise<string | null> {
   try {
+    const want = normNum(cardNumber);
+    if (!want) return null;
     const admin = createAdminClient();
-    const num = (cardNumber ?? "").split("/")[0].trim();
-
-    if (num) {
-      const { data } = await admin
-        .from("pokemon_cards")
-        .select("image_url")
-        .ilike("name", name.trim())
-        .eq("card_number", num)
-        .not("image_url", "is", null)
-        .limit(1)
-        .maybeSingle();
-      if (data?.image_url) return data.image_url as string;
-    }
-
     const { data } = await admin
       .from("pokemon_cards")
-      .select("image_url")
+      .select("set_id,card_number,image_url")
       .ilike("name", name.trim())
       .not("image_url", "is", null)
-      .limit(1)
-      .maybeSingle();
-    return (data?.image_url as string) ?? null;
+      .limit(200);
+    const hits = (data ?? []).filter((c) => normNum(c.card_number as string | null) === want);
+    if (setIds.length) {
+      const sets = new Set(setIds.map((s) => s.toLowerCase()));
+      const inSet = hits.find((c) => sets.has(String(c.set_id ?? "").toLowerCase()));
+      return (inSet?.image_url as string) ?? null;
+    }
+    return hits.length === 1 ? (hits[0].image_url as string) : null;
   } catch {
     return null;
   }

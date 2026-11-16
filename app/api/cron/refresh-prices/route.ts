@@ -63,7 +63,8 @@ export async function GET(req: NextRequest) {
           }
 
           const patch: Record<string, unknown> = {};
-          if (result?.imageUrl && result.imageUrl !== item.image_url) patch.image_url = result.imageUrl;
+          // A looked-up image only fills a blank: it never replaces art the item has
+          if (result?.imageUrl && !item.image_url) patch.image_url = result.imageUrl;
           // Only overwrite market with a real price (never null-out an existing value)
           if (usablePrice(market)) { patch.market = market; priced++; }
           if (Object.keys(patch).length === 0) return;
