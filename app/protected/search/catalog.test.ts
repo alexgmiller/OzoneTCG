@@ -1,17 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { matchesCard, nameTerm, pushRecent, rankCatalog, setFacets, sortCards, type CatalogCard, type CatalogRow } from "./catalog";
+import { facets, matchesCard, nameTerms, pushRecent, rankCatalog, setFacets, sortCards, type CatalogCard, type CatalogRow } from "./catalog";
 
 const row = (o: Partial<CatalogRow>): CatalogRow => ({
   id: "x", name: "Charizard", set_id: "sv03", set_name: "Obsidian Flames", card_number: "125", image_url: null, ...o,
 });
 
-describe("nameTerm", () => {
-  it("picks the longest term with a letter", () => {
-    expect(nameTerm("charizard ex 125")).toBe("charizard");
-    expect(nameTerm("ex mew")).toBe("mew");
+describe("nameTerms", () => {
+  it("tries the longest terms with a letter first", () => {
+    expect(nameTerms("charizard ex 125")).toEqual(["charizard", "ex"]);
+    expect(nameTerms("ex mew")).toEqual(["mew", "ex"]);
+    // A set word can outrank the name; the search falls back to the next term
+    expect(nameTerms("charizard evolutions 11")).toEqual(["evolutions", "charizard"]);
   });
-  it("is null for an empty query", () => {
-    expect(nameTerm("   ")).toBeNull();
+  it("uses numbers only when there is nothing else", () => {
+    expect(nameTerms("151")).toEqual(["151"]);
+  });
+  it("is empty for an empty query", () => {
+    expect(nameTerms("   ")).toEqual([]);
   });
 });
 
@@ -94,6 +99,20 @@ describe("setFacets / sortCards / pushRecent", () => {
     expect(sortCards(cards, "number").map((x) => x.id)).toEqual(["c", "a", "d", "b"]);
     expect(sortCards(cards, "set").map((x) => x.id)).toEqual(["d", "b", "a", "c"]);
     expect(sortCards(cards, "name").map((x) => x.id)).toEqual(["c", "a", "b", "d"]);
+  });
+
+  it("sorts by price either way with unpriced cards last", () => {
+    const price: Record<string, number | null> = { a: 400, b: 120.5, c: null, d: 3 };
+    const by = (s: "price-high" | "price-low") => sortCards(cards, s, (x) => price[x.id]).map((x) => x.id);
+    expect(by("price-high")).toEqual(["a", "b", "d", "c"]);
+    expect(by("price-low")).toEqual(["d", "b", "a", "c"]);
+  });
+
+  it("counts any facet, skipping blanks", () => {
+    expect(facets(["Rare", null, "Common", "Rare", undefined, ""])).toEqual([
+      { name: "Rare", count: 2 },
+      { name: "Common", count: 1 },
+    ]);
   });
 
   it("keeps recent searches newest first, deduped and capped", () => {

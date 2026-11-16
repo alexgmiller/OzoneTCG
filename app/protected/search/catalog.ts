@@ -25,12 +25,14 @@ export type CatalogCard = {
 
 export const CATALOG_LIMIT = 48;
 
-// The term that drives the indexed name lookup: the longest one with a letter
-// in it ("charizard" beats "ex" and "4"). Null when there is nothing to search.
-export function nameTerm(rawQuery: string): string | null {
-  const terms = parseTerms(rawQuery);
-  if (!terms.length) return null;
-  return [...terms].filter((t) => /[a-z]/i.test(t)).sort((a, b) => b.length - a.length)[0] ?? terms[0];
+// Terms to try for the indexed name lookup, best guess first: the longest
+// ones with a letter in them ("charizard" beats "ex" and "4"). A set word can
+// be longer than the name ("charizard evolutions"), so the search tries the
+// next one when a term finds nothing. Empty when there is nothing to search.
+export function nameTerms(rawQuery: string, max = 3): string[] {
+  const terms = [...new Set(parseTerms(rawQuery))];
+  const lettered = terms.filter((t) => /[a-z]/i.test(t)).sort((a, b) => b.length - a.length);
+  return (lettered.length ? lettered : terms).slice(0, max);
 }
 
 // Every term must appear in the name, set name, set code or number; then best
@@ -81,21 +83,28 @@ export function matchesCard<T extends StockRow>(
 }
 
 // ── Results controls ──
-export type SortKey = "best" | "name" | "number" | "set";
+export type SortKey = "best" | "price-high" | "price-low" | "name" | "number" | "set";
 export const SORTS: readonly { value: SortKey; label: string }[] = [
   { value: "best", label: "Best match" },
+  { value: "price-high", label: "Price: high to low" },
+  { value: "price-low", label: "Price: low to high" },
   { value: "name", label: "Name" },
   { value: "set", label: "Set" },
   { value: "number", label: "Number" },
 ];
 
-// Sets present in a result list, most cards first, for the set filter
-export function setFacets(cards: CatalogCard[]): { name: string; count: number }[] {
+export type Facet = { name: string; count: number };
+
+// The distinct values in a result list, most cards first (blanks skipped)
+export function facets(values: (string | null | undefined)[]): Facet[] {
   const counts = new Map<string, number>();
-  for (const c of cards) counts.set(c.setName, (counts.get(c.setName) ?? 0) + 1);
+  for (const v of values) if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
   return [...counts].map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
+
+// Sets present in a result list, for the set filter
+export const setFacets = (cards: CatalogCard[]): Facet[] => facets(cards.map((c) => c.setName));
 
 // Card numbers compare by their digits first ("TG2" < "TG10", "4" < "25")
 function numberOrder(n: string | null): [number, string] {
@@ -104,14 +113,24 @@ function numberOrder(n: string | null): [number, string] {
   return [digits ? Number(digits) : Number.MAX_SAFE_INTEGER, s];
 }
 
-// "best" keeps the search's own ranking; the others are stable re-orders
-export function sortCards(cards: CatalogCard[], sort: SortKey): CatalogCard[] {
+// "best" keeps the search's own ranking; the others are stable re-orders.
+// Price sorts put cards with no price last either way.
+export function sortCards(
+  cards: CatalogCard[], sort: SortKey, priceOf: (c: CatalogCard) => number | null = () => null,
+): CatalogCard[] {
   if (sort === "best") return cards;
   const byNum = (a: CatalogCard, b: CatalogCard) => {
     const [x, xs] = numberOrder(a.cardNumber), [y, ys] = numberOrder(b.cardNumber);
     return x - y || xs.localeCompare(ys);
   };
+  const byPrice = (dir: 1 | -1) => (a: CatalogCard, b: CatalogCard) => {
+    const x = priceOf(a), y = priceOf(b);
+    if (x == null || y == null) return Number(x == null) - Number(y == null);
+    return (x - y) * dir;
+  };
   const cmp: Record<Exclude<SortKey, "best">, (a: CatalogCard, b: CatalogCard) => number> = {
+    "price-high": byPrice(-1),
+    "price-low": byPrice(1),
     name: (a, b) => a.name.localeCompare(b.name) || byNum(a, b),
     set: (a, b) => a.setName.localeCompare(b.setName) || byNum(a, b),
     number: byNum,

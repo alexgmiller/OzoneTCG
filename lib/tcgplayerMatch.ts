@@ -12,13 +12,26 @@ export type TcgProduct = {
   productId: number;
   name: string;
   imageUrl?: string | null;
+  /** The product's page on tcgplayer.com */
+  url?: string | null;
   extendedData?: { name: string; value: string }[];
+};
+/** One printing's prices for a product (TCGCSV's /prices rows) */
+export type TcgPrice = {
+  productId: number;
+  lowPrice: number | null;
+  midPrice: number | null;
+  highPrice: number | null;
+  marketPrice: number | null;
+  directLowPrice: number | null;
+  subTypeName: string;
 };
 
 export const CATEGORY = { en: 3, ja: 85 } as const;
 
 const norm = (s: string) =>
-  s.toLowerCase()
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "") // "Pokémon GO" → "Pokemon GO"
+    .toLowerCase()
     .replace(/&/g, " and ").replace(/['’]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\bpromos\b/g, "promo").replace(/\bfest\b/g, "festival")
@@ -43,6 +56,11 @@ const EN_ALIASES: [RegExp, string][] = [
   [/^(hgss|heartgold soulsilver)( black star)? promo$/, "hgss promo"],
   [/^(wizards|wotc)( black star)? promo$/, "wotc promo"],
   [/^ex (.+)$/, "$1"],                          // "EX Delta Species" → "Delta Species"
+  // TCGdex catalog names (Search) that TCGplayer spells differently
+  [/^sun and moon$/, "sm base set"],
+  [/^151$/, "scarlet and violet 151"],
+  [/^expedition base set$/, "expedition"],
+  [/^yellow a alternate$/, "hidden fates shiny vault"],
 ];
 // Vintage Japanese sets are listed under their original Japanese names. Note
 // "Base Expansion Pack" is the 2001 e-series set; Base Set is "Expansion Pack".
@@ -117,6 +135,34 @@ export function closestGroups(setName: string | null | undefined, groups: TcgGro
     .map((x) => x.g);
 }
 
+// ── Sub-sets ──
+// TCGplayer lists a set's gallery and vault cards as their own groups
+// ("SWSH09: Brilliant Stars Trainer Gallery", "Crown Zenith: Galarian
+// Gallery"), while catalogs file them under the main set (TG22 in Brilliant
+// Stars). Only these named sub-sets count, so "Base Set" never reaches into
+// "Base Set 2".
+const SUBSETS = ["trainer gallery", "galarian gallery", "shiny vault", "classic collection", "radiant collection"];
+
+export function withSubsets(mapped: TcgGroup[], groups: TcgGroup[]): TcgGroup[] {
+  const out = [...mapped];
+  for (const m of mapped) {
+    const core = norm(groupCore(m.name));
+    for (const g of groups) {
+      if (out.includes(g)) continue;
+      const other = norm(groupCore(g.name));
+      if (SUBSETS.some((s) => other === `${core} ${s}`)) out.push(g);
+    }
+  }
+  return out;
+}
+
+// Where to look for a card, in order: the mapped set and its sub-sets; if
+// the set maps to nothing, the closest-named sets
+export function candidateGroups(setName: string | null | undefined, groups: TcgGroup[], lang: "en" | "ja"): TcgGroup[] {
+  const mapped = resolveGroups(setName, groups, lang);
+  return mapped.length ? withSubsets(mapped, groups) : closestGroups(setName, groups, lang);
+}
+
 const field = (p: TcgProduct, key: string) => p.extendedData?.find((e) => e.name === key)?.value ?? null;
 const isCard = (p: TcgProduct) => field(p, "Number") != null || field(p, "Rarity") != null;
 
@@ -139,4 +185,46 @@ export function pickProduct(products: TcgProduct[], itemName: string, number: st
 export function hiResImage(url: string | null | undefined): string | null {
   if (!url) return null;
   return url.replace(/_200w\.jpg$/, "_in_1000x1000.jpg");
+}
+
+// ── Prices ──
+/** One printing's TCGplayer prices: "Holofoil", "Reverse Holofoil", "1st Edition Holofoil"… */
+export type Printing = { name: string; market: number | null; low: number | null };
+
+/** A card's TCGplayer listing: its rarity and prices per printing, primary first */
+export type Quote = {
+  productId: number;
+  url: string | null;
+  rarity: string | null;
+  /** The primary printing's market price (what a tile shows) */
+  market: number | null;
+  printings: Printing[];
+};
+
+// The standard print comes before reverse holos and 1st Editions, which
+// people name when they mean them
+const PRIMARY = ["Holofoil", "Normal", "Unlimited Holofoil", "Unlimited"];
+const printRank = (name: string) => {
+  const i = PRIMARY.indexOf(name);
+  return i < 0 ? PRIMARY.length : i;
+};
+
+// A product's printings that have a price, primary first
+export function toPrintings(prices: TcgPrice[]): Printing[] {
+  return prices
+    .filter((p) => p.marketPrice != null || p.lowPrice != null)
+    .map((p) => ({ name: p.subTypeName, market: p.marketPrice ?? null, low: p.lowPrice ?? null }))
+    .sort((a, b) => printRank(a.name) - printRank(b.name) || a.name.localeCompare(b.name));
+}
+
+export function toQuote(product: TcgProduct, prices: TcgPrice[]): Quote {
+  const printings = toPrintings(prices.filter((p) => p.productId === product.productId));
+  const url = product.url && /^https:\/\/www\.tcgplayer\.com\//.test(product.url) ? product.url : null;
+  return {
+    productId: product.productId,
+    url,
+    rarity: field(product, "Rarity"),
+    market: printings.find((p) => p.market != null)?.market ?? null,
+    printings,
+  };
 }

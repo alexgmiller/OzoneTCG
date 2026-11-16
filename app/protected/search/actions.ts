@@ -3,7 +3,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { fetchTcgdexPrice } from "@/lib/tcgdexPrice";
-import { matchesCard, nameTerm, rankCatalog, type CatalogCard, type CatalogRow } from "./catalog";
+import { lookupTcgplayerQuotes } from "@/lib/tcgplayerPrices";
+import type { Quote } from "@/lib/tcgplayerMatch";
+import { matchesCard, nameTerms, rankCatalog, type CatalogCard, type CatalogRow } from "./catalog";
 
 // How many name matches to pull before ranking. Enough that a common name
 // ("pikachu") still surfaces the right set once the other terms filter it.
@@ -11,22 +13,24 @@ const CANDIDATES = 400;
 
 // ── Search ──
 // English catalog (pokemon_cards, synced weekly from TCGdex). Candidates come
-// back by set code, then rankCatalog orders them by match quality.
+// back by set code, then rankCatalog orders them by match quality. The name
+// lookup tries the likeliest term first and moves on when it finds nothing
+// ("charizard evolutions" tries "evolutions", then "charizard").
 export async function searchCatalog(query: string): Promise<CatalogCard[]> {
-  const term = nameTerm(query);
-  if (!term) return [];
-
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("pokemon_cards")
-    .select("id,name,set_id,set_name,card_number,image_url")
-    .eq("language", "en")
-    .ilike("name", `%${term}%`)
-    .order("set_id", { ascending: false })
-    .limit(CANDIDATES);
-  if (error) throw new Error(error.message);
-
-  return rankCatalog((data ?? []) as CatalogRow[], query);
+  for (const term of nameTerms(query)) {
+    const { data, error } = await supabase
+      .from("pokemon_cards")
+      .select("id,name,set_id,set_name,card_number,image_url")
+      .eq("language", "en")
+      .ilike("name", `%${term}%`)
+      .order("set_id", { ascending: false })
+      .limit(CANDIDATES);
+    if (error) throw new Error(error.message);
+    const ranked = rankCatalog((data ?? []) as CatalogRow[], query);
+    if (ranked.length) return ranked;
+  }
+  return [];
 }
 
 // ── Stock per result ──
@@ -53,10 +57,20 @@ export async function stockCounts(cards: CatalogCard[]): Promise<Record<string, 
   return out;
 }
 
+// ── TCGplayer prices per result ──
+// Rarity and market price per printing for each result card (tile price,
+// rarity filter, price sort). Cards TCGplayer doesn't list are left out.
+export async function priceQuotes(cards: CatalogCard[]): Promise<Record<string, Quote>> {
+  return lookupTcgplayerQuotes(
+    cards.map((c) => ({ key: c.id, name: c.name, setName: c.setName, cardNumber: c.cardNumber })),
+  );
+}
+
 // ── Card detail ──
-// The in-stock inventory items that are this card, plus its market price from
-// TCGdex. `priceFailed` means the lookup timed out or errored (the sheet
-// offers Retry), as opposed to TCGdex having no price for the card.
+// The in-stock inventory items that are this card, plus its TCGplayer prices:
+// per printing from TCGCSV (the same quote as its tile), else the market price
+// via TCGdex. `priceFailed` means the TCGdex lookup timed out or errored (the
+// sheet offers Retry), as opposed to there being no price for the card.
 export type StockMatch = {
   id: string;
   grade: string | null;
@@ -65,7 +79,7 @@ export type StockMatch = {
   category: string;
 };
 
-export type CardDetail = { market: number | null; priceFailed: boolean; inStock: StockMatch[] };
+export type CardDetail = { market: number | null; priceFailed: boolean; quote: Quote | null; inStock: StockMatch[] };
 
 // Longer than the API route's 6s: someone is waiting on this one sheet
 const DETAIL_PRICE_TIMEOUT_MS = 10_000;
@@ -79,7 +93,11 @@ export async function getCardDetail(card: CatalogCard): Promise<CardDetail> {
   const workspaceId = await getWorkspaceId();
 
   const [price, itemsRes] = await Promise.all([
-    fetchTcgdexPrice(card.id, DETAIL_PRICE_TIMEOUT_MS),
+    priceQuotes([card]).then(async (q): Promise<{ quote: Quote | null; market: number | null; failed: boolean }> => {
+      const quote = q[card.id] ?? null;
+      if (quote) return { quote, market: quote.market, failed: false };
+      return { quote: null, ...(await fetchTcgdexPrice(card.id, DETAIL_PRICE_TIMEOUT_MS)) };
+    }),
     supabase
       .from("items")
       .select("id,name,set_name,card_number,grade,condition,market,category")
@@ -94,5 +112,5 @@ export async function getCardDetail(card: CatalogCard): Promise<CardDetail> {
     .filter((it) => matchesCard(it, card))
     .map(({ id, grade, condition, market, category }) => ({ id, grade, condition, market, category }));
 
-  return { market: price.market, priceFailed: price.failed, inStock };
+  return { market: price.market, priceFailed: price.failed, quote: price.quote, inStock };
 }

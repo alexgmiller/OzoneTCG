@@ -3,17 +3,20 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { History, X } from "lucide-react";
-import { CardTile, Chip, ChipRow, EmptyState, PageHeader, SearchBar, Skeleton } from "@/components/ui";
-import { searchCatalog, stockCounts } from "./actions";
-import { pushRecent, setFacets, sortCards, SORTS, type CatalogCard, type SortKey } from "./catalog";
+import { CardTile, Chip, ChipRow, EmptyState, MoneyDisplay, PageHeader, SearchBar, Skeleton } from "@/components/ui";
+import type { Quote } from "@/lib/tcgplayerMatch";
+import { priceQuotes, searchCatalog, stockCounts } from "./actions";
+import { facets, pushRecent, setFacets, sortCards, SORTS, type CatalogCard, type SortKey } from "./catalog";
 import SearchSuggest, { optionId, SUGGEST_LIMIT } from "./SearchSuggest";
 import CardDetailSheet from "./CardDetailSheet";
 
 // ── Search ──
 // Typing shows a dropdown of the top matches (tap one to open it). Enter, or
-// "See all results", shows the full grid for that query: count, a set filter
-// built from the results, sort, and tiles with the art uncovered and the set,
-// name, number and your stock underneath. Before any search, recent searches
+// "See all results", shows the full grid for that query: count, set and
+// rarity filters built from the results, sort (price too), and tiles with the
+// art uncovered and the set, name, number, rarity, TCGplayer market price and
+// your stock underneath. Prices load just after the cards (lib/tcgcsv.ts), so
+// the grid never waits on them. Before any search, recent searches
 // (this device) are one tap away. ?q= holds the submitted query so Back from
 // Inventory or POS returns to the results.
 
@@ -56,8 +59,11 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
   const [suggest, setSuggest] = useState<{ query: string; cards: CatalogCard[] | null }>({ query: "", cards: null });
   const [results, setResults] = useState<{ query: string; cards: CatalogCard[] | null; failed: boolean }>({ query: "", cards: null, failed: false });
   const [stock, setStock] = useState<Record<string, number>>({});
+  /** null while loading */
+  const [quotes, setQuotes] = useState<Record<string, Quote> | null>(null);
   const [sort, setSort] = useState<SortKey>("best");
   const [setFilter, setSetFilter] = useState("");
+  const [rarityFilter, setRarityFilter] = useState("");
   const [open, setOpen] = useState<CatalogCard | null>(null);
   const [recent, setRecent] = useState<string[]>([]);
   useEffect(() => { setRecent(readRecent()); }, []);
@@ -84,12 +90,15 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
     setResults({ query: submitted, cards: null, failed: false });
     setSort("best");
     setSetFilter("");
+    setRarityFilter("");
     setStock({});
+    setQuotes(null);
     fetchCards(submitted)
       .then((cards) => {
         if (!live) return;
         setResults({ query: submitted, cards, failed: false });
         stockCounts(cards).then((s) => { if (live) setStock(s); }).catch(() => {});
+        priceQuotes(cards).then((q) => { if (live) setQuotes(q); }).catch(() => { if (live) setQuotes({}); });
       })
       .catch(() => { if (live) setResults({ query: submitted, cards: null, failed: true }); });
     return () => { live = false; };
@@ -128,15 +137,21 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
 
   // ── Results view ──
   const cards = useMemo(() => results.cards ?? [], [results.cards]);
-  const facets = useMemo(() => setFacets(cards), [cards]);
+  const sets = useMemo(() => setFacets(cards), [cards]);
+  const rarities = useMemo(() => facets(cards.map((c) => quotes?.[c.id]?.rarity)), [cards, quotes]);
   const shown = useMemo(
-    () => sortCards(setFilter ? cards.filter((c) => c.setName === setFilter) : cards, sort),
-    [cards, setFilter, sort],
+    () => sortCards(
+      cards.filter((c) => (!setFilter || c.setName === setFilter) && (!rarityFilter || quotes?.[c.id]?.rarity === rarityFilter)),
+      sort,
+      (c) => quotes?.[c.id]?.market ?? null,
+    ),
+    [cards, quotes, setFilter, rarityFilter, sort],
   );
+  const filtered = !!(setFilter || rarityFilter);
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-4 py-4 lg:max-w-6xl">
-      <PageHeader title="Search" meta="Every English Pokémon card, synced weekly" />
+      <PageHeader title="Search" meta="Every English Pokémon card, with TCGplayer prices" />
 
       {/* ── Search bar + dropdown ── */}
       <div className="relative lg:max-w-2xl">
@@ -226,42 +241,70 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
               <h2 className="truncate text-lg font-semibold text-foreground">“{submitted}”</h2>
               <p className="text-xs tabular-nums text-muted-foreground">
                 {cards.length >= 48 ? "Top 48 matches · add a set or number to narrow it" : `${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
-                {setFilter && ` · ${shown.length} in ${setFilter}`}
+                {filtered && ` · ${shown.length} shown`}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 lg:flex lg:shrink-0">
               <select value={setFilter} onChange={(e) => setSetFilter(e.target.value)} aria-label="Filter by set" className={`${SELECT} lg:w-56`}>
-                <option value="">All sets ({facets.length})</option>
-                {facets.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.count})</option>)}
+                <option value="">All sets ({sets.length})</option>
+                {sets.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.count})</option>)}
               </select>
-              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort" className={`${SELECT} lg:w-40`}>
+              <select value={rarityFilter} onChange={(e) => setRarityFilter(e.target.value)} aria-label="Filter by rarity"
+                disabled={!rarities.length} className={`${SELECT} disabled:opacity-50 lg:w-48`}>
+                <option value="">{quotes === null ? "Rarity…" : `All rarities (${rarities.length})`}</option>
+                {rarities.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.count})</option>)}
+              </select>
+              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort" className={`${SELECT} col-span-2 lg:w-48`}>
                 {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </div>
           </div>
-          {setFilter && (
-            <button type="button" onClick={() => setSetFilter("")}
-              className="inline-flex h-9 items-center gap-1 rounded-full bg-accent-tint px-3 text-sm font-medium text-accent">
-              {setFilter} <X size={14} aria-hidden />
-            </button>
+          {filtered && (
+            <div className="flex flex-wrap gap-2">
+              {[{ value: setFilter, clear: () => setSetFilter("") }, { value: rarityFilter, clear: () => setRarityFilter("") }]
+                .filter((f) => f.value)
+                .map((f) => (
+                  <button key={f.value} type="button" onClick={f.clear} aria-label={`Remove filter ${f.value}`}
+                    className="inline-flex h-9 items-center gap-1 rounded-full bg-accent-tint px-3 text-sm font-medium text-accent">
+                    {f.value} <X size={14} aria-hidden />
+                  </button>
+                ))}
+            </div>
           )}
 
-          <div className={GRID}>
-            {shown.map((c) => (
-              <CardTile
-                key={c.id}
-                layout="panel"
-                name={c.name}
-                chip={c.setName}
-                setNumber={c.cardNumber ? `#${c.cardNumber}` : null}
-                imageUrl={c.imageUrl}
-                onClick={() => setOpen(c)}
-                footer={stock[c.id]
-                  ? <span className="font-medium tabular-nums text-foreground">{stock[c.id]} in stock</span>
-                  : <span>Not in stock</span>}
-              />
-            ))}
-          </div>
+          {shown.length === 0 ? (
+            <EmptyState title="No cards match these filters" hint="Remove a filter to see more." />
+          ) : (
+            <div className={GRID}>
+              {shown.map((c) => {
+                const quote = quotes?.[c.id];
+                return (
+                  <CardTile
+                    key={c.id}
+                    layout="panel"
+                    name={c.name}
+                    chip={c.setName}
+                    setNumber={c.cardNumber ? `#${c.cardNumber}` : null}
+                    detail={quote?.rarity}
+                    imageUrl={c.imageUrl}
+                    onClick={() => setOpen(c)}
+                    footer={
+                      <div className="flex min-h-5 items-center justify-between gap-2">
+                        {quotes === null ? (
+                          <Skeleton variant="text" className="w-12" />
+                        ) : quote?.market != null ? (
+                          <MoneyDisplay amount={quote.market} tone="neutral" className="text-sm font-semibold text-foreground" />
+                        ) : (
+                          <span>No price</span>
+                        )}
+                        {stock[c.id] ? <span className="font-medium tabular-nums text-foreground">{stock[c.id]} in stock</span> : null}
+                      </div>
+                    }
+                  />
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 
