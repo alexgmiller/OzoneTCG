@@ -38,15 +38,9 @@ export const productIdOf = (card: Pick<CatalogCard, "id">) =>
 
 export const CATALOG_LIMIT = 48;
 
-// Terms to try for the indexed name lookup, best guess first: the longest
-// ones with a letter in them ("charizard" beats "ex" and "4"). A set word can
-// be longer than the name ("charizard evolutions"), so the search tries the
-// next one when a term finds nothing. Empty when there is nothing to search.
-export function nameTerms(rawQuery: string, max = 3): string[] {
-  const terms = [...new Set(parseTerms(rawQuery))];
-  const lettered = terms.filter((t) => /[a-z]/i.test(t)).sort((a, b) => b.length - a.length);
-  return (lettered.length ? lettered : terms).slice(0, max);
-}
+// nameTerms lives with parseTerms so the card autocomplete (api/search-cards)
+// picks its name lookup the same way
+export { nameTerms } from "@/lib/cardSearchScoring";
 
 // Every term must appear in the name, set name, set code or number; then best
 // match first. Among equal matches, cards with art come before art-less ones
