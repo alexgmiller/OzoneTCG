@@ -20,8 +20,10 @@ Next.js (App Router) + TypeScript + Tailwind + shadcn-style primitives.
 4. **Tabular nums on all money and counts.** Use `<MoneyDisplay />` — it handles this.
 5. **Transitions ≤ 200ms.** See design-system §5.
 
-## Memory pattern
-Use the `memory_user_edits` pattern established for this project — when the user tweaks values inline, persist the edit to their preferences so subsequent sessions respect it. See `lib/memory/user-edits.ts`.
+## Remembering preferences
+Two places, depending on scope:
+- **Per-device UI choices** (view mode, dismissed tips, camera choice) → `localStorage`, every read and write wrapped in try/catch, with a sensible default when nothing is stored. Copy `app/protected/inventory/useViewMode.ts`. Prefix new keys `ozone.`.
+- **Settings that should follow the user across devices** (default buy %, etc.) → the `user_settings` table via `app/protected/settings/actions.ts`.
 
 ## Don't
 - Don't introduce new color tokens without updating `.claude/design-system.md` and `tailwind.config.ts` together.
