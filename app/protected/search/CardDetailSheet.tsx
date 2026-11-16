@@ -8,6 +8,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { addToInventoryHref } from "@/app/protected/inventory/addPrefill";
 import { getCardDetail, getCardPrice, type CardDetail, type StockMatch } from "./actions";
+import type { EbayAsking } from "@/lib/ebay";
+import type { AskingEstimate } from "@/lib/ebayAsking";
 import type { CatalogCard } from "./catalog";
 
 // ── Card detail ──
@@ -23,6 +25,27 @@ import type { CatalogCard } from "./catalog";
 
 type Tab = "raw" | "graded";
 const TABS = [{ value: "raw", label: "Raw" }, { value: "graded", label: "Graded" }] as const;
+
+// Plan C by condition: near mint (listings that state no condition count
+// here) and played, or one row for all when neither has enough listings
+function AskingRows({ asking }: { asking: EbayAsking }) {
+  const rows = [
+    asking.nm && { label: "Near mint", e: asking.nm },
+    asking.played && { label: "Played", e: asking.played },
+  ].filter((r): r is { label: string; e: AskingEstimate } => !!r);
+  if (!rows.length && asking.all) rows.push({ label: "All conditions", e: asking.all });
+  return (
+    <ul className="overflow-hidden rounded-2xl bg-surface-2" aria-label="eBay asking prices by condition">
+      {rows.map((r) => (
+        <li key={r.label} className="flex h-11 items-center gap-3 border-b border-border px-3 text-sm last:border-b-0">
+          <span className="min-w-0 flex-1 truncate text-foreground">{r.label}</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{r.e.count} listings</span>
+          <MoneyDisplay amount={r.e.price} tone="neutral" className="w-20 text-right font-semibold text-foreground" />
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function CopyList({ copies, label }: { copies: StockMatch[]; label: (s: StockMatch) => string }) {
   return (
@@ -160,12 +183,11 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
                     </div>
                   ) : (
                     detail.asking ? (
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         <MoneyDisplay amount={detail.asking.price} tone="neutral" className="text-2xl font-bold text-foreground" />
+                        <AskingRows asking={detail.asking} />
                         <p className="text-xs text-muted-foreground">
-                          No sales found. Low end of {detail.asking.count} current eBay listings
-                          (<MoneyDisplay amount={detail.asking.low} tone="neutral" className="text-muted-foreground" />–<MoneyDisplay amount={detail.asking.high} tone="neutral" className="text-muted-foreground" />),
-                          asking prices rather than sales.{" "}
+                          No sales found, so this is the low end of current eBay asking prices, not sales.{" "}
                           <a href={detail.asking.searchUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-accent hover:text-foreground">
                             See listings
                           </a>

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { askingEstimate, askingQuery, matchingListings, type AskingCard } from "./ebayAsking";
+import {
+  askingEstimate, askingQuery, conditionEstimates, estimateFor, listingCondition, matchingListings, type AskingCard,
+} from "./ebayAsking";
 
 const L = (title: string, price: number) => ({ title, price });
 
@@ -64,5 +66,41 @@ describe("askingQuery", () => {
     expect(askingQuery({ name: "Psyduck (JP)", cardNumber: "286/SM-P", lang: "ja" })).toBe("Psyduck 286 japanese");
     expect(askingQuery({ name: "Mew ex", cardNumber: "232/091", lang: "en" })).toBe("Mew ex 232");
     expect(askingQuery({ name: "Sabrina's Alakazam", cardNumber: null, lang: "en" })).toBe("Sabrina's Alakazam");
+  });
+});
+
+describe("listingCondition", () => {
+  it("reads eBay's card-condition descriptor first", () => {
+    expect(listingCondition({ title: "Psyduck 286/SM-P", price: 1, condition: "Near mint or better" })).toBe("nm");
+    expect(listingCondition({ title: "Psyduck 286/SM-P NM", price: 1, condition: "Excellent" })).toBe("played");
+  });
+  it("falls back to the title, with played winning and card words ignored", () => {
+    expect(listingCondition({ title: "Psyduck 286/SM-P Japanese Promo NM", price: 1 })).toBe("nm");
+    expect(listingCondition({ title: "Psyduck 286/SM-P Japanese Promo LP crease", price: 1 })).toBe("played");
+    expect(listingCondition({ title: "Psyduck 286/SM-P NM/LP", price: 1 })).toBe("played");
+    expect(listingCondition({ title: "Mew ex 232/091 60 HP Holo", price: 1 })).toBe("unknown");
+  });
+});
+
+describe("conditionEstimates / estimateFor", () => {
+  const card: AskingCard = { name: "Psyduck (JP)", cardNumber: "286/SM-P", lang: "ja" };
+  const nm = (p: number) => L(`Psyduck 286/SM-P Japanese Promo NM`, p);
+  const lp = (p: number) => L(`Psyduck 286/SM-P Japanese Promo LP`, p);
+  const plain = (p: number) => L(`Psyduck 286/SM-P Japanese Promo`, p);
+  const listings = [nm(2150), nm(2200), plain(2300), lp(1400), lp(1450), lp(1500)];
+
+  it("prices near mint (with unstated) apart from played", () => {
+    const e = conditionEstimates(listings, card);
+    expect(e.nm).toEqual({ price: 2175, count: 3, low: 2150, high: 2300 });
+    expect(e.played).toEqual({ price: 1425, count: 3, low: 1400, high: 1500 });
+    expect(e.all?.count).toBe(6);
+  });
+  it("picks the pool for an item's condition, falling back to all", () => {
+    const e = conditionEstimates(listings, card);
+    expect(estimateFor(e, "Near Mint")?.price).toBe(2175);
+    expect(estimateFor(e, null)?.price).toBe(2175);
+    expect(estimateFor(e, "Lightly Played")?.price).toBe(1425);
+    const thin = conditionEstimates([nm(2150), nm(2200), nm(2250), lp(1400)], card);
+    expect(estimateFor(thin, "Lightly Played")).toEqual(thin.all);
   });
 });
