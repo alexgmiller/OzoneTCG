@@ -75,9 +75,9 @@ const JA_ALIASES: [RegExp, string][] = [
   [/^neo discovery$/, "crossing the ruins"],
   [/^neo revelation$/, "awakening legends"],
   [/^neo destiny$/, "darkness and to light"],
-  [/^(sm|sun and moon) promo$/, "sun and moon promo"],
-  [/^(swsh|sword and shield) promo$/, "sword and shield promo"],
-  [/^(sv|scarlet and violet) promo$/, "sv p promotional cards"],
+  [/^(sm|sun and moon)( black star)? promo$/, "sun and moon promo"],
+  [/^(swsh|sword and shield)( black star)? promo$/, "sword and shield promo"],
+  [/^(sv|svp|scarlet and violet)( black star)? promo$/, "sv p promotional cards"],
 ];
 
 function itemSetVariants(setName: string, lang: "en" | "ja"): string[] {
@@ -281,4 +281,87 @@ export function toCatalogEntry(
     ...(prices ? { market: quote.market, printings: quote.printings } : {}),
     updated_at: now,
   };
+}
+
+// ── Inventory prices (nightly job) ──
+// The market price for an inventory single: the primary printing, unless the
+// item names a variant. "Reverse" / "1st Edition" price that printing, or
+// nothing when TCGplayer doesn't list it (never the primary's price instead).
+export function printingMarket(quote: Quote, itemName: string): number | null {
+  const want = /\breverse\b/i.test(itemName) ? /reverse/i
+    : /\b1st\s*ed(ition)?\b/i.test(itemName) ? /^1st edition/i
+    : null;
+  if (!want) return quote.market;
+  return quote.printings.find((p) => want.test(p.name) && p.market != null)?.market ?? null;
+}
+
+// ── Sealed products ──
+// TCGplayer names sealed products "<set> <kind>": "Surging Sparks Elite
+// Trainer Box", "151 Booster Bundle". Cases, displays and store exclusives are
+// products of their own ("… Elite Trainer Box Case", "… Pokemon Center Elite
+// Trainer Box (Exclusive)"), so an item matches only the one product whose
+// kind has exactly its words. Two candidates (an "(LGS)" and a "(Retail)"
+// bundle) mean no match rather than a guess.
+const SEALED_ALIASES: [RegExp, string][] = [
+  [/\bpc etb\b/g, "pokemon center elite trainer box"],
+  [/\betb\b/g, "elite trainer box"],
+  [/\bupc\b/g, "ultra premium collection"],
+  [/\bspc\b/g, "super premium collection"],
+  [/\bbooster display\b/g, "booster box"],
+];
+// Words about the listing, not the product
+// ("Pokemon Center … (Exclusive)" is still told apart by "pokemon center")
+const SEALED_NOISE = new Set(["sealed", "english", "japanese", "jp", "new", "factory", "tcg", "exclusive"]);
+// What an item whose name is just the set is, by its product type
+const TYPE_KIND: Record<string, string> = {
+  etb: "elite trainer box", booster_box: "booster box", bundle: "booster bundle", booster_pack: "booster pack",
+};
+
+function sealedWords(s: string): string[] {
+  let t = norm(s);
+  for (const [re, to] of SEALED_ALIASES) t = t.replace(re, to);
+  return t.split(" ").filter((w) => w && !SEALED_NOISE.has(w));
+}
+
+const productKind = (p: TcgProduct, setWords: Set<string>) =>
+  sealedWords(p.name).filter((w) => !setWords.has(w)).sort().join(" ");
+
+export type SealedItem = { name: string; set_name: string | null; product_type: string | null };
+
+// The item's kind ("booster box elite trainer" sorted), or null when the name
+// and product type don't say
+export function sealedKind(item: SealedItem, group: TcgGroup): string | null {
+  const setWords = new Set([...sealedWords(groupCore(group.name)), ...(item.set_name ? sealedWords(item.set_name) : [])]);
+  let words = sealedWords(item.name);
+  if (words[0] === "pokemon" && words[1] !== "center") words = words.slice(1); // "Pokemon 151 ETB"
+  words = words.filter((w) => !setWords.has(w));
+  if (!words.length && item.product_type && TYPE_KIND[item.product_type]) words = TYPE_KIND[item.product_type].split(" ");
+  return words.length ? words.sort().join(" ") : null;
+}
+
+export function pickSealedProduct(products: TcgProduct[], item: SealedItem, group: TcgGroup): TcgProduct | null {
+  const want = sealedKind(item, group);
+  if (!want) return null;
+  const setWords = new Set(sealedWords(groupCore(group.name)));
+  const hits = products.filter((p) => !isCard(p) && productKind(p, setWords) === want);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+// The sets a sealed item is from: its set name when it has one, else the
+// longest set name inside its own name ("Surging Sparks Booster Box"). "151"
+// alone names Scarlet & Violet 151.
+export function sealedGroups(item: SealedItem, groups: TcgGroup[], lang: "en" | "ja"): TcgGroup[] {
+  if (item.set_name?.trim()) return candidateGroups(item.set_name, groups, lang);
+  const name = ` ${sealedWords(item.name).join(" ")} `;
+  let best: TcgGroup[] = [];
+  let bestLen = 0;
+  for (const g of groups) {
+    const core = sealedWords(groupCore(g.name)).join(" ");
+    for (const v of new Set([core, core.replace(/^scarlet and violet (?=\d+$)/, "")])) {
+      if (!v || !name.includes(` ${v} `)) continue;
+      if (v.length > bestLen) { best = [g]; bestLen = v.length; }
+      else if (v.length === bestLen && !best.includes(g)) best.push(g);
+    }
+  }
+  return best;
 }

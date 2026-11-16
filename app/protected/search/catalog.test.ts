@@ -99,8 +99,12 @@ describe("matchesCard (Japanese)", () => {
   });
   it("lets a promo number stand in for a set name it can't map", () => {
     const promo = { name: "Psyduck", setName: "Sun & Moon Promos", setId: "SM-P", cardNumber: "186/SM-P", lang: "ja" as const };
-    expect(matchesCard({ id: "i", name: "Psyduck (JP)", set_name: "SM Black Star Promos (Japanese)", card_number: "186/SM-P" }, promo)).toBe(true);
-    expect(matchesCard({ id: "i", name: "Psyduck (JP)", set_name: "SM Black Star Promos (Japanese)", card_number: "186" }, promo)).toBe(false);
+    expect(matchesCard({ id: "i", name: "Psyduck (JP)", set_name: "Pokemon Center Promo (Japanese)", card_number: "186/SM-P" }, promo)).toBe(true);
+    expect(matchesCard({ id: "i", name: "Psyduck (JP)", set_name: "Pokemon Center Promo (Japanese)", card_number: "186" }, promo)).toBe(false);
+  });
+  it("maps \"Black Star\" promo set names to TCGplayer's Japanese promos", () => {
+    const promo = { name: "Psyduck", setName: "Sun & Moon Promos", setId: "SM-P", cardNumber: "186/SM-P", lang: "ja" as const };
+    expect(matchesCard({ id: "i", name: "Psyduck (JP)", set_name: "SM Black Star Promos (Japanese)", card_number: "186" }, promo)).toBe(true);
   });
 });
 
