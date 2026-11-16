@@ -32,6 +32,8 @@ type Props = {
   layout?: "overlay" | "panel";
   /** panel: small chip above the name (the set) */
   chip?: string | null;
+  /** panel: muted line under the name (the rarity) */
+  detail?: string | null;
   /** panel: bottom row under a hairline */
   footer?: React.ReactNode;
 };
@@ -56,7 +58,7 @@ function useArt(imageUrl: string | null | undefined) {
   return { art: imageUrl && !broken ? imageUrl : null, imgRef, onError: () => setBroken(true) };
 }
 
-function PanelTile({ name, setNumber, imageUrl, chip, footer, selected, onClick, className }: Props) {
+function PanelTile({ name, setNumber, imageUrl, chip, detail, footer, selected, onClick, className }: Props) {
   const Tag = onClick ? "button" : "div";
   const { art, imgRef, onError } = useArt(imageUrl);
   return (
@@ -90,6 +92,7 @@ function PanelTile({ name, setNumber, imageUrl, chip, footer, selected, onClick,
           <span className="min-w-0 truncate text-sm font-semibold text-foreground">{name}</span>
           {setNumber && <span className="shrink-0 font-mono text-xs text-muted-foreground">{setNumber}</span>}
         </div>
+        {detail && <span className="truncate text-xs text-muted-foreground">{detail}</span>}
         {footer != null && <div className="mt-auto border-t border-border pt-1.5 text-xs text-muted-foreground">{footer}</div>}
       </div>
     </Tag>

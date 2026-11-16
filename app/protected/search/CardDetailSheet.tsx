@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, ExternalLink, Plus } from "lucide-react";
 import { EmptyState, MoneyDisplay, Sheet, Skeleton, TabStrip } from "@/components/ui";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,11 +11,13 @@ import { getCardDetail, getCardPrice, type CardDetail, type StockMatch } from ".
 import type { CatalogCard } from "./catalog";
 
 // ── Card detail ──
-// Header: art beside the name, number and set. Actions: Add to inventory
-// (opens Inventory's add sheet filled in with this card and its market price)
-// and, with stock, Sell in POS. Then RAW | GRADED:
-//   RAW     TCGplayer market price (Retry on a slow lookup) + your raw copies
-//   GRADED  your graded copies; graded market prices arrive with the prices work
+// Header: art beside the name, number, set and rarity. Actions: Add to
+// inventory (opens Inventory's add sheet filled in with this card and its
+// market price) and, with stock, Sell in POS. Then RAW | GRADED:
+//   RAW     TCGplayer market price, then low and market per printing (Holofoil,
+//           Reverse Holofoil…) with a link to the listing; cards TCGCSV doesn't
+//           match fall back to TCGdex (Retry on a slow lookup). Your raw copies.
+//   GRADED  your graded copies; graded market prices need a graded data source
 
 type Tab = "raw" | "graded";
 const TABS = [{ value: "raw", label: "Raw" }, { value: "graded", label: "Graded" }] as const;
@@ -97,6 +99,9 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
                   <div className="flex gap-2"><dt className="text-muted-foreground">Number</dt><dd className="font-mono text-foreground">{card.cardNumber}</dd></div>
                 )}
                 <div className="flex gap-2"><dt className="text-muted-foreground">Set</dt><dd className="min-w-0 truncate text-foreground">{card.setName}</dd></div>
+                {detail?.quote?.rarity && (
+                  <div className="flex gap-2"><dt className="text-muted-foreground">Rarity</dt><dd className="min-w-0 truncate text-foreground">{detail.quote.rarity}</dd></div>
+                )}
               </dl>
             </div>
           </div>
@@ -125,8 +130,16 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
 
           {tab === "raw" ? (
             <div className="space-y-4">
-              <div className="space-y-1">
-                <div className="section-label">TCGplayer market</div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="section-label">TCGplayer market</div>
+                  {detail?.quote?.url && (
+                    <a href={detail.quote.url} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex h-11 items-center gap-1 text-xs font-medium text-accent transition-colors duration-150 hover:text-foreground">
+                      View on TCGplayer <ExternalLink size={12} aria-hidden />
+                    </a>
+                  )}
+                </div>
                 {detail && !retrying ? (
                   detail.market != null ? (
                     <MoneyDisplay amount={detail.market} tone="neutral" className="text-2xl font-bold text-foreground" />
@@ -145,6 +158,25 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
                   <div className="text-sm text-muted-foreground">Couldn&apos;t load</div>
                 ) : (
                   <Skeleton className="h-8 w-28" />
+                )}
+                {!!detail?.quote?.printings.length && (
+                  <ul className="overflow-hidden rounded-2xl bg-surface-2" aria-label="Prices by printing">
+                    {detail.quote.printings.map((p) => (
+                      <li key={p.name} className="flex h-11 items-center gap-3 border-b border-border px-3 text-sm last:border-b-0">
+                        <span className="min-w-0 flex-1 truncate text-foreground">{p.name}</span>
+                        {p.low != null && (
+                          <span className="text-xs text-muted-foreground">
+                            Low <MoneyDisplay amount={p.low} tone="neutral" className="text-muted-foreground" />
+                          </span>
+                        )}
+                        {p.market != null ? (
+                          <MoneyDisplay amount={p.market} tone="neutral" className="w-20 text-right font-semibold text-foreground" />
+                        ) : (
+                          <span className="w-20 text-right text-muted-foreground">No sales</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
 
@@ -165,7 +197,7 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
               {!detail ? (
                 failed ? null : <Skeleton className="h-11 w-full rounded-xl" />
               ) : graded.length === 0 ? (
-                <EmptyState title="No graded copies in stock" hint="Graded market prices by grade come with the prices update." />
+                <EmptyState title="No graded copies in stock" hint="Graded market prices by grade need a graded price source." />
               ) : (
                 <CopyList copies={graded} label={(s) => s.grade ?? "Graded"} />
               )}

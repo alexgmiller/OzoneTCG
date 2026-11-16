@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closestGroups, groupCore, hiResImage, pickProduct, resolveGroups, type TcgGroup, type TcgProduct } from "./tcgplayerMatch";
+import { candidateGroups, closestGroups, groupCore, hiResImage, pickProduct, resolveGroups, toQuote, withSubsets, type TcgGroup, type TcgPrice, type TcgProduct } from "./tcgplayerMatch";
 
 // Slices of TCGCSV's real group lists
 const EN: TcgGroup[] = [
@@ -121,5 +121,73 @@ describe("closestGroups (last resort)", () => {
   it("finds nothing when no set is close", () => {
     expect(closestGroups("Totally Unrelated Name", JA, "ja")).toEqual([]);
     expect(closestGroups("Pokemon Promo", JA, "ja")).toEqual([]);
+  });
+});
+
+describe("catalog set names (Search)", () => {
+  const SEARCH_EN: TcgGroup[] = [
+    { groupId: 1863, name: "SM Base Set" },
+    { groupId: 23237, name: "SV: Scarlet & Violet 151" },
+    { groupId: 1375, name: "Expedition" },
+    { groupId: 2594, name: "Hidden Fates: Shiny Vault" },
+    { groupId: 3064, name: "Pokemon GO" },
+  ];
+  it("maps TCGdex's names onto TCGplayer's", () => {
+    expect(ids(resolveGroups("Sun & Moon", SEARCH_EN, "en"))).toEqual([1863]);
+    expect(ids(resolveGroups("151", SEARCH_EN, "en"))).toEqual([23237]);
+    expect(ids(resolveGroups("Expedition Base Set", SEARCH_EN, "en"))).toEqual([1375]);
+    expect(ids(resolveGroups("Yellow A Alternate", SEARCH_EN, "en"))).toEqual([2594]);
+  });
+  it("ignores accents", () => {
+    expect(ids(resolveGroups("Pokémon GO", SEARCH_EN, "en"))).toEqual([3064]);
+  });
+});
+
+describe("sub-sets", () => {
+  const G: TcgGroup[] = [
+    { groupId: 2948, name: "SWSH09: Brilliant Stars" },
+    { groupId: 3020, name: "SWSH09: Brilliant Stars Trainer Gallery" },
+    { groupId: 17688, name: "Crown Zenith" },
+    { groupId: 17689, name: "Crown Zenith: Galarian Gallery" },
+    { groupId: 604, name: "Base Set" },
+    { groupId: 605, name: "Base Set 2" },
+    { groupId: 2867, name: "Celebrations" },
+    { groupId: 2931, name: "Celebrations: Classic Collection" },
+  ];
+  it("looks in a set's gallery and vault groups after the set itself", () => {
+    expect(ids(candidateGroups("Brilliant Stars", G, "en"))).toEqual([2948, 3020]);
+    expect(ids(candidateGroups("Crown Zenith", G, "en"))).toEqual([17688, 17689]);
+    expect(ids(candidateGroups("Celebrations", G, "en"))).toEqual([2867, 2931]);
+  });
+  it("never treats a different set as a sub-set", () => {
+    expect(ids(withSubsets(resolveGroups("Base Set", G, "en"), G))).toEqual([604]);
+  });
+});
+
+describe("toQuote", () => {
+  const product: TcgProduct = {
+    productId: 1, name: "Charizard", url: "https://www.tcgplayer.com/product/1/pokemon-charizard",
+    extendedData: [{ name: "Number", value: "11/108" }, { name: "Rarity", value: "Holo Rare" }],
+  };
+  const price = (subTypeName: string, marketPrice: number | null, lowPrice: number | null = null, productId = 1): TcgPrice =>
+    ({ productId, subTypeName, marketPrice, lowPrice, midPrice: null, highPrice: null, directLowPrice: null });
+
+  it("lists printings primary first and prices the tile from the primary", () => {
+    const q = toQuote(product, [price("Reverse Holofoil", 97.46, 69.95), price("Holofoil", 93.7, 75), price("Holofoil", 5, 1, 2)]);
+    expect(q.rarity).toBe("Holo Rare");
+    expect(q.market).toBe(93.7);
+    expect(q.printings).toEqual([
+      { name: "Holofoil", market: 93.7, low: 75 },
+      { name: "Reverse Holofoil", market: 97.46, low: 69.95 },
+    ]);
+  });
+  it("falls through to the next printing with a market price, and drops unpriced ones", () => {
+    const q = toQuote(product, [price("Holofoil", null, 40), price("Reverse Holofoil", 12), price("Normal", null, null)]);
+    expect(q.market).toBe(12);
+    expect(q.printings.map((p) => p.name)).toEqual(["Holofoil", "Reverse Holofoil"]);
+  });
+  it("only keeps tcgplayer.com links", () => {
+    expect(toQuote(product, []).url).toBe(product.url);
+    expect(toQuote({ ...product, url: "javascript:alert(1)" }, []).url).toBeNull();
   });
 });
