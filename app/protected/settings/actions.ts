@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { fetchAll } from "@/lib/supabase/fetchAll";
 import { revalidatePath } from "next/cache";
+import { syncTcgplayer } from "@/lib/catalog/syncTcgplayer";
+import { syncProblem } from "@/lib/catalog/tcgplayerSyncStatus";
 
 export type UserSettings = {
   display_name: string | null;
@@ -270,4 +272,53 @@ export async function exportTransactionsCSV(): Promise<string> {
   );
 
   return [headers.join(","), ...rows].join("\n");
+}
+
+// ── Japanese catalog (tcgplayer_cards) ──
+// Search's Japanese tab reads TCGplayer's Japanese catalog, refreshed daily by
+// /api/cron/sync-tcgplayer. Settings shows its size and age, and can run the
+// same sync on demand (a few seconds; it rewrites every card and price).
+export type JapaneseCatalogStatus = { cards: number; lastSynced: string | null };
+
+export async function japaneseCatalogStatus(): Promise<JapaneseCatalogStatus> {
+  const supabase = await createClient();
+  const [countRes, latestRes] = await Promise.all([
+    supabase.from("tcgplayer_cards").select("product_id", { count: "exact", head: true }).eq("lang", "ja"),
+    supabase.from("tcgplayer_cards").select("updated_at").eq("lang", "ja")
+      .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (countRes.error) throw new Error(countRes.error.message);
+  return { cards: countRes.count ?? 0, lastSynced: (latestRes.data as { updated_at: string } | null)?.updated_at ?? null };
+}
+
+// Don't re-download ~920 lists when it synced moments ago (double taps)
+const SYNC_COOLDOWN_MS = 10 * 60 * 1000;
+
+export type JapaneseSyncResult = { ok: boolean; message: string; status: JapaneseCatalogStatus | null };
+
+export async function syncJapaneseCatalog(): Promise<JapaneseSyncResult> {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+  // Writes need the service role, which only the deployed app has
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return { ok: false, message: "Syncing runs on the deployed app (it needs the server's Supabase service key).", status: null };
+  }
+
+  const before = await japaneseCatalogStatus().catch(() => null);
+  if (before?.lastSynced && before.cards > 0 && Date.now() - new Date(before.lastSynced).getTime() < SYNC_COOLDOWN_MS) {
+    return { ok: true, message: "Already synced in the last 10 minutes.", status: before };
+  }
+
+  try {
+    const result = await syncTcgplayer("ja");
+    const problem = syncProblem(result);
+    console.log(`[settings] Japanese catalog sync: ${result.cards} cards in ${result.ms}ms; ${problem ?? "ok"}`);
+    const status = await japaneseCatalogStatus().catch(() => null);
+    return problem
+      ? { ok: false, message: `Sync failed: ${problem}`, status }
+      : { ok: true, message: `Synced ${result.cards.toLocaleString()} Japanese cards`, status };
+  } catch (e) {
+    return { ok: false, message: `Sync failed: ${e instanceof Error ? e.message : "unknown error"}`, status: before };
+  }
 }

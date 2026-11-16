@@ -259,7 +259,12 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
           ))}
         </div>
       ) : cards.length === 0 ? (
-        <EmptyState title={`No cards match “${submitted}”`} hint="Try fewer words, or just the card name." />
+        <EmptyState
+          title={`No cards match “${submitted}”`}
+          hint={lang === "ja"
+            ? "Try fewer words, or just the card name. If nothing shows for any search, the Japanese catalog hasn't synced yet: Settings → Pricing Sources → Sync now."
+            : "Try fewer words, or just the card name."}
+        />
       ) : (
         <section className="space-y-3">
           {/* ── Results header: what, how many, filter + sort ── */}
