@@ -1,6 +1,10 @@
-import { searchBaseNames, nameVariants, isJapaneseName, extractEmbeddedNumber } from "./cardNameUtils";
+import { searchBaseNames, isJapaneseName, extractEmbeddedNumber, stripParens } from "./cardNameUtils";
 import { makeLookupKey, getCardCache, setCardCache, getManualImage, findManualCacheEntry } from "./cardCache";
 import { getCardImage } from "./cardImages";
+import {
+  artVerdict, nameLooksRight, normNum, numberKeys, parentSetId, pickByNumber, resolveSetIds,
+  type TcgdexCard, type TcgdexSet,
+} from "./cardArtMatch";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
 const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
@@ -30,128 +34,115 @@ function makeFetchWithTimeout(url: string, options: RequestInit = {}): Promise<R
     .finally(() => clearTimeout(timer));
 }
 
-const PROMO_SET_ALIASES: Record<string, string[]> = {
-  "SM Black Star Promos": [
-    "sm promo", "sm promos", "sm black star promo", "sm black star promos",
-    "sun & moon promo", "sun & moon promos", "sun moon promo", "sun moon promos",
-    "sun & moon black star promos", "sun and moon promo", "sun and moon promos",
-    "sun and moon black star promos",
-  ],
-  "SWSH Black Star Promos": [
-    "swsh promo", "swsh promos", "swsh black star promo", "swsh black star promos",
-    "sword & shield promo", "sword & shield promos", "sword and shield promo",
-    "sword and shield promos", "sword & shield black star promos",
-    "sword and shield black star promos",
-  ],
-  "XY Black Star Promos": [
-    "xy promo", "xy promos", "xy black star promo", "xy black star promos",
-  ],
-  "BW Black Star Promos": [
-    "bw promo", "bw promos", "bw black star promo", "bw black star promos",
-    "black & white promo", "black & white promos", "black and white promo",
-    "black and white promos", "black & white black star promos",
-    "black and white black star promos",
-  ],
-  "Scarlet & Violet Black Star Promos": [
-    "sv promo", "sv promos", "sv black star promo", "sv black star promos",
-    "scarlet & violet promo", "scarlet & violet promos", "scarlet and violet promo",
-    "scarlet and violet promos", "scarlet & violet black star promos",
-    "scarlet and violet black star promos",
-  ],
-  "DP Black Star Promos": [
-    "dp promo", "dp promos", "dp black star promo", "dp black star promos",
-    "diamond & pearl promo", "diamond & pearl promos", "diamond and pearl promo",
-    "diamond and pearl promos",
-  ],
-};
-
-function canonicalSetNames(setName: string): string[] {
-  const lower = setName.toLowerCase().trim();
-  for (const [canonical, aliases] of Object.entries(PROMO_SET_ALIASES)) {
-    if (aliases.includes(lower) || lower === canonical.toLowerCase()) {
-      return [...new Set([setName, canonical])];
-    }
-  }
-  return [setName];
-}
-
-function promoNumberVariants(num: string): string[] {
-  const variants: string[] = [num];
-  const digits = num.replace(/^[A-Za-z\s-]+/, "").trim();
-  if (digits && digits !== num) {
-    variants.push(digits);
-    const stripped = String(parseInt(digits, 10));
-    if (stripped !== digits) variants.push(stripped);
-  }
-  return [...new Set(variants)];
-}
-
 type TcgDexMatch = { imageUrl: string; cardId: string; endpoint: string };
 
 // ── Step 1: TCGdex (primary — high-quality 600×825 WebP images) ──────────────
+// Set + number identifies a printing, so that is what we match on (see
+// lib/cardArtMatch.ts). A name on its own never picks the art: the old
+// "first card with this name" fallback is what put Team Up art on SM promos.
+//
+//   1. The item's set maps to TCGdex set(s) → take the card with its number
+//      from that set's card list (art for sub-set cards lives under the parent).
+//   2. The set doesn't map → search by name and accept only if exactly one
+//      printing has this number.
+//   3. Otherwise no image. A name tile beats the wrong card.
+// Japanese cards only ever match Japanese printings.
 
-async function lookupImageFromTcgDex(
+// Per-process memo: one fetch of the set list and of each set's cards per run
+const setListMemo = new Map<string, Promise<TcgdexSet[]>>();
+const setCardsMemo = new Map<string, Promise<TcgdexCard[]>>();
+
+function memoFetch<T>(memo: Map<string, Promise<T>>, key: string, url: string, pick: (json: unknown) => T, empty: T): Promise<T> {
+  let p = memo.get(key);
+  if (!p) {
+    p = makeFetchWithTimeout(url, { cache: "no-store" })
+      .then(async (res) => (res.ok ? pick(await res.json()) : empty))
+      .catch(() => { memo.delete(key); return empty; });
+    memo.set(key, p);
+  }
+  return p;
+}
+
+export function tcgdexSetList(endpoint: string = TCGDEX_EN): Promise<TcgdexSet[]> {
+  return memoFetch(setListMemo, endpoint, `${endpoint}/sets`,
+    (j) => (Array.isArray(j) ? (j as TcgdexSet[]) : []), []);
+}
+
+function tcgdexSetCards(endpoint: string, setId: string): Promise<TcgdexCard[]> {
+  return memoFetch(setCardsMemo, `${endpoint}|${setId}`, `${endpoint}/sets/${encodeURIComponent(setId)}`,
+    (j) => ((j as { cards?: TcgdexCard[] })?.cards ?? []), []);
+}
+
+// Trainer Gallery / Galarian Gallery / Classic Collection entries often have
+// no image in their own listing; TCGdex keeps their art in the parent set's
+// asset folder under the sub-set number (…/swsh/swsh9/TG22). Use the parent's
+// exact card if listed, else build that URL from a sibling's and confirm it.
+async function subsetArtFromParent(endpoint: string, parentId: string, localId: string): Promise<string | null> {
+  const cards = await tcgdexSetCards(endpoint, parentId);
+  const exact = cards.find((c) => normNum(c.localId) === normNum(localId) && c.image);
+  if (exact?.image) return exact.image;
+  const sibling = cards.find((c) => c.image)?.image;
+  if (!sibling) return null;
+  const url = `${sibling.slice(0, sibling.lastIndexOf("/"))}/${localId}`;
+  try {
+    const res = await makeFetchWithTimeout(`${url}/high.webp`, { method: "HEAD", cache: "no-store" });
+    return res.ok ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+const toMatch = (card: TcgdexCard, image: string, endpoint: string): TcgDexMatch =>
+  ({ imageUrl: `${image}/high.webp`, cardId: card.id, endpoint });
+
+export async function lookupImageFromTcgDex(
   name: string,
   setName?: string | null,
   cardNumber?: string | null
 ): Promise<TcgDexMatch | null> {
   const num = baseNumber(cardNumber) ?? extractEmbeddedNumber(name) ?? undefined;
   const isJP = isJapaneseName(name) || /\bjapanese\b|^jp$/i.test(setName?.trim() ?? "");
+  const endpoint = isJP ? TCGDEX_JA : TCGDEX_EN;
+  if (!num) return null; // without a number there is no way to tell printings apart
 
-  const cleanedSetName = isJP && setName
-    ? setName.replace(/\s*\(Japanese\)\s*/i, "").replace(/\s+JP\s*$/i, "").trim() || undefined
-    : setName;
-
-  const setNames: (string | undefined)[] = cleanedSetName ? canonicalSetNames(cleanedSetName) : [undefined];
-  const nums: (string | undefined)[] = num ? promoNumberVariants(num) : [undefined];
-
-  const seen = new Set<string>();
-  const queries: string[] = [];
-  function addQuery(q: string) {
-    if (!seen.has(q)) { seen.add(q); queries.push(q); }
-  }
-
-  for (const baseName of searchBaseNames(name)) {
-    for (const n of nameVariants(baseName)) {
-      const en = encodeURIComponent(n);
-      for (const sn of setNames) {
-        for (const nv of nums) {
-          if (nv && sn) addQuery(`name=eq:${en}&set.name=${encodeURIComponent(sn)}&localId=${encodeURIComponent(nv)}`);
-        }
-      }
-      for (const nv of nums) {
-        if (nv) addQuery(`name=eq:${en}&localId=${encodeURIComponent(nv)}`);
-      }
-      for (const sn of setNames) {
-        if (sn) addQuery(`name=eq:${en}&set.name=${encodeURIComponent(sn)}`);
-      }
-      addQuery(`name=eq:${en}`);
-      addQuery(`name=${en}`);
+  // 1. Known set → the card with this number in it
+  const sets = await tcgdexSetList(endpoint);
+  const setIds = resolveSetIds(setName, sets);
+  for (const setId of setIds) {
+    const card = pickByNumber(await tcgdexSetCards(endpoint, setId), num);
+    // Japanese card names are in Japanese, so set + number has to stand alone
+    if (!card || (!isJP && !nameLooksRight(name, card.name))) continue;
+    let image = card.image ?? null;
+    const parent = parentSetId(setId);
+    if (!image && parent) image = await subsetArtFromParent(endpoint, parent, card.localId);
+    if (image) {
+      console.log(`[PriceTracker] TCGdex set match "${card.name}" id=${card.id}`);
+      return toMatch(card, image, endpoint);
     }
   }
+  if (setIds.length || isJP) return null;
 
-  const endpoints = isJP ? [TCGDEX_JA, TCGDEX_EN] : [TCGDEX_EN];
-
-  for (const endpoint of endpoints) {
-    const results = await Promise.all(
-      queries.map(async (q) => {
-        try {
-          const res = await makeFetchWithTimeout(`${endpoint}/cards?${q}`, { cache: "no-store" });
-          if (!res.ok) return null;
-          const data = await res.json();
-          const card = Array.isArray(data) ? data[0] : null;
-          if (!card?.image) return null;
-          console.log(`[PriceTracker] TCGdex found "${card.name}" id=${card.id} (${endpoint})`);
-          return { imageUrl: `${card.image}/high.webp`, cardId: String(card.id ?? ""), endpoint } as TcgDexMatch;
-        } catch {
-          return null;
+  // 2. Unknown set → a name search, accepted only when one printing has this number
+  const keys = new Set(numberKeys(num, { withinSet: false }));
+  const candidates = new Map<string, TcgdexCard>();
+  for (const base of searchBaseNames(name)) {
+    try {
+      const res = await makeFetchWithTimeout(`${endpoint}/cards?name=${encodeURIComponent(base)}`, { cache: "no-store" });
+      if (!res.ok) continue;
+      const data = (await res.json()) as TcgdexCard[];
+      for (const c of Array.isArray(data) ? data : []) {
+        if (c.image && keys.has(normNum(c.localId) ?? "") && nameLooksRight(name, c.name) && !/^[A-Z]/.test(c.id)) {
+          candidates.set(c.id, c);
         }
-      })
-    );
-    const found = results.find((r) => r != null);
-    if (found) return found;
+      }
+    } catch { /* try the next spelling */ }
   }
-
+  if (candidates.size === 1) {
+    const [card] = candidates.values();
+    console.log(`[PriceTracker] TCGdex unique number match "${card.name}" id=${card.id}`);
+    return toMatch(card, card.image!, endpoint);
+  }
+  if (candidates.size > 1) console.log(`[PriceTracker] TCGdex: ${candidates.size} printings of "${name}" #${num}, set "${setName ?? ""}" unknown — no image`);
   return null;
 }
 
@@ -169,18 +160,21 @@ async function lookupFromTcgIo(
 
   function addQ(q: string) { if (!queries.includes(q)) queries.push(q); }
 
-  if (num && setName) addQ(`name:"${name}" set.name:"${setName}" number:${num}`);
-  if (num)            addQ(`name:"${name}" number:${num}`);
-  if (setName)        addQ(`name:"${name}" set.name:"${setName}"`);
-  addQ(`name:"${name}"`);
+  // Number-pinned queries only: a name (or name + set) alone returns some
+  // printing of the card, not necessarily this one
+  if (!num) return null;
+  // pokemontcg.io hyphenates GX / EX ("Pikachu & Zekrom-GX", "M Gengar-EX")
+  const names = [...new Set([name, stripParens(name), stripParens(name).replace(/\s+(GX|EX)\b/g, "-$1")])];
+  for (const n of names) {
+    if (setName) addQ(`name:"${n}" set.name:"${setName}" number:${num}`);
+    addQ(`name:"${n}" number:${num}`);
+  }
 
   const isLvX = /\bLv\.X\b/i.test(name);
   if (isLvX) {
     const lvxBase = name.replace(/\s+Lv\.X\s*$/i, "").replace(/\s*\([^)]*\)/g, "").trim();
-    if (num && setName) addQ(`name:"${lvxBase}" set.name:"${setName}" number:${num} subtypes:LEVEL-UP`);
-    if (num)            addQ(`name:"${lvxBase}" number:${num} subtypes:LEVEL-UP`);
-    if (setName)        addQ(`name:"${lvxBase}" set.name:"${setName}" subtypes:LEVEL-UP`);
-    addQ(`name:"${lvxBase}" subtypes:LEVEL-UP`);
+    if (setName) addQ(`name:"${lvxBase}" set.name:"${setName}" number:${num} subtypes:LEVEL-UP`);
+    addQ(`name:"${lvxBase}" number:${num} subtypes:LEVEL-UP`);
   }
 
   const apiKey = process.env.POKEMON_TCG_IO_API_KEY;
@@ -189,12 +183,17 @@ async function lookupFromTcgIo(
 
   for (const q of queries) {
     try {
-      const url = `${TCGIO_BASE}/cards?q=${encodeURIComponent(q)}&pageSize=1&select=id,name,images,tcgplayer`;
+      // Several results: a name + number query can hit more than one set
+      const url = `${TCGIO_BASE}/cards?q=${encodeURIComponent(q)}&pageSize=10&select=id,name,number,images,tcgplayer`;
       const res = await makeFetchWithTimeout(url, { headers, cache: "no-store" });
       if (!res.ok) continue;
       const json = await res.json();
-      const card = json.data?.[0];
-      if (!card?.images?.large && !card?.images?.small) continue;
+      const hits = ((json.data ?? []) as { number?: string; images?: { large?: string; small?: string } }[])
+        .filter((c) => (c.images?.large || c.images?.small) && normNum(c.number) === normNum(num));
+      // More than one printing with this number and no set to choose by: don't guess
+      if (hits.length !== 1) continue;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const card: any = hits[0];
 
       const imageUrl: string = card.images.large ?? card.images.small;
       const prices = card.tcgplayer?.prices as Record<string, { market?: number }> | undefined;
@@ -304,13 +303,18 @@ export async function lookupCard(
   }
 
   // Step 1: Check local cache (Supabase card_image_cache)
+  // Manual entries are trusted. Automatic ones were cached by the old
+  // name-guessing matcher, so a cached image that isn't this card's set and
+  // number is ignored and looked up again; so is a cached "not found", since
+  // the set-aware lookup finds cards the old one missed.
   const cached = await getCardCache(cacheKey);
   if (cached.hit) {
     if (cached.source === "manual" || cached.source === "manual_admin") {
       return { imageUrl: cached.imageUrl, market: null };
     }
-    if (cached.imageUrl === null) return null;
-    return { imageUrl: cached.imageUrl, market: null };
+    const stale = cached.imageUrl === null
+      || artVerdict({ set_name: setName, card_number: cardNumber }, cached.imageUrl, await tcgdexSetList()) === "wrong";
+    if (!stale) return { imageUrl: cached.imageUrl, market: null };
   }
 
   // Step 1.5: Check for a prior manual cache entry (cross-key manual image lookup)
@@ -338,11 +342,14 @@ export async function lookupCard(
     return { imageUrl: tcgIoMatch.imageUrl, market: category === "single" ? tcgIoMatch.market : null };
   }
 
-  // Step 4: Check pokemon_cards table for manually-added images
-  const manualUrl = await getManualImage(name, cardNumber);
-  if (manualUrl) {
-    await setCardCache(cacheKey, name, setName, cardNumber, manualUrl, "manual");
-    return { imageUrl: manualUrl, market: null };
+  // Step 4: The synced catalog (pokemon_cards), by name + number within the
+  // item's set. Cached as "tcgdex" (that's where the catalog comes from), not
+  // "manual", so it stays subject to the set + number check above.
+  const setIds = resolveSetIds(setName, await tcgdexSetList());
+  const catalogUrl = await getManualImage(name, cardNumber, setIds);
+  if (catalogUrl) {
+    await setCardCache(cacheKey, name, setName, cardNumber, catalogUrl, "tcgdex");
+    return { imageUrl: catalogUrl, market: null };
   }
 
   // Step 5: No image found — cache the negative result so we don't retry every time
