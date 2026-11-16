@@ -29,6 +29,30 @@ export async function searchCatalog(query: string): Promise<CatalogCard[]> {
   return rankCatalog((data ?? []) as CatalogRow[], query);
 }
 
+// ── Stock per result ──
+// How many in-stock copies you have of each result card (tile footer). One
+// read of the workspace's in-stock singles/slabs, matched in JS the same way
+// the card sheet matches (name + number + set name or code).
+export async function stockCounts(cards: CatalogCard[]): Promise<Record<string, number>> {
+  if (!cards.length) return {};
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId();
+  const { data, error } = await supabase
+    .from("items")
+    .select("id,name,set_name,card_number")
+    .eq("workspace_id", workspaceId)
+    .in("status", ["inventory", "grading"])
+    .in("category", ["single", "slab"])
+    .limit(5000);
+  if (error) throw new Error(error.message);
+  const out: Record<string, number> = {};
+  for (const card of cards) {
+    const n = (data ?? []).filter((it) => matchesCard(it, card)).length;
+    if (n) out[card.id] = n;
+  }
+  return out;
+}
+
 // ── Card detail ──
 // The in-stock inventory items that are this card, plus its market price from
 // TCGdex. `priceFailed` means the lookup timed out or errored (the sheet

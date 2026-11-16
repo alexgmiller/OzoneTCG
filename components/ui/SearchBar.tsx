@@ -12,9 +12,11 @@ type Props = {
   placeholder?: string;
   autoFocus?: boolean;
   className?: string;
+  /** Extra attributes for the <input> (keyboard handling, combobox aria) */
+  inputProps?: Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "placeholder" | "autoFocus">;
 };
 
-export function SearchBar({ value, onChange, onScan, placeholder = "Search", autoFocus, className }: Props) {
+export function SearchBar({ value, onChange, onScan, placeholder = "Search", autoFocus, className, inputProps }: Props) {
   return (
     <div className={cn("relative flex h-11 items-center rounded-full bg-surface-2", className)}>
       <Search size={18} className="pointer-events-none absolute left-3.5 text-muted-foreground" />
@@ -27,6 +29,7 @@ export function SearchBar({ value, onChange, onScan, placeholder = "Search", aut
         placeholder={placeholder}
         autoFocus={autoFocus}
         aria-label={placeholder}
+        {...inputProps}
         className="h-full w-full bg-transparent pl-10 pr-20 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none [&::-webkit-search-cancel-button]:hidden"
       />
       <div className="absolute right-1.5 flex items-center gap-0.5">

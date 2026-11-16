@@ -79,3 +79,52 @@ export function matchesCard<T extends StockRow>(
   }
   return true;
 }
+
+// ── Results controls ──
+export type SortKey = "best" | "name" | "number" | "set";
+export const SORTS: readonly { value: SortKey; label: string }[] = [
+  { value: "best", label: "Best match" },
+  { value: "name", label: "Name" },
+  { value: "set", label: "Set" },
+  { value: "number", label: "Number" },
+];
+
+// Sets present in a result list, most cards first, for the set filter
+export function setFacets(cards: CatalogCard[]): { name: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const c of cards) counts.set(c.setName, (counts.get(c.setName) ?? 0) + 1);
+  return [...counts].map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+// Card numbers compare by their digits first ("TG2" < "TG10", "4" < "25")
+function numberOrder(n: string | null): [number, string] {
+  const s = (n ?? "").split("/")[0];
+  const digits = s.match(/\d+/)?.[0];
+  return [digits ? Number(digits) : Number.MAX_SAFE_INTEGER, s];
+}
+
+// "best" keeps the search's own ranking; the others are stable re-orders
+export function sortCards(cards: CatalogCard[], sort: SortKey): CatalogCard[] {
+  if (sort === "best") return cards;
+  const byNum = (a: CatalogCard, b: CatalogCard) => {
+    const [x, xs] = numberOrder(a.cardNumber), [y, ys] = numberOrder(b.cardNumber);
+    return x - y || xs.localeCompare(ys);
+  };
+  const cmp: Record<Exclude<SortKey, "best">, (a: CatalogCard, b: CatalogCard) => number> = {
+    name: (a, b) => a.name.localeCompare(b.name) || byNum(a, b),
+    set: (a, b) => a.setName.localeCompare(b.setName) || byNum(a, b),
+    number: byNum,
+  };
+  return [...cards].sort(cmp[sort]);
+}
+
+// ── Recent searches (per device) ──
+export const RECENT_MAX = 8;
+
+// Newest first, no duplicates (case-insensitive), capped
+export function pushRecent(list: string[], query: string, max = RECENT_MAX): string[] {
+  const q = query.trim();
+  if (!q) return list;
+  return [q, ...list.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, max);
+}
