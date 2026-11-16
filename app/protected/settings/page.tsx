@@ -38,14 +38,22 @@ async function SettingsLoader() {
 // ── Fallback ──
 function SettingsSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6 py-6" aria-busy>
+    <div className="mx-auto w-full max-w-2xl space-y-6 py-6 lg:max-w-6xl" aria-busy>
       <div className="space-y-2">
         <Skeleton className="h-7 w-28" />
         <Skeleton variant="text" className="w-48" />
       </div>
-      <Skeleton className="h-44 w-full" />
-      <Skeleton className="h-72 w-full" />
-      <Skeleton className="h-44 w-full" />
+      {/* lg+: two columns, like SettingsClient */}
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+        <div className="space-y-6">
+          <Skeleton className="h-44 w-full" />
+          <Skeleton className="h-72 w-full" />
+        </div>
+        <div className="space-y-6">
+          <Skeleton className="h-44 w-full" />
+          <Skeleton className="h-56 w-full" />
+        </div>
+      </div>
     </div>
   );
 }

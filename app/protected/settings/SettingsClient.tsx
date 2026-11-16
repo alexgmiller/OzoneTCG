@@ -114,23 +114,27 @@ export default function SettingsClient({
   };
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6 py-6">
+    <div className="mx-auto w-full max-w-2xl space-y-6 py-6 lg:max-w-6xl">
       <PageHeader
         title="Settings"
         meta="Your workspace and preferences"
         actions={<SaveIndicator status={saveStatus} />}
       />
 
-      <ProfileSection email={email} settings={settings} onChange={updateDebounced} />
-      <PricingDefaultsSection settings={settings} onChange={updateImmediate} />
-      <DisplaySection settings={settings} onChange={updateImmediate} />
-      <NotificationsSection settings={settings} onChange={updateImmediate} />
-      <PricingSourcesSection apiStatus={apiStatus} />
-      <DataSection />
-      <StorageSection />
-      <OfflineSyncSection />
-      <LocationsSection homeAddress={workspaceData.home_address} savedLocations={savedLocations} />
-      <AccountSection />
+      {/* Desktop (lg+): sections flow into two columns, top to bottom, so the
+          order reads the same as on a phone. Section cards never split. */}
+      <div className="space-y-6 lg:columns-2 lg:gap-6">
+        <ProfileSection email={email} settings={settings} onChange={updateDebounced} />
+        <PricingDefaultsSection settings={settings} onChange={updateImmediate} />
+        <DisplaySection settings={settings} onChange={updateImmediate} />
+        <NotificationsSection settings={settings} onChange={updateImmediate} />
+        <PricingSourcesSection apiStatus={apiStatus} />
+        <DataSection />
+        <StorageSection />
+        <OfflineSyncSection />
+        <LocationsSection homeAddress={workspaceData.home_address} savedLocations={savedLocations} />
+        <AccountSection />
+      </div>
     </div>
   );
 }

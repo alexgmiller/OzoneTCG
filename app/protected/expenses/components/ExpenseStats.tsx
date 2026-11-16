@@ -38,7 +38,7 @@ export function ExpenseStats({
 }) {
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2">
         <StatCard
           label="Total expenses"
           money={totals.gross}
@@ -62,7 +62,7 @@ export function ExpenseStats({
               ? <>~<Savings amount={totals.mileageTotal * IRS_MILEAGE_RATE} /> deductible</>
               : plural(tripCount, "trip")
           }
-          className="col-span-2 sm:col-span-1"
+          className="col-span-2 sm:col-span-1 lg:col-span-2"
         />
       </div>
 

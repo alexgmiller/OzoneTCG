@@ -136,7 +136,7 @@ export default async function TaxReportPage({
   };
 
   return (
-    <div className="w-full py-4 sm:py-6 space-y-4 max-w-4xl mx-auto">
+    <div className="w-full py-4 sm:py-6 space-y-4 max-w-4xl mx-auto lg:max-w-6xl">
       <PageHeader title="Tax Report" back={{ href: "/protected/expenses", label: "Expenses" }} />
       <TaxReportClient year={year} availableYears={availableYears} summary={summary} />
     </div>

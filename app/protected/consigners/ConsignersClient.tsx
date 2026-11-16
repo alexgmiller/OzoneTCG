@@ -98,7 +98,7 @@ export default function ConsignersClient({ consigners }: { consigners: Consigner
           }
         />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
           {consigners.map((c) => (
             <ConsignerCard
               key={c.id}

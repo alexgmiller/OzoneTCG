@@ -169,106 +169,115 @@ export default function CalendarClient({
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  // Desktop (lg+): month/week grid on the left two thirds; Today and the
+  // selected day's detail stacked in the right column. A 1fr middle row
+  // (grid-rows-home) keeps Today hugging its content. Phone order unchanged.
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 pb-28 pt-4">
-      <TodayWidget
-        todayStr={todayStr}
-        activity={activityMap.get(todayStr)}
-        onOpen={() => selectDay(todayStr)}
-      />
-
-      {/* ── Calendar header ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <button type="button" onClick={prevMonth} className={iconBtn} disabled={monthLoading} aria-label="Previous month">
-            <ChevronLeft size={18} />
-          </button>
-          <div className="flex min-w-36 items-center justify-center gap-2">
-            <h2 className="text-sm font-semibold text-foreground">
-              {MONTH_NAMES[currentMonth - 1]} <span className="tabular-nums">{currentYear}</span>
-            </h2>
-            {monthLoading && <Loader2 size={14} className="shrink-0 animate-spin text-muted-foreground" />}
-          </div>
-          <button type="button" onClick={nextMonth} className={iconBtn} disabled={monthLoading} aria-label="Next month">
-            <ChevronRight size={18} />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={goToday}
-            className="h-11 rounded-lg bg-muted px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
-          >
-            Today
-          </button>
-
-          <div className="flex h-11 items-center overflow-hidden rounded-lg border border-border">
-            {(["week", "month"] as ViewMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setView(mode)}
-                className={cn(
-                  "h-full px-3 text-sm font-semibold capitalize transition-colors duration-150",
-                  viewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => openScheduleModal(selectedDate ?? todayStr)}
-            className="flex h-11 items-center gap-1 rounded-lg bg-accent-tint px-3 text-sm font-semibold text-accent transition-colors duration-150 hover:bg-accent-tint"
-          >
-            <Plus size={16} />
-            Show
-          </button>
-        </div>
+    <div className="mx-auto w-full max-w-2xl space-y-4 pb-28 pt-4 lg:grid lg:max-w-6xl lg:grid-cols-3 lg:grid-rows-home lg:items-start lg:gap-x-6 lg:gap-y-4 lg:space-y-0 lg:pb-4">
+      <div className="lg:col-start-3 lg:row-start-1">
+        <TodayWidget
+          todayStr={todayStr}
+          activity={activityMap.get(todayStr)}
+          onOpen={() => selectDay(todayStr)}
+        />
       </div>
 
-      {viewMode === "week" ? (
-        <WeekStrip
-          weekStart={weekStart}
-          todayStr={todayStr}
-          selectedDate={selectedDate}
-          activityMap={activityMap}
-          onSelect={selectDay}
-          onPrev={() => moveWeek(-7)}
-          onNext={() => moveWeek(7)}
-        />
-      ) : (
-        <MonthGrid
-          year={currentYear}
-          month={currentMonth}
-          todayStr={todayStr}
-          selectedDate={selectedDate}
-          activityMap={activityMap}
-          onSelect={selectDay}
-        />
-      )}
+      <div className="space-y-4 lg:col-span-2 lg:row-span-3 lg:row-start-1">
+        {/* ── Calendar header ── */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={prevMonth} className={iconBtn} disabled={monthLoading} aria-label="Previous month">
+              <ChevronLeft size={18} />
+            </button>
+            <div className="flex min-w-36 items-center justify-center gap-2">
+              <h2 className="text-sm font-semibold text-foreground">
+                {MONTH_NAMES[currentMonth - 1]} <span className="tabular-nums">{currentYear}</span>
+              </h2>
+              {monthLoading && <Loader2 size={14} className="shrink-0 animate-spin text-muted-foreground" />}
+            </div>
+            <button type="button" onClick={nextMonth} className={iconBtn} disabled={monthLoading} aria-label="Next month">
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={goToday}
+              className="h-11 rounded-lg bg-muted px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
+            >
+              Today
+            </button>
+
+            <div className="flex h-11 items-center overflow-hidden rounded-lg border border-border">
+              {(["week", "month"] as ViewMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setView(mode)}
+                  className={cn(
+                    "h-full px-3 text-sm font-semibold capitalize transition-colors duration-150",
+                    viewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => openScheduleModal(selectedDate ?? todayStr)}
+              className="flex h-11 items-center gap-1 rounded-lg bg-accent-tint px-3 text-sm font-semibold text-accent transition-colors duration-150 hover:bg-accent-tint"
+            >
+              <Plus size={16} />
+              Show
+            </button>
+          </div>
+        </div>
+
+        {viewMode === "week" ? (
+          <WeekStrip
+            weekStart={weekStart}
+            todayStr={todayStr}
+            selectedDate={selectedDate}
+            activityMap={activityMap}
+            onSelect={selectDay}
+            onPrev={() => moveWeek(-7)}
+            onNext={() => moveWeek(7)}
+          />
+        ) : (
+          <MonthGrid
+            year={currentYear}
+            month={currentMonth}
+            todayStr={todayStr}
+            selectedDate={selectedDate}
+            activityMap={activityMap}
+            onSelect={selectDay}
+          />
+        )}
+      </div>
 
       {/* ── Day detail ── */}
       {selectedDate && (
-        detailLoading ? (
-          <div className="space-y-3 rounded-xl border border-border bg-card p-4">
-            <Skeleton variant="text" className="w-1/3" />
-            <Skeleton className="h-6 w-2/3" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : (
-          <DayDetailPanel
-            detail={dayDetail}
-            dateStr={selectedDate}
-            todayStr={todayStr}
-            onScheduleShow={() => openScheduleModal(selectedDate)}
-            onClose={() => { setSelectedDate(null); setDayDetail(null); }}
-            onOpenImage={setLightboxUrl}
-          />
-        )
+        <div className="lg:col-start-3 lg:row-start-2">
+          {detailLoading ? (
+            <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+              <Skeleton variant="text" className="w-1/3" />
+              <Skeleton className="h-6 w-2/3" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : (
+            <DayDetailPanel
+              detail={dayDetail}
+              dateStr={selectedDate}
+              todayStr={todayStr}
+              onScheduleShow={() => openScheduleModal(selectedDate)}
+              onClose={() => { setSelectedDate(null); setDayDetail(null); }}
+              onOpenImage={setLightboxUrl}
+            />
+          )}
+        </div>
       )}
 
       <ScheduleShowModal
