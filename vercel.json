@@ -1,12 +1,16 @@
 {
   "crons": [
     {
-      "path": "/api/cron/refresh-prices",
-      "schedule": "0 3 * * *"
+      "path": "/api/cron/refresh-raw-cards",
+      "schedule": "0 2 * * *"
     },
     {
-      "path": "/api/cron/refresh-raw-cards",
-      "schedule": "0 4 * * *"
+      "path": "/api/cron/refresh-stale-slabs",
+      "schedule": "30 2 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-prices",
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/sync-catalog",

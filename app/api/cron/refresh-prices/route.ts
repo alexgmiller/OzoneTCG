@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { lookupCard } from "@/lib/pokemonPriceTracker";
+import { lookupCard, lookupRawMarketFromTcgDex } from "@/lib/pokemonPriceTracker";
+import { nightlyMarketSource, usablePrice, type Category } from "@/lib/nightlyPricing";
+
+// ── Nightly refresh (03:00) ──
+// Runs last of the three price jobs (see lib/nightlyPricing.ts for who owns
+// which price): fills in images, writes the fallback prices this job owns,
+// then writes the daily inventory snapshot so the Home chart sees tonight's
+// prices rather than yesterday's.
 
 // Allow up to 5 minutes — needed for large inventories (Vercel Pro required for >60s)
 export const maxDuration = 300;
@@ -25,23 +32,40 @@ export async function GET(req: NextRequest) {
   if (!items?.length) return NextResponse.json({ updated: 0, total: 0 });
 
   let updated = 0;
+  let priced = 0;
   const BATCH = 3; // conservative to avoid hammering TCGdex free API
+  const started = Date.now();
+  // Leave time for the snapshot inside the 5-minute limit
+  const LOOKUP_BUDGET_MS = 4.5 * 60 * 1000;
+  const justTcgConfigured = !!process.env.JUSTTCG_API_KEY;
 
   for (let i = 0; i < items.length; i += BATCH) {
+    if (Date.now() - started > LOOKUP_BUDGET_MS) {
+      console.warn(`[cron/refresh-prices] time budget reached at ${i}/${items.length} — snapshotting now`);
+      break;
+    }
     await Promise.all(
       items.slice(i, i + BATCH).map(async (item) => {
         try {
-          const result = await lookupCard(
-            item.name,
-            item.category as "single" | "slab" | "sealed",
-            { setName: item.set_name, cardNumber: item.card_number }
-          );
-          if (!result) return;
+          const category = item.category as Category;
+          const source = nightlyMarketSource(category, { justTcgConfigured });
+          const result = await lookupCard(item.name, category, {
+            setName: item.set_name, cardNumber: item.card_number,
+          });
+
+          // lookupCard returns early from the image cache with no price, so a
+          // single whose art is already cached gets its price looked up here
+          let market: number | null = null;
+          if (source === "lookup") market = result?.market ?? null;
+          if (source === "tcgdex-raw") {
+            market = result?.market
+              ?? await lookupRawMarketFromTcgDex(item.name, item.set_name, item.card_number);
+          }
 
           const patch: Record<string, unknown> = {};
-          if (result.imageUrl) patch.image_url = result.imageUrl;
-          // Only overwrite market if we got a real price back (don't null-out existing values)
-          if (result.market != null) patch.market = result.market;
+          if (result?.imageUrl && result.imageUrl !== item.image_url) patch.image_url = result.imageUrl;
+          // Only overwrite market with a real price (never null-out an existing value)
+          if (usablePrice(market)) { patch.market = market; priced++; }
           if (Object.keys(patch).length === 0) return;
 
           const { error: updateErr } = await supabase
@@ -58,7 +82,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items`);
+  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, JustTCG ${justTcgConfigured ? "on" : "off"})`);
 
   // ── Daily inventory snapshot ──
   // One row per workspace per day feeds the Home value chart. Re-read after the
@@ -66,7 +90,7 @@ export async function GET(req: NextRequest) {
   // keeps a re-run idempotent.
   const snapshots = await writeInventorySnapshots(supabase);
 
-  return NextResponse.json({ updated, total: items.length, snapshots });
+  return NextResponse.json({ updated, priced, total: items.length, justTcgConfigured, snapshots });
 }
 
 type StockRow = { workspace_id: string; market: number | null; cost: number | null };

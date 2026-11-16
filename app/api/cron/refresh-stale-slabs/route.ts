@@ -1,6 +1,8 @@
 /**
  * Cron-based background slab price refresh.
- * Call hourly via Vercel Cron (vercel.json) or any external scheduler.
+ * Scheduled daily at 02:30 in vercel.json (Vercel Hobby crons run at most
+ * daily), before refresh-prices writes the snapshot; any scheduler can call
+ * it more often.
  * Authorization: Bearer $CRON_SECRET
  *
  * Processes stale slabs across all workspaces using tier-based refresh windows:
@@ -14,6 +16,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+// Up to 5 minutes; the loop stops itself before that (time guard below)
+export const maxDuration = 300;
 import {
   parseGrade,
   makeSlabPriceKey,
