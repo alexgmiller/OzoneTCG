@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  artVerdict, nameLooksRight, normNum, numberKeys, parentSetId, pickByNumber, resolveSetIds, type TcgdexSet,
+  artVerdict, cardKey, nameLooksRight, normNum, numberKeys, parentSetId, pickByNumber, resolveSetIds, type TcgdexSet,
 } from "./cardArtMatch";
 
 // A slice of TCGdex's real English set list
@@ -126,5 +126,34 @@ describe("artVerdict", () => {
   it("can't tell for other hosts or an unplaceable set with a matching number", () => {
     expect(v("Sun & Moon Promo", "SM168", "https://tcgplayer-cdn.tcgplayer.com/product/1.jpg")).toBe("unknown");
     expect(v("Alternate Art Promos", "143", td("sm12", "143"))).toBe("unknown");
+  });
+});
+
+describe("cardKey", () => {
+  const key = (name: string, set: string | null, num: string | null) =>
+    cardKey({ name, set_name: set, card_number: num }, SETS);
+
+  it("gives every spelling of one card the same key", () => {
+    expect(key("Pikachu & Zekrom GX", "Sun & Moon Promo", "SM168"))
+      .toBe(key("pikachu & zekrom gx", "SM Black Star Promos", "sm168"));
+    expect(key("Espeon ex - 175", "Scarlet & Violet Promo", "SVP 175"))
+      .toBe(key("Espeon ex", "SVP Black Star Promos", "SVP175"));
+    expect(key("Umbreon V", "Brilliant Stars Trainer Gallery", "TG22/TG30"))
+      .toBe(key("Umbreon V", "Brilliant Stars", "TG22"));
+  });
+
+  it("keeps different cards apart", () => {
+    expect(key("Charizard ex (JP)", "Pokemon 151", "185/165"))
+      .not.toBe(key("Charizard ex", "Pokemon 151", "185/165"));      // language
+    expect(key("Mew ex", "Paldean Fates", "232")).not.toBe(key("Mew ex", "Paldean Fates", "216")); // number
+    expect(key("Pikachu", "Scarlet & Violet Promo", "027")).not.toBe(key("Pikachu", "Pokémon GO", "027")); // set
+  });
+
+  it("uses the set's own name when it can't be mapped (Japanese sets)", () => {
+    expect(key("Arceus VSTAR (JP)", "VSTAR Universe", "262/172")).toBe("ja|arceus vstar|vstar universe|262");
+  });
+
+  it("is null without a name", () => {
+    expect(key("  ", "151", "1")).toBeNull();
   });
 });

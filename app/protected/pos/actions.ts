@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { rememberAndFill } from "@/lib/cardArt";
 import {
   allocate, round2,
   type BuyInput, type SellInput, type TradeInput, type NewCard, type DealFields,
@@ -71,6 +72,12 @@ async function insertItem(c: Ctx, card: NewCard, fields: Row): Promise<string> {
     ...fields,
   }).select("id").single();
   if (error) throw new Error(error.message);
+  // The art picked at the counter is remembered for the card and given to its
+  // other in-stock copies that have none (lib/cardArt.ts)
+  if (card.image_url && card.category !== "sealed") {
+    await rememberAndFill(c.supabase, c.workspaceId,
+      { name: card.name, set_name: card.set_name ?? null, card_number: card.card_number ?? null }, card.image_url);
+  }
   return data.id as string;
 }
 

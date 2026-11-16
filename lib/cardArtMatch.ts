@@ -6,7 +6,7 @@
 // Used by the TCGdex image lookup (pokemonPriceTracker.ts), by the image cache
 // (to distrust guesses the old matcher cached) and by the one-off cleanup.
 
-import { stripParens } from "./cardNameUtils";
+import { isJapaneseName, stripParens } from "./cardNameUtils";
 
 export type TcgdexSet = { id: string; name: string };
 export type TcgdexCard = { id: string; localId: string; name: string; image?: string | null };
@@ -169,4 +169,28 @@ export function artVerdict(
     return setIds.includes((p.setId ?? "").toLowerCase()) ? "ok" : "wrong";
   }
   return "unknown";
+}
+
+// ── Card identity ──
+// One key per physical card, so an image found or set once is reused for every
+// copy: language | name | set | number. The set is TCGdex's id(s) when the
+// name maps ("SM Promos" and "Sun & Moon Promo" both → smp), else the
+// normalised name (Japanese sets). The name drops parentheticals and promo
+// suffixes ("Espeon ex - 175" → "espeon ex"); (JP) lives in the language part.
+export function cardLang(c: { name: string; set_name: string | null }): "en" | "ja" {
+  return isJapaneseName(c.name) || /japanese|\bjp\b/i.test(c.set_name ?? "") ? "ja" : "en";
+}
+
+export function cardKey(
+  c: { name: string; set_name: string | null; card_number: string | null },
+  sets: TcgdexSet[],
+): string | null {
+  const name = norm(stripParens(c.name).replace(/\s+-\s+[\w/-]+$/, ""));
+  if (!name) return null;
+  const lang = cardLang(c);
+  const setIds = lang === "en" ? resolveSetIds(c.set_name, sets) : [];
+  const set = setIds.length
+    ? [...setIds].sort().join("+")
+    : norm((c.set_name ?? "").replace(/\((japanese|jp)\)/gi, "").replace(/\s+jp$/i, ""));
+  return `${lang}|${name}|${set}|${normNum(c.card_number) ?? ""}`;
 }

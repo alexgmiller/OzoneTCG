@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { recordSell } from "@/app/protected/pos/actions";
+import { getCardArt, rememberAndFill } from "@/lib/cardArt";
 
 type ItemInput = {
   category: "single" | "slab" | "sealed";
@@ -60,6 +61,32 @@ export type CardTransaction = {
   created_at: string;
 };
 
+// ── Card art memory (lib/cardArt.ts) ──
+// A new item with no image gets the image remembered for its card. An image a
+// person chose is remembered for the card and given to the card's other
+// in-stock copies that have none.
+const cardRef = (i: { name: string; set_name?: string | null; card_number?: string | null }) =>
+  ({ name: i.name, set_name: i.set_name ?? null, card_number: i.card_number ?? null });
+
+async function imageForNewItem(input: ItemInput): Promise<string | null> {
+  if (input.image_url) return input.image_url;
+  if (input.category === "sealed") return null;
+  const art = await getCardArt(cardRef(input));
+  if (art) return art.imageUrl;
+  const { findManualCacheEntry } = await import("@/lib/cardCache");
+  return findManualCacheEntry(input.name, input.card_number, input.set_name);
+}
+
+async function rememberChosenImages(
+  supabase: Awaited<ReturnType<typeof createClient>>, workspaceId: string, inputs: ItemInput[],
+) {
+  for (const input of inputs) {
+    if (input.image_url && input.category !== "sealed") {
+      await rememberAndFill(supabase, workspaceId, cardRef(input), input.image_url);
+    }
+  }
+}
+
 export async function createItem(input: ItemInput) {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
@@ -67,11 +94,7 @@ export async function createItem(input: ItemInput) {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
 
-  let resolvedImageUrl = input.image_url ?? null;
-  if (!resolvedImageUrl && input.category !== "sealed") {
-    const { findManualCacheEntry } = await import("@/lib/cardCache");
-    resolvedImageUrl = await findManualCacheEntry(input.name, input.card_number, input.set_name);
-  }
+  const resolvedImageUrl = await imageForNewItem(input);
 
   const now = new Date().toISOString();
   const { error } = await supabase.from("items").insert({
@@ -87,6 +110,7 @@ export async function createItem(input: ItemInput) {
   });
 
   if (error) throw new Error(error.message);
+  await rememberChosenImages(supabase, workspaceId, [input]);
   revalidatePath("/protected/inventory");
 }
 
@@ -98,15 +122,10 @@ export async function createItems(inputs: ItemInput[]) {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
 
-  const { findManualCacheEntry } = await import("@/lib/cardCache");
-
   const now = new Date().toISOString();
   const rows = await Promise.all(
     inputs.map(async (input) => {
-      let resolvedImageUrl = input.image_url ?? null;
-      if (!resolvedImageUrl && input.category !== "sealed") {
-        resolvedImageUrl = await findManualCacheEntry(input.name, input.card_number, input.set_name);
-      }
+      const resolvedImageUrl = await imageForNewItem(input);
       return {
         workspace_id: workspaceId,
         ...input,
@@ -124,6 +143,7 @@ export async function createItems(inputs: ItemInput[]) {
   const { error } = await supabase.from("items").insert(rows);
 
   if (error) throw new Error(error.message);
+  await rememberChosenImages(supabase, workspaceId, inputs);
   revalidatePath("/protected/inventory");
 }
 
@@ -149,23 +169,13 @@ export async function uploadCardImage(formData: FormData): Promise<string> {
 
   const { data } = admin.storage.from("card-images").getPublicUrl(filename);
 
-  // Update pokemon_cards so this image shows in future searches
+  // Give the picked catalog card this photo only if it has no art of its own.
+  // Nothing else in the catalog is touched: this used to update every catalog
+  // card sharing the name when no number was given. Remembering the image for
+  // the card (and its other copies) happens when the item is saved.
   if (cardId) {
-    await admin.from("pokemon_cards").update({ image_url: data.publicUrl }).eq("id", cardId);
-  } else {
-    // Fallback: update by name + card number when no cardId (manually typed)
-    const name = formData.get("name") as string | null;
-    const cardNumber = formData.get("cardNumber") as string | null;
-    if (name && cardNumber) {
-      await admin.from("pokemon_cards")
-        .update({ image_url: data.publicUrl })
-        .eq("name", name.trim())
-        .eq("card_number", cardNumber.trim());
-    } else if (name) {
-      await admin.from("pokemon_cards")
-        .update({ image_url: data.publicUrl })
-        .eq("name", name.trim());
-    }
+    await admin.from("pokemon_cards").update({ image_url: data.publicUrl })
+      .eq("id", cardId).is("image_url", null);
   }
 
   return data.publicUrl;
@@ -218,14 +228,6 @@ export async function uploadItemImage(
     cached_at: new Date().toISOString(),
   });
 
-  // Also persist to pokemon_cards for the manual-images fallback layer
-  await admin.from("pokemon_cards").upsert({
-    id: `manual-${slug}-${num || "0"}`,
-    name,
-    card_number: num || null,
-    image_url: imageUrl,
-  }, { onConflict: "id" });
-
   // Update this item directly
   const workspaceId = await getWorkspaceId();
   await supabase
@@ -233,6 +235,11 @@ export async function uploadItemImage(
     .update({ image_url: imageUrl, updated_by: auth.user.id })
     .eq("id", itemId)
     .eq("workspace_id", workspaceId);
+
+  // Remember it for the card and give the card's other copies the same image.
+  // (This used to add a set-less "manual-…" row to the pokemon_cards catalog,
+  // which then showed up in Search; card_art replaces that.)
+  await rememberAndFill(supabase, workspaceId, { name, set_name: setName, card_number: cardNumber }, imageUrl);
 
   revalidatePath("/protected/inventory");
   return imageUrl;
@@ -250,6 +257,13 @@ export async function updateItem(id: string, input: Partial<ItemInput>) {
   if (input.condition !== undefined) patch.condition = input.condition.trim() || null;
   if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
 
+  // Only a changed image counts as a choice to remember (the edit sheet sends
+  // the current image back on every save)
+  const { data: before } = input.image_url
+    ? await supabase.from("items").select("name,set_name,card_number,image_url,category")
+        .eq("id", id).eq("workspace_id", workspaceId).maybeSingle()
+    : { data: null };
+
   const { error } = await supabase
     .from("items")
     .update(patch)
@@ -257,6 +271,14 @@ export async function updateItem(id: string, input: Partial<ItemInput>) {
     .eq("workspace_id", workspaceId);
 
   if (error) throw new Error(error.message);
+
+  if (before && input.image_url && input.image_url !== before.image_url && before.category !== "sealed") {
+    await rememberAndFill(supabase, workspaceId, cardRef({
+      name: input.name ?? before.name,
+      set_name: input.set_name !== undefined ? input.set_name : before.set_name,
+      card_number: input.card_number !== undefined ? input.card_number : before.card_number,
+    }), input.image_url);
+  }
   revalidatePath("/protected/inventory");
 }
 
