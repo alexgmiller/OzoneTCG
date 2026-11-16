@@ -16,7 +16,9 @@ import type { CatalogCard } from "./catalog";
 // market price) and, with stock, Sell in POS. Then RAW | GRADED:
 //   RAW     TCGplayer market price, then low and market per printing (Holofoil,
 //           Reverse Holofoil…) with a link to the listing; cards TCGCSV doesn't
-//           match fall back to TCGdex (Retry on a slow lookup). Your raw copies.
+//           match fall back to TCGdex (Retry on a slow lookup). With no sales
+//           price anywhere, plan C: the low end of current eBay listings,
+//           labelled as asking prices (lib/ebayAsking.ts). Your raw copies.
 //   GRADED  your graded copies; graded market prices need a graded data source
 
 type Tab = "raw" | "graded";
@@ -114,9 +116,9 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
                   // Inventory marks Japanese cards "(JP)" (lib/cardArtMatch → cardLang);
                   // the TCGdex card id field doesn't apply
                   ? { name: `${card.name} (JP)`, setName: card.setName, cardNumber: card.cardNumber,
-                    imageUrl: card.imageUrl, cardId: null, market: detail?.market ?? null }
+                    imageUrl: card.imageUrl, cardId: null, market: detail?.market ?? detail?.asking?.price ?? null }
                   : { name: card.name, setName: card.setName, cardNumber: card.cardNumber,
-                    imageUrl: card.imageUrl, cardId: card.id, market: detail?.market ?? null },
+                    imageUrl: card.imageUrl, cardId: card.id, market: detail?.market ?? detail?.asking?.price ?? null },
               )}
               className={cn(buttonVariants(), "flex-1")}
             >
@@ -137,7 +139,7 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="section-label">TCGplayer market</div>
+                  <div className="section-label">{detail && detail.market == null && detail.asking ? "eBay asking price" : "TCGplayer market"}</div>
                   {detail?.quote?.url && (
                     <a href={detail.quote.url} target="_blank" rel="noopener noreferrer"
                       className="inline-flex h-11 items-center gap-1 text-xs font-medium text-accent transition-colors duration-150 hover:text-foreground">
@@ -157,7 +159,21 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
                       </button>
                     </div>
                   ) : (
-                    <div className="text-sm text-muted-foreground">No price listed</div>
+                    detail.asking ? (
+                      <div className="space-y-1">
+                        <MoneyDisplay amount={detail.asking.price} tone="neutral" className="text-2xl font-bold text-foreground" />
+                        <p className="text-xs text-muted-foreground">
+                          No sales found. Low end of {detail.asking.count} current eBay listings
+                          (<MoneyDisplay amount={detail.asking.low} tone="neutral" className="text-muted-foreground" />–<MoneyDisplay amount={detail.asking.high} tone="neutral" className="text-muted-foreground" />),
+                          asking prices rather than sales.{" "}
+                          <a href={detail.asking.searchUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-accent hover:text-foreground">
+                            See listings
+                          </a>
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No sales or listings found</div>
+                    )
                   )
                 ) : failed ? (
                   <div className="text-sm text-muted-foreground">Couldn&apos;t load</div>
