@@ -4,6 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { fetchAll } from "@/lib/supabase/fetchAll";
 import { revalidatePath } from "next/cache";
+import { syncTcgplayer } from "@/lib/catalog/syncTcgplayer";
+import { syncProblem } from "@/lib/catalog/tcgplayerSyncStatus";
+import { checkPokemonPriceTracker } from "@/lib/pptCheck";
+import { debugEbayAsking } from "@/lib/ebay";
 
 export type UserSettings = {
   display_name: string | null;
@@ -270,4 +274,81 @@ export async function exportTransactionsCSV(): Promise<string> {
   );
 
   return [headers.join(","), ...rows].join("\n");
+}
+
+// ── Japanese catalog (tcgplayer_cards) ──
+// Search's Japanese tab reads TCGplayer's Japanese catalog, refreshed daily by
+// /api/cron/sync-tcgplayer. Settings shows its size and age, and can run the
+// same sync on demand (a few seconds; it rewrites every card and price).
+export type JapaneseCatalogStatus = { cards: number; lastSynced: string | null };
+
+export async function japaneseCatalogStatus(): Promise<JapaneseCatalogStatus> {
+  const supabase = await createClient();
+  const [countRes, latestRes] = await Promise.all([
+    supabase.from("tcgplayer_cards").select("product_id", { count: "exact", head: true }).eq("lang", "ja"),
+    supabase.from("tcgplayer_cards").select("updated_at").eq("lang", "ja")
+      .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (countRes.error) throw new Error(countRes.error.message);
+  return { cards: countRes.count ?? 0, lastSynced: (latestRes.data as { updated_at: string } | null)?.updated_at ?? null };
+}
+
+// Don't re-download ~920 lists when it synced moments ago (double taps)
+const SYNC_COOLDOWN_MS = 10 * 60 * 1000;
+
+export type JapaneseSyncResult = { ok: boolean; message: string; status: JapaneseCatalogStatus | null };
+
+export async function syncJapaneseCatalog(): Promise<JapaneseSyncResult> {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+  // Writes need the service role, which only the deployed app has
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return { ok: false, message: "Syncing runs on the deployed app (it needs the server's Supabase service key).", status: null };
+  }
+
+  const before = await japaneseCatalogStatus().catch(() => null);
+  if (before?.lastSynced && before.cards > 0 && Date.now() - new Date(before.lastSynced).getTime() < SYNC_COOLDOWN_MS) {
+    return { ok: true, message: "Already synced in the last 10 minutes.", status: before };
+  }
+
+  try {
+    const result = await syncTcgplayer("ja");
+    const problem = syncProblem(result);
+    console.log(`[settings] Japanese catalog sync: ${result.cards} cards in ${result.ms}ms; ${problem ?? "ok"}`);
+    const status = await japaneseCatalogStatus().catch(() => null);
+    return problem
+      ? { ok: false, message: `Sync failed: ${problem}`, status }
+      : { ok: true, message: `Synced ${result.cards.toLocaleString()} Japanese cards`, status };
+  } catch (e) {
+    return { ok: false, message: `Sync failed: ${e instanceof Error ? e.message : "unknown error"}`, status: before };
+  }
+}
+
+// ── Check price sources ──
+// PokemonPriceTracker for two cards (Psyduck 286/SM-P, a Japanese promo with
+// no TCGplayer price, and Charizard ex 199/165, an English card with plenty of
+// sales, to show the full data) and one eBay search for Psyduck, returned
+// as-is so the data can be compared before building on either. Costs 4
+// PokemonPriceTracker credits per tap.
+const CHECK_CARD = { label: "Psyduck 286/SM-P (Japanese promo)", tcgPlayerId: 598363, name: "Psyduck", cardNumber: "286/SM-P", lang: "ja" as const };
+const CHECK_CARD_EN = { label: "Charizard ex 199/165 (151)", tcgPlayerId: 517045 };
+
+export async function checkPriceSources() {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+  const [japanese, english, ebayListings] = await Promise.all([
+    checkPokemonPriceTracker(CHECK_CARD.tcgPlayerId, "ja"),
+    checkPokemonPriceTracker(CHECK_CARD_EN.tcgPlayerId, "en"),
+    debugEbayAsking({ name: CHECK_CARD.name, cardNumber: CHECK_CARD.cardNumber, lang: CHECK_CARD.lang }),
+  ]);
+  return {
+    checkedAt: new Date().toISOString(),
+    ebayListings: { card: CHECK_CARD.label, ...ebayListings },
+    pokemonPriceTracker: {
+      japanese: { card: CHECK_CARD.label, ...japanese },
+      english: { card: CHECK_CARD_EN.label, ...english },
+    },
+  };
 }

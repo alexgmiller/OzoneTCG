@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { Skeleton } from "@/components/ui";
-import { loadSettings, loadWorkspaceData, getSavedLocations } from "./actions";
+import { loadSettings, loadWorkspaceData, getSavedLocations, japaneseCatalogStatus } from "./actions";
 import SettingsClient from "./SettingsClient";
 
 // ── Loader ──
@@ -12,16 +12,18 @@ async function SettingsLoader() {
     return <div className="py-6 text-center text-sm text-muted-foreground">Not signed in.</div>;
   }
 
-  const [settings, workspaceData, savedLocations] = await Promise.all([
+  const [settings, workspaceData, savedLocations, japaneseCatalog] = await Promise.all([
     loadSettings(),
     loadWorkspaceData(),
     getSavedLocations().catch(() => []),
+    japaneseCatalogStatus().catch(() => null),
   ]);
 
   const apiStatus = {
     ebay: !!(process.env.EBAY_APP_ID && process.env.EBAY_CERT_ID),
     justtcg: !!process.env.JUSTTCG_API_KEY,
     psa: !!process.env.PSA_API_KEY,
+    ppt: !!process.env.POKEMON_PRICE_TRACKER_API_KEY,
   };
 
   return (
@@ -30,6 +32,7 @@ async function SettingsLoader() {
       settings={settings}
       workspaceData={workspaceData}
       apiStatus={apiStatus}
+      japaneseCatalog={japaneseCatalog}
       savedLocations={savedLocations}
     />
   );

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui";
 import {
   saveSettings,
-  type UserSettings, type WorkspaceData, type SavedLocation,
+  type UserSettings, type WorkspaceData, type SavedLocation, type JapaneseCatalogStatus,
 } from "./actions";
 import type { SettingsUpdate } from "./components/SettingsPrimitives";
 import { ProfileSection } from "./components/ProfileSection";
@@ -58,12 +58,14 @@ export default function SettingsClient({
   settings: initialSettings,
   workspaceData,
   apiStatus,
+  japaneseCatalog = null,
   savedLocations = [],
 }: {
   email: string;
   settings: UserSettings;
   workspaceData: WorkspaceData;
   apiStatus: ApiStatus;
+  japaneseCatalog?: JapaneseCatalogStatus | null;
   savedLocations?: SavedLocation[];
 }) {
   const [settings, setSettings] = useState<UserSettings>(initialSettings);
@@ -128,7 +130,7 @@ export default function SettingsClient({
         <PricingDefaultsSection settings={settings} onChange={updateImmediate} />
         <DisplaySection settings={settings} onChange={updateImmediate} />
         <NotificationsSection settings={settings} onChange={updateImmediate} />
-        <PricingSourcesSection apiStatus={apiStatus} />
+        <PricingSourcesSection apiStatus={apiStatus} japaneseCatalog={japaneseCatalog} />
         <DataSection />
         <StorageSection />
         <OfflineSyncSection />
