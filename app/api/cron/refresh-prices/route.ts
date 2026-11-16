@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lookupCard, lookupRawMarketFromTcgDex } from "@/lib/pokemonPriceTracker";
-import { nightlyMarketSource, usablePrice, type Category } from "@/lib/nightlyPricing";
+import { justTcgPricedRecently, nightlyMarketSource, usablePrice, type Category, type JustTcgRow } from "@/lib/nightlyPricing";
+import { makeRawCardPriceKey } from "@/lib/justtcg";
+import { tcgplayerItemPrices } from "@/lib/tcgplayerPrices";
 
 // ── Nightly refresh (03:00) ──
 // Runs last of the three price jobs (see lib/nightlyPricing.ts for who owns
-// which price): fills in images, writes the fallback prices this job owns,
-// then writes the daily inventory snapshot so the Home chart sees tonight's
-// prices rather than yesterday's.
+// which price): fills in images, writes TCGplayer prices (with the older
+// sources as fallback) for everything JustTCG didn't price tonight, then
+// writes the daily inventory snapshot so the Home chart sees tonight's prices
+// rather than yesterday's.
 
 // Allow up to 5 minutes — needed for large inventories (Vercel Pro required for >60s)
 export const maxDuration = 300;
@@ -25,7 +28,7 @@ export async function GET(req: NextRequest) {
   // Fetch all non-sold items across all workspaces
   const { data: items, error } = await supabase
     .from("items")
-    .select("id, workspace_id, name, category, set_name, card_number, image_url")
+    .select("id, workspace_id, name, category, set_name, card_number, image_url, product_type, language")
     .neq("status", "sold");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -39,6 +42,22 @@ export async function GET(req: NextRequest) {
   const LOOKUP_BUDGET_MS = 4.5 * 60 * 1000;
   const justTcgConfigured = !!process.env.JUSTTCG_API_KEY;
 
+  // Which cards the 02:00 JustTCG job priced tonight (their price stays)
+  const justTcgPriced = justTcgConfigured ? await justTcgPricedKeys(supabase, items) : new Set<string>();
+  const priceKey = (it: { name: string; set_name: string | null; card_number: string | null }) =>
+    makeRawCardPriceKey(it.name, it.set_name, it.card_number);
+  const sourceOf = (it: (typeof items)[number]) =>
+    nightlyMarketSource(it.category as Category, { justTcgPriced: justTcgPriced.has(priceKey(it)) });
+
+  // TCGplayer prices for the rest, in one pass: a download per set, not per item
+  let tcgplayer = new Map<string, number>();
+  try {
+    tcgplayer = await tcgplayerItemPrices(items.filter((it) => sourceOf(it) === "tcgplayer"));
+  } catch (e) {
+    console.error("[cron/refresh-prices] TCGplayer pricing failed:", e instanceof Error ? e.message : e);
+  }
+  let fromTcgplayer = 0;
+
   for (let i = 0; i < items.length; i += BATCH) {
     if (Date.now() - started > LOOKUP_BUDGET_MS) {
       console.warn(`[cron/refresh-prices] time budget reached at ${i}/${items.length} — snapshotting now`);
@@ -48,18 +67,20 @@ export async function GET(req: NextRequest) {
       items.slice(i, i + BATCH).map(async (item) => {
         try {
           const category = item.category as Category;
-          const source = nightlyMarketSource(category, { justTcgConfigured });
+          const source = sourceOf(item);
           const result = await lookupCard(item.name, category, {
             setName: item.set_name, cardNumber: item.card_number,
           });
 
-          // lookupCard returns early from the image cache with no price, so a
-          // single whose art is already cached gets its price looked up here
+          // TCGplayer first; without a match, the older source. lookupCard
+          // returns early from the image cache with no price, so a single whose
+          // art is already cached gets its TCGdex price looked up here.
           let market: number | null = null;
-          if (source === "lookup") market = result?.market ?? null;
-          if (source === "tcgdex-raw") {
-            market = result?.market
-              ?? await lookupRawMarketFromTcgDex(item.name, item.set_name, item.card_number);
+          if (source === "tcgplayer") {
+            market = tcgplayer.get(item.id) ?? null;
+            if (market != null) fromTcgplayer++;
+            else if (category === "sealed") market = result?.market ?? null;
+            else market = result?.market ?? await lookupRawMarketFromTcgDex(item.name, item.set_name, item.card_number);
           }
 
           const patch: Record<string, unknown> = {};
@@ -83,7 +104,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, JustTCG ${justTcgConfigured ? "on" : "off"})`);
+  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, ${fromTcgplayer} from TCGplayer, ${justTcgPriced.size} kept from JustTCG, JustTCG ${justTcgConfigured ? "on" : "off"})`);
 
   // ── Daily inventory snapshot ──
   // One row per workspace per day feeds the Home value chart. Re-read after the
@@ -91,7 +112,35 @@ export async function GET(req: NextRequest) {
   // keeps a re-run idempotent.
   const snapshots = await writeInventorySnapshots(supabase);
 
-  return NextResponse.json({ updated, priced, total: items.length, justTcgConfigured, snapshots });
+  return NextResponse.json({
+    updated, priced, fromTcgplayer, keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
+  });
+}
+
+// Price keys (lib/justtcg → makeRawCardPriceKey) of the singles and sealed
+// that JustTCG priced in the last day
+async function justTcgPricedKeys(
+  supabase: ReturnType<typeof createAdminClient>,
+  items: { category: string; name: string; set_name: string | null; card_number: string | null }[],
+): Promise<Set<string>> {
+  const keys = [...new Set(items
+    .filter((it) => it.category === "single" || it.category === "sealed")
+    .map((it) => makeRawCardPriceKey(it.name, it.set_name, it.card_number)))];
+  const out = new Set<string>();
+  for (let i = 0; i < keys.length; i += 100) {
+    const { data, error } = await supabase
+      .from("raw_card_prices")
+      .select("lookup_key,last_updated,nm_price,lp_price,mp_price,hp_price,dmg_price")
+      .in("lookup_key", keys.slice(i, i + 100));
+    if (error) {
+      console.error("[cron/refresh-prices] raw_card_prices read failed:", error.message);
+      continue;
+    }
+    for (const row of (data ?? []) as (JustTcgRow & { lookup_key: string })[]) {
+      if (justTcgPricedRecently(row)) out.add(row.lookup_key);
+    }
+  }
+  return out;
 }
 
 type StockRow = { workspace_id: string; market: number | null; cost: number | null };
