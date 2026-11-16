@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
-import { useConfirm, useToast } from "@/components/ui";
+import { PageHeader, useConfirm, useToast } from "@/components/ui";
 import { ExpenseForm, type ExpenseFormPayload } from "@/components/expenses/ExpenseForm";
 import { YearEndReadinessPill } from "@/components/expenses/YearEndReadinessPill";
 import { compressImage } from "@/components/expenses/compressImage";
@@ -264,35 +264,31 @@ export default function ExpensesClient({
       />
 
       {/* ── Page header ── */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold leading-tight">Expenses</h1>
-            {activeShow && <ShowPill name={activeShow.name} live />}
-          </div>
-          {isHistoricalYear && (
-            <span className="text-xs text-warning">Viewing historical data</span>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/protected/expenses/tax-report"
-            className="inline-flex h-11 items-center rounded-lg border border-accent-tint px-3 text-sm text-accent transition-colors duration-150 hover:bg-accent-tint"
-          >
-            Tax Report →
-          </Link>
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm tabular-nums text-foreground"
-            aria-label="Year"
-          >
-            {yearOptions.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <PageHeader
+        title="Expenses"
+        badge={activeShow && <ShowPill name={activeShow.name} live />}
+        meta={isHistoricalYear && <span className="text-warning">Viewing historical data</span>}
+        actions={
+          <>
+            <Link
+              href="/protected/expenses/tax-report"
+              className="inline-flex h-11 items-center rounded-lg border border-accent-tint px-3 text-sm text-accent transition-colors duration-150 hover:bg-accent-tint"
+            >
+              Tax Report →
+            </Link>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm tabular-nums text-foreground"
+              aria-label="Year"
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </>
+        }
+      />
 
       {/* ── Readiness row ── */}
       <div className="flex items-center justify-between gap-2">

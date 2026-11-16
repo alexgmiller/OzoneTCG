@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { PageHeader } from "@/components/ui";
 import TaxReportClient, { type TaxSummary, type CategoryRow, type ShowRow } from "./TaxReportClient";
 import type { ExpenseCategory } from "../actions";
 
@@ -138,17 +137,7 @@ export default async function TaxReportPage({
 
   return (
     <div className="w-full py-4 sm:py-6 space-y-4 max-w-4xl mx-auto">
-      <div className="flex items-center gap-2">
-        <Link
-          href="/protected/expenses"
-          className="inline-flex h-11 items-center gap-1 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
-        >
-          <ChevronLeft size={16} />
-          Expenses
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <h1 className="text-xl font-semibold">Tax Report</h1>
-      </div>
+      <PageHeader title="Tax Report" back={{ href: "/protected/expenses", label: "Expenses" }} />
       <TaxReportClient year={year} availableYears={availableYears} summary={summary} />
     </div>
   );
