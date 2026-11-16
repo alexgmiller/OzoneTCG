@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { addToInventoryHref } from "@/app/protected/inventory/addPrefill";
 import { PriceHistory } from "@/app/protected/inventory/components/PriceHistory";
 import { getCardDetail, getCardPrice, type CardDetail, type StockMatch } from "./actions";
+import type { EbayAsking } from "@/lib/ebay";
+import type { AskingEstimate } from "@/lib/ebayAsking";
 import type { CatalogCard } from "./catalog";
 
 // ── Card detail ──
@@ -17,12 +19,35 @@ import type { CatalogCard } from "./catalog";
 // market price) and, with stock, Sell in POS. Then RAW | GRADED:
 //   RAW     TCGplayer market price, then low and market per printing (Holofoil,
 //           Reverse Holofoil…) with a link to the listing; cards TCGCSV doesn't
-//           match fall back to TCGdex (Retry on a slow lookup). Your raw copies.
+//           match fall back to TCGdex (Retry on a slow lookup). With no sales
+//           price anywhere, plan C: the low end of current eBay listings,
+//           labelled as asking prices (lib/ebayAsking.ts). Your raw copies.
 //   GRADED  your graded copies; graded market prices need a graded data source
 // Under the copies, the first copy's value night by night (item_price_history).
 
 type Tab = "raw" | "graded";
 const TABS = [{ value: "raw", label: "Raw" }, { value: "graded", label: "Graded" }] as const;
+
+// Plan C by condition: near mint (listings that state no condition count
+// here) and played, or one row for all when neither has enough listings
+function AskingRows({ asking }: { asking: EbayAsking }) {
+  const rows = [
+    asking.nm && { label: "Near mint", e: asking.nm },
+    asking.played && { label: "Played", e: asking.played },
+  ].filter((r): r is { label: string; e: AskingEstimate } => !!r);
+  if (!rows.length && asking.all) rows.push({ label: "All conditions", e: asking.all });
+  return (
+    <ul className="overflow-hidden rounded-2xl bg-surface-2" aria-label="eBay asking prices by condition">
+      {rows.map((r) => (
+        <li key={r.label} className="flex h-11 items-center gap-3 border-b border-border px-3 text-sm last:border-b-0">
+          <span className="min-w-0 flex-1 truncate text-foreground">{r.label}</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{r.e.count} listings</span>
+          <MoneyDisplay amount={r.e.price} tone="neutral" className="w-20 text-right font-semibold text-foreground" />
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function CopyList({ copies, label }: { copies: StockMatch[]; label: (s: StockMatch) => string }) {
   return (
@@ -116,9 +141,9 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
                   // Inventory marks Japanese cards "(JP)" (lib/cardArtMatch → cardLang);
                   // the TCGdex card id field doesn't apply
                   ? { name: `${card.name} (JP)`, setName: card.setName, cardNumber: card.cardNumber,
-                    imageUrl: card.imageUrl, cardId: null, market: detail?.market ?? null }
+                    imageUrl: card.imageUrl, cardId: null, market: detail?.market ?? detail?.asking?.price ?? null }
                   : { name: card.name, setName: card.setName, cardNumber: card.cardNumber,
-                    imageUrl: card.imageUrl, cardId: card.id, market: detail?.market ?? null },
+                    imageUrl: card.imageUrl, cardId: card.id, market: detail?.market ?? detail?.asking?.price ?? null },
               )}
               className={cn(buttonVariants(), "flex-1")}
             >
@@ -139,7 +164,7 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="section-label">TCGplayer market</div>
+                  <div className="section-label">{detail && detail.market == null && detail.asking ? "eBay asking price" : "TCGplayer market"}</div>
                   {detail?.quote?.url && (
                     <a href={detail.quote.url} target="_blank" rel="noopener noreferrer"
                       className="inline-flex h-11 items-center gap-1 text-xs font-medium text-accent transition-colors duration-150 hover:text-foreground">
@@ -159,7 +184,20 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
                       </button>
                     </div>
                   ) : (
-                    <div className="text-sm text-muted-foreground">No price listed</div>
+                    detail.asking ? (
+                      <div className="space-y-2">
+                        <MoneyDisplay amount={detail.asking.price} tone="neutral" className="text-2xl font-bold text-foreground" />
+                        <AskingRows asking={detail.asking} />
+                        <p className="text-xs text-muted-foreground">
+                          No sales found, so this is the low end of current eBay asking prices, not sales.{" "}
+                          <a href={detail.asking.searchUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-accent hover:text-foreground">
+                            See listings
+                          </a>
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No sales or listings found</div>
+                    )
                   )
                 ) : failed ? (
                   <div className="text-sm text-muted-foreground">Couldn&apos;t load</div>

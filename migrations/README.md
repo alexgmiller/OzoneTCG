@@ -40,6 +40,7 @@ file is the source of truth for what has been applied.
 | `20261116_card_art.sql` | ✅ | applied 2026-11-16 (table confirmed present). Card art memory: one image per card (key = language + name + set + number, lib/cardArtMatch.ts → cardKey), reused for every copy. Manual images always win. |
 | `20261117_item_price_history.sql` | ⬜ | One row per inventory item per day (market after the 03:00 refresh-prices cron), for the price charts in Inventory's item detail and Search's card sheet. Optional first-point insert at the bottom. |
 | `20261117_tcgplayer_cards.sql` | ⬜ | TCGplayer catalog (via TCGCSV) for Search's Japanese tab: English names, rarity, number, image, prices per printing. Filled daily by `/api/cron/sync-tcgplayer`; run that once by hand after applying (Vercel → Cron Jobs → Run) so the tab isn't empty until the next night. |
+| `20261116_item_market_source.sql` | ⬜ | items.market_source + market_updated_at: where each market price came from and when, stamped by the nightly price jobs (lib/marketSource.ts). Inventory shows it and filters on it; eBay asking prices get re-estimated nightly. The app skips the columns until this is applied. |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.
 
@@ -78,7 +79,9 @@ FROM (VALUES
   ('card_transactions', 'client_id', '20261013_pos'),
   ('card_transactions', 'paid_by', '20261013_pos'),
   ('card_transactions', 'sale_price', '20261013_pos'),
-  ('deal_logs', 'transaction_id', '20261013_pos')
+  ('deal_logs', 'transaction_id', '20261013_pos'),
+  ('items', 'market_source', '20261116_item_market_source'),
+  ('items', 'market_updated_at', '20261116_item_market_source')
 ) AS t(tbl, col, migration)
 LEFT JOIN information_schema.columns c
   ON c.table_schema = 'public' AND c.table_name = t.tbl AND c.column_name = t.col

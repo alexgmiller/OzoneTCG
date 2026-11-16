@@ -39,6 +39,21 @@ describe("filterItems", () => {
     expect(ids({ consigner: "c1" })).toEqual(["c"]);
     expect(ids({ consigner: "other" })).toEqual([]);
   });
+  it("price: no price / eBay asking", () => {
+    const pool = [
+      item({ id: "p1", market: null }),
+      item({ id: "p2", market: 40, market_source: "ebay_asking" }),
+      item({ id: "p3", market: 50, market_source: "tcgplayer" }),
+      item({ id: "p4", market: 50 }),
+    ];
+    const pick = (price: "none" | "asking", priceOf?: (it: Item) => number | null) =>
+      filterItems(pool, { ...defaultFilters, price }, priceOf).map((i) => i.id);
+    expect(pick("none")).toEqual(["p1"]);
+    // The row's shown price decides "no price", not the stored market alone
+    expect(pick("none", (it) => (it.id === "p4" ? null : it.market))).toEqual(["p1", "p4"]);
+    expect(pick("asking")).toEqual(["p2"]);
+    expect(countActiveFilters({ ...defaultFilters, price: "asking" })).toBe(1);
+  });
 });
 
 describe("sortItems", () => {
