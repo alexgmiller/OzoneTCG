@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupCore, hiResImage, pickProduct, resolveGroups, type TcgGroup, type TcgProduct } from "./tcgplayerMatch";
+import { closestGroups, groupCore, hiResImage, pickProduct, resolveGroups, type TcgGroup, type TcgProduct } from "./tcgplayerMatch";
 
 // Slices of TCGCSV's real group lists
 const EN: TcgGroup[] = [
@@ -20,6 +20,12 @@ const JA: TcgGroup[] = [
   { groupId: 23599, name: "SV2a: Pokemon Card 151", abbreviation: "SV2a" },
   { groupId: 23724, name: "Rocket Gang" },
   { groupId: 23730, name: "Base Expansion Pack" },
+  { groupId: 23721, name: "Expansion Pack" },
+  { groupId: 23740, name: "Expansion Pack (No Rarity)" },
+  { groupId: 23726, name: "Challenge from the Darkness" },
+  { groupId: 23725, name: "Leaders' Stadium" },
+  { groupId: 23727, name: "Gold, Silver, to a New World..." },
+  { groupId: 23729, name: "Darkness, and to Light..." },
 ];
 
 const ids = (gs: TcgGroup[]) => gs.map((g) => g.groupId);
@@ -50,7 +56,7 @@ describe("resolveGroups", () => {
     expect(ids(resolveGroups("Sun & Moon Promos JP", JA, "ja"))).toEqual([23881]);
     expect(ids(resolveGroups("Pokemon 151", JA, "ja"))).toEqual([23599]);
     expect(ids(resolveGroups("Team Rocket (Japanese)", JA, "ja"))).toEqual([23724]);
-    expect(ids(resolveGroups("Base Set (Japanese)", JA, "ja"))).toEqual([23730]);
+    expect(ids(resolveGroups("Base Set (Japanese)", JA, "ja"))).toEqual([23721]);   // not 2001 "Base Expansion Pack"
   });
   it("finds nothing for an unknown or empty set", () => {
     expect(resolveGroups("Nonexistent Set", JA, "ja")).toEqual([]);
@@ -95,5 +101,25 @@ describe("hiResImage", () => {
 describe("pickProduct · SV promo numbers", () => {
   it("finds 'SVP 175' listed as 175", () => {
     expect(pickProduct([card(655095, "Espeon ex - 175", "175")], "Espeon ex - 175", "SVP 175")?.productId).toBe(655095);
+  });
+});
+
+describe("vintage Japanese set names", () => {
+  it("maps WotC-era English names to TCGplayer's Japanese ones", () => {
+    expect(ids(resolveGroups("Gym Challenge (Japanese)", JA, "ja"))).toEqual([23726]);
+    expect(ids(resolveGroups("Gym Heroes (Japanese)", JA, "ja"))).toEqual([23725]);
+    expect(ids(resolveGroups("Neo Genesis (Japanese)", JA, "ja"))).toEqual([23727]);
+    expect(ids(resolveGroups("Neo Destiny JP", JA, "ja"))).toEqual([23729]);
+  });
+});
+
+describe("closestGroups (last resort)", () => {
+  it("finds a set by its meaningful words", () => {
+    expect(ids(closestGroups("Darkness to Light", JA, "ja"))).toEqual([23729]);
+    expect(ids(closestGroups("VSTAR Universe Japanese", JA, "ja"))).toEqual([23645]);
+  });
+  it("finds nothing when no set is close", () => {
+    expect(closestGroups("Totally Unrelated Name", JA, "ja")).toEqual([]);
+    expect(closestGroups("Pokemon Promo", JA, "ja")).toEqual([]);
   });
 });
