@@ -15,6 +15,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // Up to 5 minutes; the loop stops itself before that (time guard below)
 export const maxDuration = 300;
 import { searchRawCard, batchLookupRawCards, makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
+import { hasMarketSourceColumns, marketStamp } from "@/lib/marketSource";
 
 const DAILY_STALENESS_MS = 24 * 60 * 60 * 1000;
 const DELAY_MS = 1000; // 1s between individual search requests
@@ -95,6 +96,8 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date().toISOString();
+  // Where the price came from (once migrations/20261116_item_market_source.sql is applied)
+  const stamp = (await hasMarketSourceColumns(admin)) ? marketStamp("justtcg", now) : {};
   let processed = 0;
   let skipped = 0;
 
@@ -142,7 +145,7 @@ export async function GET(req: NextRequest) {
         if (marketPrice != null) {
           await admin
             .from("items")
-            .update({ market: marketPrice })
+            .update({ market: marketPrice, ...stamp })
             .eq("id", item.id)
             .eq("workspace_id", item.workspace_id);
         }
@@ -201,7 +204,7 @@ export async function GET(req: NextRequest) {
       if (marketPrice != null) {
         await admin
           .from("items")
-          .update({ market: marketPrice })
+          .update({ market: marketPrice, ...stamp })
           .eq("id", mi.id)
           .eq("workspace_id", mi.workspace_id);
       }

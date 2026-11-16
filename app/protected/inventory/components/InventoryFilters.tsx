@@ -6,15 +6,17 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Category, ConsignerOption } from "../types";
-import type { Filters } from "../inventoryView";
+import type { Filters, PriceFilter } from "../inventoryView";
 
 export { defaultFilters, countActiveFilters } from "../inventoryView";
 export type { Filters, StatusFilter } from "../inventoryView";
 
 // ── Filter row ──
 // In stock | Sold, then a scrolling chip rail: All, Slabs, Singles, Sealed,
-// Consigned, and a consigner dropdown chip.
+// Consigned, a consigner dropdown chip, and a price dropdown chip (no price,
+// or eBay asking estimates).
 const STOCK = [{ value: "active", label: "In stock" }, { value: "sold", label: "Sold" }] as const;
+const PRICE_LABELS: Record<PriceFilter, string> = { all: "Price", none: "No price", asking: "eBay asking" };
 const CATEGORIES: readonly { value: Category | "all"; label: string }[] = [
   { value: "all", label: "All" }, { value: "slab", label: "Slabs" }, { value: "single", label: "Singles" }, { value: "sealed", label: "Sealed" },
 ];
@@ -71,6 +73,21 @@ export function InventoryFilters({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Chip selected={filters.price !== "all"} icon={<ChevronDown size={14} />}>
+              {PRICE_LABELS[filters.price]}
+            </Chip>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuRadioGroup value={filters.price} onValueChange={(v) => setFilters({ price: v as PriceFilter })}>
+              <DropdownMenuRadioItem value="all">Any price</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="none">No price</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="asking">eBay asking (not sales)</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </ChipRow>
     </div>
   );
