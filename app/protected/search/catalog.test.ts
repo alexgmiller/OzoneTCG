@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesCard, nameTerm, rankCatalog, type CatalogRow } from "./catalog";
+import { matchesCard, nameTerm, pushRecent, rankCatalog, setFacets, sortCards, type CatalogCard, type CatalogRow } from "./catalog";
 
 const row = (o: Partial<CatalogRow>): CatalogRow => ({
   id: "x", name: "Charizard", set_id: "sv03", set_name: "Obsidian Flames", card_number: "125", image_url: null, ...o,
@@ -68,5 +68,37 @@ describe("matchesCard", () => {
   });
   it("accepts an item with no set recorded", () => {
     expect(matchesCard(item({ set_name: null }), card)).toBe(true);
+  });
+});
+
+describe("setFacets / sortCards / pushRecent", () => {
+  const c = (id: string, name: string, setName: string, cardNumber: string | null): CatalogCard =>
+    ({ id, name, setName, setId: null, cardNumber, imageUrl: null });
+  const cards = [
+    c("a", "Charizard", "Base Set", "4/102"),
+    c("b", "Charizard ex", "151", "199"),
+    c("c", "Charizard", "Lost Origin Trainer Gallery", "TG03"),
+    c("d", "Charizard V", "151", "25"),
+  ];
+
+  it("counts sets, most cards first", () => {
+    expect(setFacets(cards)).toEqual([
+      { name: "151", count: 2 },
+      { name: "Base Set", count: 1 },
+      { name: "Lost Origin Trainer Gallery", count: 1 },
+    ]);
+  });
+
+  it("keeps the ranking for best match and re-orders otherwise", () => {
+    expect(sortCards(cards, "best").map((x) => x.id)).toEqual(["a", "b", "c", "d"]);
+    expect(sortCards(cards, "number").map((x) => x.id)).toEqual(["c", "a", "d", "b"]);
+    expect(sortCards(cards, "set").map((x) => x.id)).toEqual(["d", "b", "a", "c"]);
+    expect(sortCards(cards, "name").map((x) => x.id)).toEqual(["c", "a", "b", "d"]);
+  });
+
+  it("keeps recent searches newest first, deduped and capped", () => {
+    expect(pushRecent(["mew", "pikachu"], "Pikachu")).toEqual(["Pikachu", "mew"]);
+    expect(pushRecent(["a", "b", "c"], "d", 3)).toEqual(["d", "a", "b"]);
+    expect(pushRecent(["a"], "   ")).toEqual(["a"]);
   });
 });

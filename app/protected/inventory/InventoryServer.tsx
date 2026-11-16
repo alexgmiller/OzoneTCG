@@ -1,3 +1,4 @@
+import type { AddPrefill } from "./addPrefill";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
@@ -50,7 +51,7 @@ const ITEM_COLS = "id,name,category,owner,status,market,cost,condition,notes,cre
 // Most recent sales only — the Transactions ledger holds the full history
 const SOLD_LIMIT = 500;
 
-export default async function InventoryServer({ focusId = null }: { focusId?: string | null }) {
+export default async function InventoryServer({ focusId = null, addPrefill = null }: { focusId?: string | null; addPrefill?: AddPrefill | null }) {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
@@ -146,6 +147,7 @@ export default async function InventoryServer({ focusId = null }: { focusId?: st
         rawCardPrices={rawCardPriceMap}
         gradingCost={settings?.grading_cost ?? 20}
         focusId={focusId}
+        addPrefill={addPrefill}
       />
     </div>
   );

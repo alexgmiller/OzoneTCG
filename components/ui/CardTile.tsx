@@ -11,6 +11,10 @@ import { cn } from "@/lib/utils";
 //   line 2  variant / grade in muted mono
 //   line 3  price, bold, with ▲/▼ for FMV vs cost
 // No image → a surface-2 tile with the name centred.
+//
+// layout="panel" (Search results) puts the details under the art instead, on
+// --surface: set chip, name with number, then an optional footer row (stock,
+// later price). Art stays uncovered, which suits browsing many printings.
 export type CardTileDelta = "up" | "down" | null;
 
 type Props = {
@@ -25,14 +29,20 @@ type Props = {
   width?: number;
   onClick?: () => void;
   className?: string;
+  layout?: "overlay" | "panel";
+  /** panel: small chip above the name (the set) */
+  chip?: string | null;
+  /** panel: bottom row under a hairline */
+  footer?: React.ReactNode;
 };
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-export function CardTile({
-  name, setNumber, meta, price, delta = null, imageUrl, consigned, selected, width, onClick, className,
-}: Props) {
-  const Tag = onClick ? "button" : "div";
+export function CardTile(props: Props) {
+  return props.layout === "panel" ? <PanelTile {...props} /> : <OverlayTile {...props} />;
+}
+
+function useArt(imageUrl: string | null | undefined) {
   // A dead image URL falls back to the no-image tile instead of a broken glyph.
   // The error can fire on the server-rendered <img> before hydration attaches
   // onError, so the mount check catches that case too.
@@ -43,7 +53,54 @@ export function CardTile({
     const el = imgRef.current;
     if (el && el.complete && el.naturalWidth === 0) setBroken(true);
   }, [imageUrl]);
-  const art = imageUrl && !broken ? imageUrl : null;
+  return { art: imageUrl && !broken ? imageUrl : null, imgRef, onError: () => setBroken(true) };
+}
+
+function PanelTile({ name, setNumber, imageUrl, chip, footer, selected, onClick, className }: Props) {
+  const Tag = onClick ? "button" : "div";
+  const { art, imgRef, onError } = useArt(imageUrl);
+  return (
+    <Tag
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        "group flex w-full flex-col overflow-hidden rounded-2xl bg-surface text-left transition-colors duration-150 hover:bg-surface-2",
+        selected && "ring-2 ring-accent ring-offset-2 ring-offset-bg",
+        className,
+      )}
+    >
+      <div className="relative aspect-[63/88] w-full overflow-hidden bg-surface-2">
+        {art ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img ref={imgRef} src={art} alt="" loading="lazy" onError={onError} className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center p-3">
+            <span className="line-clamp-3 text-center text-sm font-medium text-muted-foreground">{name}</span>
+          </div>
+        )}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-2.5">
+        {chip && (
+          <span className="max-w-full self-start truncate rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {chip}
+          </span>
+        )}
+        <div className="flex min-w-0 items-baseline justify-between gap-2">
+          <span className="min-w-0 truncate text-sm font-semibold text-foreground">{name}</span>
+          {setNumber && <span className="shrink-0 font-mono text-xs text-muted-foreground">{setNumber}</span>}
+        </div>
+        {footer != null && <div className="mt-auto border-t border-border pt-1.5 text-xs text-muted-foreground">{footer}</div>}
+      </div>
+    </Tag>
+  );
+}
+
+function OverlayTile({
+  name, setNumber, meta, price, delta = null, imageUrl, consigned, selected, width, onClick, className,
+}: Props) {
+  const Tag = onClick ? "button" : "div";
+  const { art, imgRef, onError } = useArt(imageUrl);
 
   return (
     <Tag
@@ -60,7 +117,7 @@ export function CardTile({
     >
       {art ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img ref={imgRef} src={art} alt="" loading="lazy" onError={() => setBroken(true)} className="absolute inset-0 h-full w-full object-cover" />
+        <img ref={imgRef} src={art} alt="" loading="lazy" onError={onError} className="absolute inset-0 h-full w-full object-cover" />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center p-3">
           <span className="line-clamp-3 text-center text-sm font-medium text-muted-foreground">{name}</span>

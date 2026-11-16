@@ -8,6 +8,7 @@ import { useToast, useConfirm, type PressPoint } from "@/components/ui";
 import { createItems, deleteItem, deleteItems, updateItem, bulkPatchItems } from "./actions";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
 import type { Status, ConsignerOption, Item, ItemForm, Psa10Entry, HistoryDuration } from "./types";
+import type { AddPrefill } from "./addPrefill";
 import { toNum, effectiveCost, blankForm, itemToForm, formToInput } from "./utils";
 import { usePricing } from "./usePricing";
 import { useViewMode } from "./useViewMode";
@@ -35,7 +36,7 @@ import GradingSection from "./components/GradingSection";
 // `items` holds in-stock rows plus the most recent sold rows; sold rows only render under the Sold filter.
 // `focusId` (from ?focus=) opens that item's detail on arrival.
 export default function InventoryClient({
-  items, consigners, workspaceId, slabPrices, rawCardPrices, gradingCost = 20, focusId = null,
+  items, consigners, workspaceId, slabPrices, rawCardPrices, gradingCost = 20, focusId = null, addPrefill = null,
 }: {
   items: Item[];
   consigners: ConsignerOption[];
@@ -44,6 +45,7 @@ export default function InventoryClient({
   rawCardPrices: Record<string, RawCardPrice>;
   gradingCost?: number;
   focusId?: string | null;
+  addPrefill?: AddPrefill | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -164,6 +166,25 @@ export default function InventoryClient({
     const f = blankForm();
     setEditForm(f); setEditInitial(f); setEditing({ mode: "add" });
   }
+
+  // ── Arrive with a card to add (Search's "Add to inventory") ──
+  // The add sheet opens filled in; the URL is cleaned so a refresh doesn't
+  // open it again. Initial stays blank, so Save is enabled straight away.
+  useEffect(() => {
+    if (!addPrefill) return;
+    const f: ItemForm = {
+      ...blankForm(),
+      name: addPrefill.name,
+      setName: addPrefill.setName ?? "",
+      cardNumber: addPrefill.cardNumber ?? "",
+      imageUrl: addPrefill.imageUrl ?? "",
+      cardId: addPrefill.cardId ?? "",
+      market: addPrefill.market != null ? addPrefill.market.toFixed(2) : "",
+    };
+    setEditForm(f); setEditInitial(blankForm()); setEditing({ mode: "add" });
+    router.replace("/protected/inventory", { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addPrefill]);
   async function onSaveSheet() {
     if (!editing || !editForm.name.trim()) return;
     const ok = editing.mode === "edit"
