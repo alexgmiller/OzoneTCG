@@ -29,13 +29,14 @@ file is the source of truth for what has been applied.
 | `20240424_business_structure.sql` | ✅ | verified 2026-10-14 (workspace_partners exists). business_structure is no longer read by the app. |
 | `20240425_expense_documentation.sql` | ✅ | verified 2026-10-14 (columns exist) |
 | `20240426_mileage_helpers.sql` | ✅ | verified 2026-10-14 (workspace_saved_locations exists) |
-| `20240427_shows_calendar.sql` | ✅ | applied (tables exist, verified 2026-10-14). **Obsolete** — nothing reads card_shows / scraper_runs / workspace_bookmarked_shows any more; safe to drop later. |
+| `20240427_shows_calendar.sql` | ✅ | applied 2026-10-14. **Tables dropped 2026-11-16** by `20261116_drop_shows_calendar.sql`; kept for history only. |
 | `20260720_market_signals.sql` | ✅ | sold_comps + pop_snapshots + RLS + prune fn (applied 2026-07-21) |
 | `20260720_card_embeddings.sql` | ✅ | pgvector + match_card RPC (applied 2026-07-20) |
 | `20260721_scan_photos.sql` | ✅ | scan photo persistence for recognition training data (applied 2026-07-21) |
-| `20261013_internal_v1.sql` | ✅ | Drops guest_pins, scan_photos, card_embeddings (+ match_card), pop_snapshots. Take the backups at the top first; delete the scan-photos bucket in the dashboard (SQL can't). After running, those tables will show MISSING in the check below — expected. | (applied 2026-10-14; bucket still to delete in the dashboard)
+| `20261013_internal_v1.sql` | ✅ | Drops guest_pins, scan_photos, card_embeddings (+ match_card), pop_snapshots. Take the backups at the top first; delete the scan-photos bucket in the dashboard (SQL can't). After running, those tables will show MISSING in the check below — expected. Applied 2026-10-14; the scan-photos bucket was confirmed gone 2026-11-16. |
 | `20261013_pos.sql` | ✅ | applied 2026-10-14. card_transactions payment_method/counterparty/show_session_id/client_id/paid_by/sale_price; deal_logs.transaction_id. Optional commented backfill of legacy deals into the ledger at the bottom. |
 | `20261016_inventory_snapshots.sql` | ✅ | applied 2026-11-16 (optional backfill skipped). Home value chart. One row per workspace per day (total_fmv, total_cost, item_count), written by the 03:00 refresh-prices cron after it updates prices. Days without a snapshot are estimated from item acquired/sold dates at today's prices (`valueHistory` in `app/protected/dashboard/home.ts`). |
+| `20261116_drop_shows_calendar.sql` | ✅ | applied 2026-11-16 (check returned no rows). Drops card_shows, scraper_runs and workspace_bookmarked_shows; nothing used them after internal-v1. show_sessions is untouched. |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.
 
@@ -49,8 +50,7 @@ SELECT t.expected,
 FROM (VALUES
   ('card_transactions'), ('card_images'), ('card_search_frequency'),
   ('sold_comps'), ('pop_snapshots'), ('card_embeddings'), ('scan_photos'),
-  ('workspace_partners'), ('workspace_saved_locations'), ('card_shows'),
-  ('scraper_runs'), ('workspace_bookmarked_shows'), ('inventory_snapshots')
+  ('workspace_partners'), ('workspace_saved_locations'), ('inventory_snapshots')
 ) AS t(expected)
 LEFT JOIN information_schema.tables c
   ON c.table_schema = 'public' AND c.table_name = t.expected
