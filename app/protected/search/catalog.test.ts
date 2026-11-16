@@ -57,7 +57,7 @@ describe("rankCatalog", () => {
 });
 
 describe("matchesCard", () => {
-  const card = { name: "Mew ex", setName: "151", setId: "sv03.5", cardNumber: "151" };
+  const card = { name: "Mew ex", setName: "151", setId: "sv03.5", cardNumber: "151", lang: "en" as const };
 
   it("accepts the set code in place of the set name", () => {
     expect(matchesCard({ id: "i", name: "Mew ex", set_name: "sv03.5", card_number: "151" }, card)).toBe(true);
@@ -74,11 +74,39 @@ describe("matchesCard", () => {
   it("accepts an item with no set recorded", () => {
     expect(matchesCard(item({ set_name: null }), card)).toBe(true);
   });
+  it("never counts a Japanese copy as the English card", () => {
+    expect(matchesCard(item({ name: "Mew ex (JP)" }), card)).toBe(false);
+  });
+});
+
+describe("matchesCard (Japanese)", () => {
+  const card = { name: "Mew ex", setName: "Pokemon Card 151", setId: "SV2a", cardNumber: "151/165", lang: "ja" as const };
+  const item = (o: object) => ({ id: "i", name: "Mew ex (JP)", set_name: "Pokemon 151 (Japanese)", card_number: "151/165", ...o });
+
+  it("matches a (JP) item by name, number and set", () => {
+    expect(matchesCard(item({}), card)).toBe(true);
+    expect(matchesCard(item({ card_number: "151" }), card)).toBe(true);
+    expect(matchesCard(item({ set_name: "SV2a" }), card)).toBe(true);
+    expect(matchesCard(item({ name: "Mew ex", set_name: "151 JP" }), card)).toBe(true);
+  });
+  it("ignores TCGplayer's variant tag on the card", () => {
+    expect(matchesCard(item({}), { ...card, name: "Mew ex (Master Ball Pattern)" })).toBe(true);
+  });
+  it("rejects English copies, other numbers and other sets", () => {
+    expect(matchesCard(item({ name: "Mew ex", set_name: "151" }), card)).toBe(false);
+    expect(matchesCard(item({ card_number: "205/165" }), card)).toBe(false);
+    expect(matchesCard(item({ set_name: "VSTAR Universe (Japanese)", card_number: "151/172" }), card)).toBe(false);
+  });
+  it("lets a promo number stand in for a set name it can't map", () => {
+    const promo = { name: "Psyduck", setName: "Sun & Moon Promos", setId: "SM-P", cardNumber: "186/SM-P", lang: "ja" as const };
+    expect(matchesCard({ id: "i", name: "Psyduck (JP)", set_name: "SM Black Star Promos (Japanese)", card_number: "186/SM-P" }, promo)).toBe(true);
+    expect(matchesCard({ id: "i", name: "Psyduck (JP)", set_name: "SM Black Star Promos (Japanese)", card_number: "186" }, promo)).toBe(false);
+  });
 });
 
 describe("setFacets / sortCards / pushRecent", () => {
   const c = (id: string, name: string, setName: string, cardNumber: string | null): CatalogCard =>
-    ({ id, name, setName, setId: null, cardNumber, imageUrl: null });
+    ({ id, name, setName, setId: null, cardNumber, imageUrl: null, lang: "en" });
   const cards = [
     c("a", "Charizard", "Base Set", "4/102"),
     c("b", "Charizard ex", "151", "199"),

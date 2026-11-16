@@ -217,14 +217,68 @@ export function toPrintings(prices: TcgPrice[]): Printing[] {
     .sort((a, b) => printRank(a.name) - printRank(b.name) || a.name.localeCompare(b.name));
 }
 
+// TCGplayer writes "None" for cards without a rarity mark
+const rarityOf = (p: TcgProduct) => {
+  const r = field(p, "Rarity")?.trim();
+  return r && r !== "None" ? r : null;
+};
+
 export function toQuote(product: TcgProduct, prices: TcgPrice[]): Quote {
   const printings = toPrintings(prices.filter((p) => p.productId === product.productId));
   const url = product.url && /^https:\/\/www\.tcgplayer\.com\//.test(product.url) ? product.url : null;
   return {
     productId: product.productId,
     url,
-    rarity: field(product, "Rarity"),
+    rarity: rarityOf(product),
     market: printings.find((p) => p.market != null)?.market ?? null,
     printings,
+  };
+}
+
+// ── Catalog rows (tcgplayer_cards, Search's Japanese tab) ──
+// TCGplayer's product names carry the number, and variants are separate
+// products: "Bulbasaur - 001/165 (Poke Ball Pattern)" → "Bulbasaur (Poke Ball
+// Pattern)". The number has its own column.
+export function productCardName(name: string): string {
+  return name.replace(/\s+-\s+[\w/.-]+(?=\s*\(|\s*$)/, "").replace(/\s+/g, " ").trim();
+}
+
+export type CatalogEntry = {
+  product_id: number;
+  lang: "en" | "ja";
+  group_id: number;
+  set_name: string;
+  set_code: string | null;
+  name: string;
+  card_number: string | null;
+  rarity: string | null;
+  image_url: string | null;
+  url: string | null;
+  /** Left out (not null) when the group's price list didn't load, so stored prices stay */
+  market?: number | null;
+  printings?: Printing[];
+  updated_at: string;
+};
+
+// The catalog row for a product that is a card; sealed products and other
+// non-cards are null. `prices` null = the price list is missing.
+export function toCatalogEntry(
+  p: TcgProduct, g: TcgGroup, lang: "en" | "ja", prices: TcgPrice[] | null, now: string,
+): CatalogEntry | null {
+  if (!isCard(p)) return null;
+  const quote = toQuote(p, prices ?? []);
+  return {
+    product_id: p.productId,
+    lang,
+    group_id: g.groupId,
+    set_name: groupCore(g.name),
+    set_code: g.abbreviation?.trim() || null,
+    name: productCardName(p.name),
+    card_number: field(p, "Number")?.trim() || null,
+    rarity: quote.rarity,
+    image_url: hiResImage(p.imageUrl),
+    url: quote.url,
+    ...(prices ? { market: quote.market, printings: quote.printings } : {}),
+    updated_at: now,
   };
 }

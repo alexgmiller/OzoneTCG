@@ -3,6 +3,11 @@
 // the catalog orders cards the same way the card autocomplete does.
 
 import { parseTerms, scoreLocalCard } from "@/lib/cardSearchScoring";
+import { cardLang } from "@/lib/cardArtMatch";
+import { stripParens } from "@/lib/cardNameUtils";
+import { resolveGroups } from "@/lib/tcgplayerMatch";
+
+export type CatalogLang = "en" | "ja";
 
 export type CatalogRow = {
   id: string;
@@ -14,14 +19,22 @@ export type CatalogRow = {
 };
 
 export type CatalogCard = {
+  /** English: TCGdex id ("sv04.5-232"). Japanese: "tcgp-<TCGplayer product id>" */
   id: string;
   name: string;
   setName: string;
-  /** TCGdex set code ("sv04.5"); inventory often stores this instead of the name */
+  /** English: TCGdex set code ("sv04.5"), which inventory sometimes stores
+   *  instead of the name. Japanese: TCGplayer's set code ("SV2a") */
   setId: string | null;
   cardNumber: string | null;
   imageUrl: string | null;
+  lang: CatalogLang;
 };
+
+// Japanese cards come from tcgplayer_cards; their id carries the product id
+export const JA_ID_PREFIX = "tcgp-";
+export const productIdOf = (card: Pick<CatalogCard, "id">) =>
+  card.id.startsWith(JA_ID_PREFIX) ? Number(card.id.slice(JA_ID_PREFIX.length)) || null : null;
 
 export const CATALOG_LIMIT = 48;
 
@@ -38,7 +51,9 @@ export function nameTerms(rawQuery: string, max = 3): string[] {
 // Every term must appear in the name, set name, set code or number; then best
 // match first. Among equal matches, cards with art come before art-less ones
 // (a name-only tile can't show which printing it is), then incoming order.
-export function rankCatalog(rows: CatalogRow[], rawQuery: string, limit = CATALOG_LIMIT): CatalogCard[] {
+export function rankCatalog(
+  rows: CatalogRow[], rawQuery: string, limit = CATALOG_LIMIT, lang: CatalogLang = "en",
+): CatalogCard[] {
   const terms = parseTerms(rawQuery);
   if (!terms.length) return [];
   const full = rawQuery.toLowerCase().trim();
@@ -58,6 +73,7 @@ export function rankCatalog(rows: CatalogRow[], rawQuery: string, limit = CATALO
       setId: r.set_id,
       cardNumber: r.card_number,
       imageUrl: r.image_url,
+      lang,
     }));
 }
 
@@ -71,8 +87,9 @@ const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 const normNum = (n: string | null) => norm(n).replace(/^0+(?=\d)/, "");
 
 export function matchesCard<T extends StockRow>(
-  item: T, card: Pick<CatalogCard, "name" | "setName" | "setId" | "cardNumber">,
+  item: T, card: Pick<CatalogCard, "name" | "setName" | "setId" | "cardNumber" | "lang">,
 ): boolean {
+  if (card.lang === "ja") return matchesJapaneseCard(item, card);
   if (norm(item.name) !== norm(card.name)) return false;
   if (card.cardNumber && normNum(item.card_number) !== normNum(card.cardNumber)) return false;
   if (item.set_name) {
@@ -80,6 +97,28 @@ export function matchesCard<T extends StockRow>(
     if (set !== norm(card.setName) && set !== norm(card.setId)) return false;
   }
   return true;
+}
+
+// Japanese items are marked "(JP)" / "(Japanese)" in the name or set
+// (lib/cardArtMatch → cardLang). Same card: the name without its parentheses
+// (TCGplayer's "(Poke Ball Pattern)" included), the number before any "/"
+// ("006/165", "186/SM-P"), and the set: the item's set name maps to this
+// card's TCGplayer set, or, when it doesn't, the full numbers agree
+// ("186/SM-P" names the set by itself).
+const baseName = (s: string) => norm(stripParens(s));
+const numHead = (n: string | null) => normNum((n ?? "").split("/")[0]);
+
+function matchesJapaneseCard(
+  item: StockRow, card: Pick<CatalogCard, "name" | "setName" | "setId" | "cardNumber">,
+): boolean {
+  if (cardLang(item) !== "ja") return false;
+  if (baseName(item.name) !== baseName(card.name)) return false;
+  if (card.cardNumber && numHead(item.card_number) !== numHead(card.cardNumber)) return false;
+  if (!item.set_name) return true;
+  const group = { groupId: 0, name: card.setId ? `${card.setId}: ${card.setName}` : card.setName, abbreviation: card.setId };
+  if (resolveGroups(item.set_name, [group], "ja").length) return true;
+  const full = (n: string | null) => norm(n).replace(/^0+(?=\d)/, "");
+  return !!card.cardNumber?.includes("/") && full(item.card_number) === full(card.cardNumber);
 }
 
 // ── Results controls ──

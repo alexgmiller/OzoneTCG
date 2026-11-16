@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { History, X } from "lucide-react";
-import { CardTile, Chip, ChipRow, EmptyState, MoneyDisplay, PageHeader, SearchBar, Skeleton } from "@/components/ui";
+import { CardTile, Chip, ChipRow, EmptyState, MoneyDisplay, PageHeader, SearchBar, Skeleton, TabStrip } from "@/components/ui";
 import type { Quote } from "@/lib/tcgplayerMatch";
 import { priceQuotes, searchCatalog, stockCounts } from "./actions";
-import { facets, pushRecent, setFacets, sortCards, SORTS, type CatalogCard, type SortKey } from "./catalog";
+import { facets, pushRecent, setFacets, sortCards, SORTS, type CatalogCard, type CatalogLang, type SortKey } from "./catalog";
 import SearchSuggest, { optionId, SUGGEST_LIMIT } from "./SearchSuggest";
 import CardDetailSheet from "./CardDetailSheet";
 
@@ -18,12 +18,26 @@ import CardDetailSheet from "./CardDetailSheet";
 // your stock underneath. Prices load just after the cards (lib/tcgcsv.ts), so
 // the grid never waits on them. Before any search, recent searches
 // (this device) are one tap away. ?q= holds the submitted query so Back from
-// Inventory or POS returns to the results.
+// Inventory or POS returns to the results; ?lang=ja keeps the Japanese tab.
+// English cards come from TCGdex's catalog, Japanese ones from TCGplayer's
+// (English names), so both search the same way.
 
 const MIN_CHARS = 2;
 const DEBOUNCE_MS = 200;
 const RECENT_KEY = "ozone.search.recent";
 const GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6";
+const LANGS = [{ value: "en", label: "English" }, { value: "ja", label: "Japanese" }] as const;
+const META: Record<CatalogLang, string> = {
+  en: "Every English Pokémon card, with TCGplayer prices",
+  ja: "Japanese cards from TCGplayer, by English name",
+};
+const searchHref = (query: string, lang: CatalogLang) => {
+  const p = new URLSearchParams();
+  if (query) p.set("q", query);
+  if (lang === "ja") p.set("lang", "ja");
+  const qs = p.toString();
+  return qs ? `/protected/search?${qs}` : "/protected/search";
+};
 const SELECT = "h-11 min-w-0 rounded-xl bg-surface-2 px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent";
 
 function readRecent(): string[] {
@@ -33,7 +47,7 @@ function writeRecent(list: string[]) {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* per-device nicety */ }
 }
 
-export default function SearchClient({ initialQuery }: { initialQuery: string }) {
+export default function SearchClient({ initialQuery, initialLang }: { initialQuery: string; initialLang: CatalogLang }) {
   const router = useRouter();
   const listId = useId();
 
@@ -42,19 +56,22 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
   const [submitted, setSubmitted] = useState(initialQuery.trim());
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(-1);
+  const [lang, setLang] = useState<CatalogLang>(initialLang);
 
   // ── Data ──
-  // One request per query string, shared by the dropdown and the grid
+  // One request per query and language, shared by the dropdown and the grid.
+  // Switching language swaps fetchCards, which re-runs both effects below.
   const cache = useRef(new Map<string, Promise<CatalogCard[]>>());
   const fetchCards = useCallback((query: string) => {
-    let p = cache.current.get(query);
+    const key = `${lang}|${query}`;
+    let p = cache.current.get(key);
     if (!p) {
-      p = searchCatalog(query);
-      p.catch(() => cache.current.delete(query));
-      cache.current.set(query, p);
+      p = searchCatalog(query, lang);
+      p.catch(() => cache.current.delete(key));
+      cache.current.set(key, p);
     }
     return p;
-  }, []);
+  }, [lang]);
 
   const [suggest, setSuggest] = useState<{ query: string; cards: CatalogCard[] | null }>({ query: "", cards: null });
   const [results, setResults] = useState<{ query: string; cards: CatalogCard[] | null; failed: boolean }>({ query: "", cards: null, failed: false });
@@ -110,7 +127,7 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
     setQ(t);
     setSubmitted(t);
     setFocused(false);
-    router.replace(`/protected/search?q=${encodeURIComponent(t)}`, { scroll: false });
+    router.replace(searchHref(t, lang), { scroll: false });
     const next = pushRecent(readRecent(), t);
     writeRecent(next);
     setRecent(next);
@@ -119,7 +136,13 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
   function clearAll() {
     setQ("");
     setSubmitted("");
-    router.replace("/protected/search", { scroll: false });
+    router.replace(searchHref("", lang), { scroll: false });
+  }
+
+  function switchLang(next: CatalogLang) {
+    if (next === lang) return;
+    setLang(next);
+    router.replace(searchHref(submitted, next), { scroll: false });
   }
 
   const suggestions = suggest.cards?.slice(0, SUGGEST_LIMIT) ?? null;
@@ -151,7 +174,9 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-4 py-4 lg:max-w-6xl">
-      <PageHeader title="Search" meta="Every English Pokémon card, with TCGplayer prices" />
+      <PageHeader title="Search" meta={META[lang]} />
+
+      <TabStrip value={lang} onChange={switchLang} tabs={LANGS} aria-label="Card language" className="lg:max-w-2xl" />
 
       {/* ── Search bar + dropdown ── */}
       <div className="relative lg:max-w-2xl">
@@ -207,7 +232,9 @@ export default function SearchClient({ initialQuery }: { initialQuery: string })
           )}
           <EmptyState
             title="Search every card"
-            hint="Try “charizard ex”, “umbreon 215” or “mew 151”. The camera icon opens the cert scanner."
+            hint={lang === "ja"
+              ? "Japanese cards by their English name: try “charizard ex 151”, “umbreon vmax” or “pikachu promo”."
+              : "Try “charizard ex”, “umbreon 215” or “mew 151”. The camera icon opens the cert scanner."}
             preview={
               <div className="grid grid-cols-3 gap-2 lg:grid-cols-6">
                 {Array.from({ length: 6 }).map((_, i) => (

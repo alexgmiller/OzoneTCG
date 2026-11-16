@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { candidateGroups, closestGroups, groupCore, hiResImage, pickProduct, resolveGroups, toQuote, withSubsets, type TcgGroup, type TcgPrice, type TcgProduct } from "./tcgplayerMatch";
+import { candidateGroups, closestGroups, groupCore, hiResImage, pickProduct, productCardName, resolveGroups, toCatalogEntry, toQuote, withSubsets, type TcgGroup, type TcgPrice, type TcgProduct } from "./tcgplayerMatch";
 
 // Slices of TCGCSV's real group lists
 const EN: TcgGroup[] = [
@@ -189,5 +189,45 @@ describe("toQuote", () => {
   it("only keeps tcgplayer.com links", () => {
     expect(toQuote(product, []).url).toBe(product.url);
     expect(toQuote({ ...product, url: "javascript:alert(1)" }, []).url).toBeNull();
+  });
+});
+
+describe("catalog rows", () => {
+  it("takes the number out of TCGplayer's product names", () => {
+    expect(productCardName("Bulbasaur - 001/165")).toBe("Bulbasaur");
+    expect(productCardName("Bulbasaur - 001/165 (Poke Ball Pattern)")).toBe("Bulbasaur (Poke Ball Pattern)");
+    expect(productCardName("Porygon-Z - 070/SM-P")).toBe("Porygon-Z");
+    expect(productCardName("Pokegear 3.0 - 129/173 (Mirror Holofoil)")).toBe("Pokegear 3.0 (Mirror Holofoil)");
+    expect(productCardName("Basic Fire Energy - 25")).toBe("Basic Fire Energy");
+    expect(productCardName("Pheromosa & Buzzwole GX")).toBe("Pheromosa & Buzzwole GX");
+  });
+
+  const group: TcgGroup = { groupId: 23599, name: "SV2a: Pokemon Card 151", abbreviation: "SV2a" };
+  const card: TcgProduct = {
+    productId: 566351, name: "Charizard ex - 006/165", imageUrl: "https://tcgplayer-cdn.tcgplayer.com/product/566351_200w.jpg",
+    url: "https://www.tcgplayer.com/product/566351/pokemon-japan-sv2a-charizard-ex",
+    extendedData: [{ name: "Rarity", value: "Double Rare" }, { name: "Number", value: "006/165" }],
+  };
+  const prices: TcgPrice[] = [
+    { productId: 566351, subTypeName: "Holofoil", marketPrice: 2.31, lowPrice: 1.87, midPrice: null, highPrice: null, directLowPrice: null },
+  ];
+
+  it("builds a row for a card", () => {
+    expect(toCatalogEntry(card, group, "ja", prices, "T")).toEqual({
+      product_id: 566351, lang: "ja", group_id: 23599, set_name: "Pokemon Card 151", set_code: "SV2a",
+      name: "Charizard ex", card_number: "006/165", rarity: "Double Rare",
+      image_url: "https://tcgplayer-cdn.tcgplayer.com/product/566351_in_1000x1000.jpg",
+      url: card.url, market: 2.31, printings: [{ name: "Holofoil", market: 2.31, low: 1.87 }], updated_at: "T",
+    });
+  });
+  it("leaves prices out when the price list is missing, so stored prices stay", () => {
+    const row = toCatalogEntry(card, group, "ja", null, "T");
+    expect(row).not.toHaveProperty("market");
+    expect(row).not.toHaveProperty("printings");
+  });
+  it("reads TCGplayer's 'None' rarity as no rarity, and skips non-cards", () => {
+    const plain = { ...card, extendedData: [{ name: "Rarity", value: "None" }, { name: "Number", value: "006/165" }] };
+    expect(toCatalogEntry(plain, group, "ja", prices, "T")?.rarity).toBeNull();
+    expect(toCatalogEntry({ productId: 1, name: "Booster Box" }, group, "ja", prices, "T")).toBeNull();
   });
 });
