@@ -13,6 +13,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/sync-tcgplayer",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/sync-catalog",
       "schedule": "0 5 * * 1"
     }

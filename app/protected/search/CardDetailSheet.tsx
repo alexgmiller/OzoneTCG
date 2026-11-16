@@ -92,7 +92,7 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
               </div>
             )}
             <div className="min-w-0 flex-1 space-y-2 pt-1">
-              <div className="section-label">Pokémon · English</div>
+              <div className="section-label">Pokémon · {card.lang === "ja" ? "Japanese" : "English"}</div>
               <div className="text-xl font-bold leading-tight text-foreground">{card.name}</div>
               <dl className="space-y-1 text-sm">
                 {card.cardNumber && (
@@ -109,10 +109,15 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
           {/* ── Actions ── */}
           <div className="flex gap-2">
             <Link
-              href={addToInventoryHref({
-                name: card.name, setName: card.setName, cardNumber: card.cardNumber,
-                imageUrl: card.imageUrl, cardId: card.id, market: detail?.market ?? null,
-              })}
+              href={addToInventoryHref(
+                card.lang === "ja"
+                  // Inventory marks Japanese cards "(JP)" (lib/cardArtMatch → cardLang);
+                  // the TCGdex card id field doesn't apply
+                  ? { name: `${card.name} (JP)`, setName: card.setName, cardNumber: card.cardNumber,
+                    imageUrl: card.imageUrl, cardId: null, market: detail?.market ?? null }
+                  : { name: card.name, setName: card.setName, cardNumber: card.cardNumber,
+                    imageUrl: card.imageUrl, cardId: card.id, market: detail?.market ?? null },
+              )}
               className={cn(buttonVariants(), "flex-1")}
             >
               <Plus aria-hidden /> Add to inventory
