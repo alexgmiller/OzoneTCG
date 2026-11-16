@@ -307,37 +307,45 @@ export default function ExpensesClient({
       {!docsExplained && <DocsBanner onDismiss={dismissDocsBanner} />}
       <DocsModal open={docsModalOpen} onClose={() => setDocsModalOpen(false)} />
 
-      <ExpenseStats
-        totals={totals}
-        expenseCount={filtered.length}
-        tripCount={tripCount}
-        categoryCounts={categoryCounts}
-        activeCategory={filters.category}
-        onPickCategory={(c) => setFilters((f) => ({ ...f, category: c }))}
-        yearMileage={yearMileage}
-      />
+      {/* Desktop (lg+): stats in the right column, filters and the list on the
+          left two thirds. Phone order unchanged: stats, filters, list. */}
+      <div className="space-y-4 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+        <div className="lg:col-start-3 lg:row-start-1">
+          <ExpenseStats
+            totals={totals}
+            expenseCount={filtered.length}
+            tripCount={tripCount}
+            categoryCounts={categoryCounts}
+            activeCategory={filters.category}
+            onPickCategory={(c) => setFilters((f) => ({ ...f, category: c }))}
+            yearMileage={yearMileage}
+          />
+        </div>
 
-      <ExpenseFilters
-        filters={filters}
-        onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
-        showSessions={showSessions}
-        isHistoricalYear={isHistoricalYear}
-        onQuickAdd={openQuickAdd}
-        shownCount={filtered.length}
-        totalCount={initialExpenses.length}
-      />
+        <div className="space-y-4 lg:col-span-2 lg:row-start-1">
+          <ExpenseFilters
+            filters={filters}
+            onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
+            showSessions={showSessions}
+            isHistoricalYear={isHistoricalYear}
+            onQuickAdd={openQuickAdd}
+            shownCount={filtered.length}
+            totalCount={initialExpenses.length}
+          />
 
-      <ExpenseList
-        groups={grouped}
-        showGroupLabels={filters.groupBy !== "flat"}
-        uploadingFor={uploadingFor}
-        hasActiveFilters={hasActiveFilters}
-        onLogFirst={() => openQuickAdd("meals")}
-        onEdit={openEdit}
-        onDelete={handleDelete}
-        onReceiptPick={handleReceiptPick}
-        onLightbox={setLightboxUrl}
-      />
+          <ExpenseList
+            groups={grouped}
+            showGroupLabels={filters.groupBy !== "flat"}
+            uploadingFor={uploadingFor}
+            hasActiveFilters={hasActiveFilters}
+            onLogFirst={() => openQuickAdd("meals")}
+            onEdit={openEdit}
+            onDelete={handleDelete}
+            onReceiptPick={handleReceiptPick}
+            onLightbox={setLightboxUrl}
+          />
+        </div>
+      </div>
 
       {/* ── Add / Edit form ── */}
       {formOpen && (

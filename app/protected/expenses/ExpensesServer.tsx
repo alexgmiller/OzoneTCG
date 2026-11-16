@@ -76,7 +76,7 @@ export default async function ExpensesServer() {
   const savedLocations = (locationsResult.data ?? []) as unknown as SavedLocation[];
 
   return (
-    <div className="w-full py-4 sm:py-6 space-y-4 max-w-4xl mx-auto overflow-x-hidden">
+    <div className="w-full py-4 sm:py-6 space-y-4 max-w-4xl mx-auto overflow-x-hidden lg:max-w-6xl">
       <ExpensesClient
         workspaceId={workspaceId}
         initialExpenses={(expensesResult.data ?? []) as unknown as ExpenseRow[]}

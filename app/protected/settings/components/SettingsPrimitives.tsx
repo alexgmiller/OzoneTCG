@@ -24,8 +24,9 @@ export function Section({
   title: string;
   children: React.ReactNode;
 }) {
+  // break-inside-avoid: Settings lays sections out in CSS columns on lg+
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-card">
+    <section className="break-inside-avoid overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
         <Icon size={16} className="text-muted-foreground" />
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>

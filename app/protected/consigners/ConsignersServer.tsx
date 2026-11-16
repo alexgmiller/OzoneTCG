@@ -107,7 +107,7 @@ export default async function ConsignersServer() {
 
   // ── Page shell (w-full: max-w + mx-auto alone collapses inside the layout's flex column) ──
   return (
-    <div className="mx-auto w-full max-w-3xl py-4">
+    <div className="mx-auto w-full max-w-3xl py-4 lg:max-w-6xl">
       <ConsignersClient consigners={consigners} />
     </div>
   );

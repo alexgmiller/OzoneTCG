@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui";
 
 export default function ConsignersLoading() {
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 py-4">
+    <div className="mx-auto w-full max-w-3xl space-y-4 py-4 lg:max-w-6xl">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-2">
           <Skeleton className="h-7 w-32 rounded-lg" />
@@ -13,7 +13,7 @@ export default function ConsignersLoading() {
         <Skeleton className="h-11 w-24 rounded-lg" />
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="overflow-hidden rounded-xl border border-border bg-card">
             <div className="flex items-start gap-3 p-4">

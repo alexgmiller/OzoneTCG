@@ -28,10 +28,13 @@ export default function CalendarPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto w-full max-w-2xl space-y-4 pt-4">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-11 w-full" />
-          <Skeleton className="h-28 w-full" />
+        // lg+: grid on the left two thirds, Today on the right (as CalendarClient)
+        <div className="mx-auto w-full max-w-2xl space-y-4 pt-4 lg:grid lg:max-w-6xl lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
+          <Skeleton className="h-24 w-full lg:col-start-3 lg:row-start-1" />
+          <div className="space-y-4 lg:col-span-2 lg:row-start-1">
+            <Skeleton className="h-11 w-full" />
+            <Skeleton className="h-28 w-full" />
+          </div>
         </div>
       }
     >
