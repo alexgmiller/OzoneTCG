@@ -128,14 +128,22 @@ export function pickByNumber(cards: TcgdexCard[], number: string | null | undefi
 //   https://images.pokemontcg.io/sv3pt5/198_hires.png
 export type ArtVerdict = "ok" | "wrong" | "unknown";
 
-export function parseArtUrl(url: string): { host: "tcgdex" | "ptcgio" | "other"; setId: string | null; num: string | null } {
+type ParsedArt = {
+  host: "tcgdex" | "ptcgio" | "other";
+  lang: string | null;   // "en" / "ja"…; pokemontcg.io is English-only
+  serie: string | null;  // TCGdex series folder; "tcgp" = TCG Pocket
+  setId: string | null;
+  num: string | null;
+};
+
+export function parseArtUrl(url: string): ParsedArt {
   try {
     const u = new URL(url);
     const p = u.pathname.split("/").filter(Boolean);
-    if (u.host === "assets.tcgdex.net") return { host: "tcgdex", setId: p[2] ?? null, num: p[3] ?? null };
-    if (u.host === "images.pokemontcg.io") return { host: "ptcgio", setId: p[0] ?? null, num: (p[1] ?? "").replace(/(_hires)?\.png$/i, "") };
+    if (u.host === "assets.tcgdex.net") return { host: "tcgdex", lang: p[0] ?? null, serie: p[1] ?? null, setId: p[2] ?? null, num: p[3] ?? null };
+    if (u.host === "images.pokemontcg.io") return { host: "ptcgio", lang: "en", serie: null, setId: p[0] ?? null, num: (p[1] ?? "").replace(/(_hires)?\.png$/i, "") };
   } catch { /* fall through */ }
-  return { host: "other", setId: null, num: null };
+  return { host: "other", lang: null, serie: null, setId: null, num: null };
 }
 
 // Whether an image URL is this item's card. "unknown" when the URL or the
@@ -148,10 +156,13 @@ export function artVerdict(
   if (!url) return "unknown";
   const p = parseArtUrl(url);
   if (p.host === "other") return "unknown";
-  // TCG Pocket art (set ids like "A1a", "P-A") is never a physical card
-  if (p.host === "tcgdex" && p.setId && /^[A-Z]/.test(p.setId)) return "wrong";
+  // TCG Pocket art (its own "tcgp" series folder) is never a physical card
+  if (p.host === "tcgdex" && p.serie === "tcgp") return "wrong";
 
-  const setIds = resolveSetIds(item.set_name, sets).map((s) => s.toLowerCase());
+  // `sets` is TCGdex's English list, so a Japanese printing's set code
+  // ("SV2a") can't be compared against it; its number still can
+  const english = p.lang === "en";
+  const setIds = english ? resolveSetIds(item.set_name, sets).map((s) => s.toLowerCase()) : [];
   const keys = numberKeys(item.card_number, { withinSet: setIds.length > 0 });
   if (keys.length && !keys.includes(normNum(p.num) ?? "")) return "wrong";
   if (p.host === "tcgdex" && setIds.length) {
