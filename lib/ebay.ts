@@ -679,3 +679,45 @@ export function calculateSoldPricing(
     source,
   };
 }
+
+// ── Raw listings: plan C asking prices (lib/ebayAsking.ts) ──
+// Ungraded, fixed-price listings for one card, turned into an asking-price
+// estimate. Null without eBay keys, on any error, or with too few listings
+// that are really this card.
+import { askingEstimate, askingQuery, type AskingCard, type AskingEstimate } from "./ebayAsking";
+
+export type EbayAsking = AskingEstimate & { searchUrl: string };
+
+export async function lookupEbayAsking(card: AskingCard): Promise<EbayAsking | null> {
+  if (!process.env.EBAY_APP_ID || !process.env.EBAY_CERT_ID) return null;
+  const q = askingQuery(card);
+  try {
+    const token = await getEbayToken();
+    const params = new URLSearchParams({
+      q,
+      // 4000 = Ungraded (trading-card condition); auctions' current bids aren't prices
+      filter: "buyingOptions:{FIXED_PRICE},priceCurrency:USD,conditionIds:{4000}",
+      category_ids: POKEMON_CATEGORY_ID,
+      limit: "50",
+    });
+    const res = await fetch(`${EBAY_BROWSE_URL}?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": "EBAY_US" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      console.warn(`[eBay-asking] HTTP ${res.status} for "${q}"`);
+      return null;
+    }
+    const json = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const listings = (json.itemSummaries ?? []).map((i: any) => ({ title: String(i.title ?? ""), price: Number(i.price?.value) }));
+    const estimate = askingEstimate(listings, card);
+    console.log(`[eBay-asking] "${q}": ${listings.length} listings → ${estimate ? `$${estimate.price} from ${estimate.count}` : "no estimate"}`);
+    if (!estimate) return null;
+    const search = new URLSearchParams({ _nkw: q, _sacat: POKEMON_CATEGORY_ID, LH_BIN: "1" });
+    return { ...estimate, searchUrl: `https://www.ebay.com/sch/i.html?${search}` };
+  } catch (e) {
+    console.warn("[eBay-asking] failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}

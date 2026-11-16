@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { fetchTcgdexPrice } from "@/lib/tcgdexPrice";
+import { lookupEbayAsking, type EbayAsking } from "@/lib/ebay";
 import { lookupTcgplayerQuotes } from "@/lib/tcgplayerPrices";
 import { stripParens } from "@/lib/cardNameUtils";
 import type { Printing, Quote } from "@/lib/tcgplayerMatch";
@@ -133,7 +134,14 @@ export type StockMatch = {
   category: string;
 };
 
-export type CardDetail = { market: number | null; priceFailed: boolean; quote: Quote | null; inStock: StockMatch[] };
+export type CardDetail = {
+  market: number | null;
+  priceFailed: boolean;
+  quote: Quote | null;
+  /** Plan C: eBay asking prices, only when nothing above has a price */
+  asking: EbayAsking | null;
+  inStock: StockMatch[];
+};
 
 // Longer than the API route's 6s: someone is waiting on this one sheet
 const DETAIL_PRICE_TIMEOUT_MS = 10_000;
@@ -167,7 +175,12 @@ export async function getCardDetail(card: CatalogCard): Promise<CardDetail> {
     .filter((it) => matchesCard(it, card))
     .map(({ id, grade, condition, market, category }) => ({ id, grade, condition, market, category }));
 
-  return { market: price.market, priceFailed: price.failed, quote: price.quote, inStock };
+  // Plan C: no sales price anywhere (and the lookup didn't just time out)
+  const asking = price.market == null && !price.failed
+    ? await lookupEbayAsking({ name: card.name, cardNumber: card.cardNumber, lang: card.lang })
+    : null;
+
+  return { market: price.market, priceFailed: price.failed, quote: price.quote, asking, inStock };
 }
 
 // ilike treats % and _ as wildcards and \ as their escape

@@ -4,6 +4,8 @@ import { lookupCard, lookupRawMarketFromTcgDex } from "@/lib/pokemonPriceTracker
 import { justTcgPricedRecently, nightlyMarketSource, usablePrice, type Category, type JustTcgRow } from "@/lib/nightlyPricing";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { tcgplayerItemPrices } from "@/lib/tcgplayerPrices";
+import { lookupEbayAsking } from "@/lib/ebay";
+import { cardLang } from "@/lib/cardArtMatch";
 
 // ── Nightly refresh (03:00) ──
 // Runs last of the three price jobs (see lib/nightlyPricing.ts for who owns
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
   // Fetch all non-sold items across all workspaces
   const { data: items, error } = await supabase
     .from("items")
-    .select("id, workspace_id, name, category, set_name, card_number, image_url, product_type, language")
+    .select("id, workspace_id, name, category, set_name, card_number, image_url, product_type, language, market")
     .neq("status", "sold");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest) {
     console.error("[cron/refresh-prices] TCGplayer pricing failed:", e instanceof Error ? e.message : e);
   }
   let fromTcgplayer = 0;
+  let fromEbay = 0;
 
   for (let i = 0; i < items.length; i += BATCH) {
     if (Date.now() - started > LOOKUP_BUDGET_MS) {
@@ -82,6 +85,14 @@ export async function GET(req: NextRequest) {
             else if (category === "sealed") market = result?.market ?? null;
             else market = result?.market ?? await lookupRawMarketFromTcgDex(item.name, item.set_name, item.card_number);
           }
+          // Plan C: a single with no sales price anywhere and no price of its
+          // own gets the low end of current eBay listings. It only fills a
+          // blank, so a real price is never replaced by an asking price.
+          if (source === "tcgplayer" && category === "single" && !usablePrice(market) && !usablePrice(item.market)) {
+            const lang = /^ja/i.test(item.language ?? "") || cardLang(item) === "ja" ? "ja" : "en";
+            market = (await lookupEbayAsking({ name: item.name, cardNumber: item.card_number, lang }))?.price ?? null;
+            if (usablePrice(market)) fromEbay++;
+          }
 
           const patch: Record<string, unknown> = {};
           // A looked-up image only fills a blank: it never replaces art the item has
@@ -104,7 +115,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, ${fromTcgplayer} from TCGplayer, ${justTcgPriced.size} kept from JustTCG, JustTCG ${justTcgConfigured ? "on" : "off"})`);
+  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, ${fromTcgplayer} from TCGplayer, ${fromEbay} from eBay asking, ${justTcgPriced.size} kept from JustTCG, JustTCG ${justTcgConfigured ? "on" : "off"})`);
 
   // ── Daily inventory snapshot ──
   // One row per workspace per day feeds the Home value chart. Re-read after the
@@ -113,7 +124,7 @@ export async function GET(req: NextRequest) {
   const snapshots = await writeInventorySnapshots(supabase);
 
   return NextResponse.json({
-    updated, priced, fromTcgplayer, keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
+    updated, priced, fromTcgplayer, fromEbay, keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
   });
 }
 
