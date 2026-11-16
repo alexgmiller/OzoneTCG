@@ -38,6 +38,7 @@ file is the source of truth for what has been applied.
 | `20261016_inventory_snapshots.sql` | ✅ | applied 2026-11-16 (optional backfill skipped). Home value chart. One row per workspace per day (total_fmv, total_cost, item_count), written by the 03:00 refresh-prices cron after it updates prices. Days without a snapshot are estimated from item acquired/sold dates at today's prices (`valueHistory` in `app/protected/dashboard/home.ts`). |
 | `20261116_drop_shows_calendar.sql` | ✅ | applied 2026-11-16 (check returned no rows). Drops card_shows, scraper_runs and workspace_bookmarked_shows; nothing used them after internal-v1. show_sessions is untouched. |
 | `20261116_card_art.sql` | ✅ | applied 2026-11-16 (table confirmed present). Card art memory: one image per card (key = language + name + set + number, lib/cardArtMatch.ts → cardKey), reused for every copy. Manual images always win. |
+| `20261117_item_price_history.sql` | ⬜ | One row per inventory item per day (market after the 03:00 refresh-prices cron), for the price charts in Inventory's item detail and Search's card sheet. Optional first-point insert at the bottom. |
 | `20261117_tcgplayer_cards.sql` | ⬜ | TCGplayer catalog (via TCGCSV) for Search's Japanese tab: English names, rarity, number, image, prices per printing. Filled daily by `/api/cron/sync-tcgplayer`; run that once by hand after applying (Vercel → Cron Jobs → Run) so the tab isn't empty until the next night. |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.

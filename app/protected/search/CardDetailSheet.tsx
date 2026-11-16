@@ -7,6 +7,7 @@ import { EmptyState, MoneyDisplay, Sheet, Skeleton, TabStrip } from "@/component
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { addToInventoryHref } from "@/app/protected/inventory/addPrefill";
+import { PriceHistory } from "@/app/protected/inventory/components/PriceHistory";
 import { getCardDetail, getCardPrice, type CardDetail, type StockMatch } from "./actions";
 import type { CatalogCard } from "./catalog";
 
@@ -18,6 +19,7 @@ import type { CatalogCard } from "./catalog";
 //           Reverse Holofoil…) with a link to the listing; cards TCGCSV doesn't
 //           match fall back to TCGdex (Retry on a slow lookup). Your raw copies.
 //   GRADED  your graded copies; graded market prices need a graded data source
+// Under the copies, the first copy's value night by night (item_price_history).
 
 type Tab = "raw" | "graded";
 const TABS = [{ value: "raw", label: "Raw" }, { value: "graded", label: "Graded" }] as const;
@@ -195,6 +197,7 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
                   <CopyList copies={raw} label={(s) => (s.category === "sealed" ? "Sealed" : s.condition ?? "Raw")} />
                 )}
               </div>
+              {raw.length > 0 && <PriceHistory itemId={raw[0].id} label="Your copy's value" />}
             </div>
           ) : (
             <div className="space-y-2">
@@ -204,7 +207,12 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
               ) : graded.length === 0 ? (
                 <EmptyState title="No graded copies in stock" hint="Graded market prices by grade need a graded price source." />
               ) : (
-                <CopyList copies={graded} label={(s) => s.grade ?? "Graded"} />
+                <>
+                  <CopyList copies={graded} label={(s) => s.grade ?? "Graded"} />
+                  <div className="pt-2">
+                    <PriceHistory itemId={graded[0].id} label={`Your ${graded[0].grade ?? "graded copy"}'s value`} />
+                  </div>
+                </>
               )}
             </div>
           )}

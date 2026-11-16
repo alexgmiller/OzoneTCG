@@ -4,12 +4,14 @@ import { lookupCard, lookupRawMarketFromTcgDex } from "@/lib/pokemonPriceTracker
 import { justTcgPricedRecently, nightlyMarketSource, usablePrice, type Category, type JustTcgRow } from "@/lib/nightlyPricing";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { tcgplayerItemPrices } from "@/lib/tcgplayerPrices";
+import { historyRows } from "@/lib/priceHistory";
 
 // ── Nightly refresh (03:00) ──
 // Runs last of the three price jobs (see lib/nightlyPricing.ts for who owns
 // which price): fills in images, writes TCGplayer prices (with the older
 // sources as fallback) for everything JustTCG didn't price tonight, then
-// writes the daily inventory snapshot so the Home chart sees tonight's prices
+// records each held item's price for its chart (item_price_history) and
+// writes the daily inventory snapshot, so the charts see tonight's prices
 // rather than yesterday's.
 
 // Allow up to 5 minutes — needed for large inventories (Vercel Pro required for >60s)
@@ -110,10 +112,11 @@ export async function GET(req: NextRequest) {
   // One row per workspace per day feeds the Home value chart. Re-read after the
   // updates so the snapshot reflects today's prices. Upsert on (workspace, date)
   // keeps a re-run idempotent.
+  const history = await writeItemPriceHistory(supabase);
   const snapshots = await writeInventorySnapshots(supabase);
 
   return NextResponse.json({
-    updated, priced, fromTcgplayer, keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
+    updated, priced, history, fromTcgplayer, keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
   });
 }
 
@@ -141,6 +144,34 @@ async function justTcgPricedKeys(
     }
   }
   return out;
+}
+
+// ── Item price history ──
+// Tonight's market value for every item still held, one row per item per day
+// (upsert, so a re-run just rewrites today). The table arrives with
+// migrations/20261117_item_price_history.sql; until then this logs and moves on.
+async function writeItemPriceHistory(supabase: ReturnType<typeof createAdminClient>): Promise<number> {
+  const { data, error } = await supabase
+    .from("items")
+    .select("id, workspace_id, market, status")
+    .neq("status", "sold");
+  if (error || !data) {
+    console.error("[cron/refresh-prices] history read failed:", error?.message);
+    return 0;
+  }
+  const rows = historyRows(data, new Date().toISOString().slice(0, 10));
+  let written = 0;
+  for (let i = 0; i < rows.length; i += 1000) {
+    const { error: upsertErr } = await supabase
+      .from("item_price_history")
+      .upsert(rows.slice(i, i + 1000), { onConflict: "item_id,date" });
+    if (upsertErr) {
+      console.error("[cron/refresh-prices] history write failed:", upsertErr.message);
+      return written;
+    }
+    written += Math.min(1000, rows.length - i);
+  }
+  return written;
 }
 
 type StockRow = { workspace_id: string; market: number | null; cost: number | null };
