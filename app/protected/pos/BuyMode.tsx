@@ -80,8 +80,8 @@ export function CardList({ cards, onRemove }: { cards: NewCard[]; onRemove: (i: 
   );
 }
 
-export default function BuyMode({ showId, buyPct }: { showId: string | null; buyPct: number }) {
-  const [cards, setCards] = useState<NewCard[]>([]);
+export default function BuyMode({ showId, buyPct, initial = [] }: { showId: string | null; buyPct: number; initial?: NewCard[] }) {
+  const [cards, setCards] = useState<NewCard[]>(initial);
   const market = cards.reduce((s, c) => s + (c.market ?? 0), 0);
 
   const form = (
