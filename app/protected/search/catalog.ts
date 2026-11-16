@@ -5,7 +5,9 @@
 import { parseTerms, scoreLocalCard } from "@/lib/cardSearchScoring";
 import { cardLang } from "@/lib/cardArtMatch";
 import { stripParens } from "@/lib/cardNameUtils";
-import { resolveGroups } from "@/lib/tcgplayerMatch";
+import {
+  groupCore, resolveGroups, toCatalogEntry, type Quote, type TcgGroup, type TcgPrice, type TcgProduct,
+} from "@/lib/tcgplayerMatch";
 
 export type CatalogLang = "en" | "ja";
 
@@ -31,7 +33,8 @@ export type CatalogCard = {
   lang: CatalogLang;
 };
 
-// Japanese cards come from tcgplayer_cards; their id carries the product id
+// Cards straight from TCGplayer (the Japanese catalog, and sets opened from
+// Browse) carry the product id in theirs
 export const JA_ID_PREFIX = "tcgp-";
 export const productIdOf = (card: Pick<CatalogCard, "id">) =>
   card.id.startsWith(JA_ID_PREFIX) ? Number(card.id.slice(JA_ID_PREFIX.length)) || null : null;
@@ -185,4 +188,46 @@ export function pushRecent(list: string[], query: string, max = RECENT_MAX): str
   const q = query.trim();
   if (!q) return list;
   return [q, ...list.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, max);
+}
+
+// ── Browse by set ──
+// TCGplayer's set list (TCGCSV groups) for each language, newest first. A set's
+// cards come from its product list, which already carries names, numbers,
+// rarity, images and prices, so opening a set is one download.
+export type BrowseSet = { groupId: number; name: string; code: string | null; released: string | null };
+
+// Some groups carry a placeholder release date later than their own last
+// update (POP Series 9 "released" yesterday); those count as undated
+export function toBrowseSet(g: TcgGroup): BrowseSet {
+  const pub = g.publishedOn?.slice(0, 10) ?? null;
+  const mod = g.modifiedOn?.slice(0, 10) ?? null;
+  return {
+    groupId: g.groupId,
+    name: groupCore(g.name),
+    code: g.abbreviation?.trim() || null,
+    released: pub && !(mod && pub > mod) ? pub : null,
+  };
+}
+
+// Newest first; undated sets after, by name
+export function sortSets(sets: BrowseSet[]): BrowseSet[] {
+  return [...sets].sort((a, b) =>
+    a.released && b.released ? b.released.localeCompare(a.released) || a.name.localeCompare(b.name)
+    : a.released ? -1 : b.released ? 1 : a.name.localeCompare(b.name));
+}
+
+// A set's cards (sealed products left out) in number order, with their quotes
+export function setCardsFrom(
+  products: TcgProduct[], prices: TcgPrice[], group: TcgGroup, lang: CatalogLang,
+): { cards: CatalogCard[]; quotes: Record<string, Quote> } {
+  const cards: CatalogCard[] = [];
+  const quotes: Record<string, Quote> = {};
+  for (const p of products) {
+    const e = toCatalogEntry(p, group, lang, prices, "");
+    if (!e) continue;
+    const id = `${JA_ID_PREFIX}${e.product_id}`;
+    cards.push({ id, name: e.name, setName: e.set_name, setId: e.set_code, cardNumber: e.card_number, imageUrl: e.image_url, lang });
+    quotes[id] = { productId: e.product_id, url: e.url, rarity: e.rarity, market: e.market ?? null, printings: e.printings ?? [] };
+  }
+  return { cards: sortCards(cards, "number"), quotes };
 }

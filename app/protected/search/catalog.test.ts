@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { facets, matchesCard, nameTerms, pushRecent, rankCatalog, setFacets, sortCards, type CatalogCard, type CatalogRow } from "./catalog";
+import {
+  facets, matchesCard, nameTerms, pushRecent, rankCatalog, setCardsFrom, setFacets, sortCards, sortSets, toBrowseSet,
+  type CatalogCard, type CatalogRow,
+} from "./catalog";
 
 const row = (o: Partial<CatalogRow>): CatalogRow => ({
   id: "x", name: "Charizard", set_id: "sv03", set_name: "Obsidian Flames", card_number: "125", image_url: null, ...o,
@@ -151,5 +154,35 @@ describe("setFacets / sortCards / pushRecent", () => {
     expect(pushRecent(["mew", "pikachu"], "Pikachu")).toEqual(["Pikachu", "mew"]);
     expect(pushRecent(["a", "b", "c"], "d", 3)).toEqual(["d", "a", "b"]);
     expect(pushRecent(["a"], "   ")).toEqual(["a"]);
+  });
+});
+
+describe("browse by set", () => {
+  it("reads release dates, treating a placeholder later than the last update as unknown", () => {
+    expect(toBrowseSet({ groupId: 1, name: "ME06: Delta Reign", abbreviation: "DLR", publishedOn: "2026-11-06T00:00:00", modifiedOn: "2026-11-11T10:00:00" }))
+      .toEqual({ groupId: 1, name: "Delta Reign", code: "DLR", released: "2026-11-06" });
+    expect(toBrowseSet({ groupId: 2, name: "POP Series 9", abbreviation: "POP", publishedOn: "2026-11-15T00:00:00", modifiedOn: "2026-06-18T00:00:00" }).released)
+      .toBeNull();
+  });
+  it("lists newest first, undated sets last by name", () => {
+    const s = (name: string, released: string | null) => ({ groupId: name.length, name, code: null, released });
+    expect(sortSets([s("Base Set", "1999-01-09"), s("POP Series 9", null), s("Delta Reign", "2026-11-06"), s("Nintendo Promos", null)]).map((x) => x.name))
+      .toEqual(["Delta Reign", "Base Set", "Nintendo Promos", "POP Series 9"]);
+  });
+  it("turns a product list into cards in number order, with quotes, leaving sealed out", () => {
+    const group = { groupId: 23353, name: "SV: Paldean Fates", abbreviation: "PAF" };
+    const card = (productId: number, name: string, number: string) =>
+      ({ productId, name, extendedData: [{ name: "Number", value: number }, { name: "Rarity", value: "Promo" }] });
+    const { cards, quotes } = setCardsFrom(
+      [card(2, "Mew ex - 232/091", "232/091"), { productId: 9, name: "Paldean Fates Elite Trainer Box" }, card(1, "Pikachu - 027/091", "027/091")],
+      [{ productId: 2, subTypeName: "Holofoil", marketPrice: 814.25, lowPrice: 700, midPrice: null, highPrice: null, directLowPrice: null }],
+      group, "en",
+    );
+    expect(cards.map((c) => [c.id, c.name, c.cardNumber, c.setName, c.lang])).toEqual([
+      ["tcgp-1", "Pikachu", "027/091", "Paldean Fates", "en"],
+      ["tcgp-2", "Mew ex", "232/091", "Paldean Fates", "en"],
+    ]);
+    expect(quotes["tcgp-2"].market).toBe(814.25);
+    expect(quotes["tcgp-1"].market).toBeNull();
   });
 });

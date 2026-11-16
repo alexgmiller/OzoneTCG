@@ -7,7 +7,14 @@
 import { nameLooksRight, normNum, numberKeys } from "./cardArtMatch";
 import { stripParens } from "./cardNameUtils";
 
-export type TcgGroup = { groupId: number; name: string; abbreviation?: string | null };
+export type TcgGroup = {
+  groupId: number;
+  name: string;
+  abbreviation?: string | null;
+  /** Release date (ISO). Some groups carry a placeholder later than modifiedOn. */
+  publishedOn?: string | null;
+  modifiedOn?: string | null;
+};
 export type TcgProduct = {
   productId: number;
   name: string;

@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { History, X } from "lucide-react";
+import { ChevronLeft, History, X } from "lucide-react";
 import { CardTile, Chip, ChipRow, EmptyState, MoneyDisplay, PageHeader, SearchBar, Skeleton, TabStrip } from "@/components/ui";
 import type { Quote } from "@/lib/tcgplayerMatch";
-import { priceQuotes, searchCatalog, stockCounts } from "./actions";
-import { facets, pushRecent, setFacets, sortCards, SORTS, type CatalogCard, type CatalogLang, type SortKey } from "./catalog";
+import { browseSet, priceQuotes, searchCatalog, stockCounts } from "./actions";
+import {
+  facets, pushRecent, setFacets, sortCards, SORTS, type BrowseSet, type CatalogCard, type CatalogLang, type SortKey,
+} from "./catalog";
+import SetBrowser, { releasedLabel } from "./SetBrowser";
 import SearchSuggest, { optionId, SUGGEST_LIMIT } from "./SearchSuggest";
 import CardDetailSheet from "./CardDetailSheet";
 
@@ -17,8 +20,10 @@ import CardDetailSheet from "./CardDetailSheet";
 // art uncovered and the set, name, number, rarity, TCGplayer market price and
 // your stock underneath. Prices load just after the cards (lib/tcgcsv.ts), so
 // the grid never waits on them. Before any search, recent searches
-// (this device) are one tap away. ?q= holds the submitted query so Back from
-// Inventory or POS returns to the results; ?lang=ja keeps the Japanese tab.
+// (this device) are one tap away, then Browse sets: TCGplayer's sets newest
+// first, each opening its cards in the same grid (sorted by number). ?q= holds
+// the submitted query and ?set= the open set, so Back from Inventory or POS
+// returns to them; ?lang=ja keeps the Japanese tab.
 // English cards come from TCGdex's catalog, Japanese ones from TCGplayer's
 // (English names), so both search the same way.
 
@@ -31,9 +36,10 @@ const META: Record<CatalogLang, string> = {
   en: "Every English Pokémon card, with TCGplayer prices",
   ja: "Japanese cards from TCGplayer, by English name",
 };
-const searchHref = (query: string, lang: CatalogLang) => {
+const searchHref = (query: string, lang: CatalogLang, set: number | null = null) => {
   const p = new URLSearchParams();
   if (query) p.set("q", query);
+  if (set != null) p.set("set", String(set));
   if (lang === "ja") p.set("lang", "ja");
   const qs = p.toString();
   return qs ? `/protected/search?${qs}` : "/protected/search";
@@ -47,7 +53,11 @@ function writeRecent(list: string[]) {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* per-device nicety */ }
 }
 
-export default function SearchClient({ initialQuery, initialLang }: { initialQuery: string; initialLang: CatalogLang }) {
+export default function SearchClient({ initialQuery, initialLang, initialSet = null }: {
+  initialQuery: string;
+  initialLang: CatalogLang;
+  initialSet?: number | null;
+}) {
   const router = useRouter();
   const listId = useId();
 
@@ -57,6 +67,9 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(-1);
   const [lang, setLang] = useState<CatalogLang>(initialLang);
+  // An open set (Browse sets) instead of a query
+  const [browseId, setBrowseId] = useState<number | null>(initialQuery.trim() ? null : initialSet);
+  const [setInfo, setSetInfo] = useState<BrowseSet | null>(null);
 
   // ── Data ──
   // One request per query and language, shared by the dropdown and the grid.
@@ -121,9 +134,47 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
     return () => { live = false; };
   }, [submitted, fetchCards]);
 
+  // Grid: an open set. Its cards arrive with their prices (one download), so
+  // only stock is asked for afterwards.
+  useEffect(() => {
+    if (browseId == null) return;
+    let live = true;
+    setResults({ query: "", cards: null, failed: false });
+    setSort("number");
+    setSetFilter("");
+    setRarityFilter("");
+    setStock({});
+    setQuotes(null);
+    browseSet(browseId, lang)
+      .then((r) => {
+        if (!live) return;
+        setSetInfo(r.set);
+        setResults({ query: "", cards: r.cards, failed: false });
+        setQuotes(r.quotes);
+        stockCounts(r.cards).then((st) => { if (live) setStock(st); }).catch(() => {});
+      })
+      .catch(() => { if (live) setResults({ query: "", cards: null, failed: true }); });
+    return () => { live = false; };
+  }, [browseId, lang]);
+
+  function openSet(set: BrowseSet) {
+    setSetInfo(set);
+    setBrowseId(set.groupId);
+    setQ("");
+    setSubmitted("");
+    router.replace(searchHref("", lang, set.groupId), { scroll: false });
+  }
+
+  function closeSet() {
+    setBrowseId(null);
+    setSetInfo(null);
+    router.replace(searchHref("", lang), { scroll: false });
+  }
+
   function submit(query: string) {
     const t = query.trim();
     if (t.length < MIN_CHARS) return;
+    setBrowseId(null);
     setQ(t);
     setSubmitted(t);
     setFocused(false);
@@ -136,12 +187,14 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
   function clearAll() {
     setQ("");
     setSubmitted("");
+    setBrowseId(null);
     router.replace(searchHref("", lang), { scroll: false });
   }
 
   function switchLang(next: CatalogLang) {
     if (next === lang) return;
     setLang(next);
+    setBrowseId(null); // sets differ per language
     router.replace(searchHref(submitted, next), { scroll: false });
   }
 
@@ -171,6 +224,8 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
     [cards, quotes, setFilter, rarityFilter, sort],
   );
   const filtered = !!(setFilter || rarityFilter);
+  const browsing = browseId != null;
+  const viewing = browsing || submitted.length >= MIN_CHARS;
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-4 py-4 lg:max-w-6xl">
@@ -211,8 +266,8 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
         )}
       </div>
 
-      {submitted.length < MIN_CHARS ? (
-        // ── Before searching: recent searches, then the hint ──
+      {!viewing ? (
+        // ── Before searching: recent searches, the hint, then Browse sets ──
         <div className="space-y-4">
           {recent.length > 0 && (
             <section className="space-y-2">
@@ -243,6 +298,7 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
               </div>
             }
           />
+          <SetBrowser lang={lang} onPick={openSet} />
         </div>
       ) : results.failed ? (
         <EmptyState title="Search didn't load" hint="Check your connection and try again." />
@@ -258,6 +314,8 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
             </div>
           ))}
         </div>
+      ) : cards.length === 0 && browsing ? (
+        <EmptyState title="No cards listed for this set" hint="TCGplayer lists only sealed product or promos here." />
       ) : cards.length === 0 ? (
         <EmptyState title={`No cards match “${submitted}”`} hint="Try fewer words, or just the card name." />
       ) : (
@@ -265,24 +323,38 @@ export default function SearchClient({ initialQuery, initialLang }: { initialQue
           {/* ── Results header: what, how many, filter + sort ── */}
           <div className="space-y-3 lg:flex lg:items-end lg:justify-between lg:gap-4 lg:space-y-0">
             <div className="min-w-0">
-              <h2 className="truncate text-lg font-semibold text-foreground">“{submitted}”</h2>
+              {browsing ? (
+                <>
+                  <button type="button" onClick={closeSet}
+                    className="inline-flex h-11 items-center gap-1 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground">
+                    <ChevronLeft size={16} aria-hidden /> All sets
+                  </button>
+                  <h2 className="truncate text-lg font-semibold text-foreground">{setInfo?.name ?? "Set"}</h2>
+                </>
+              ) : (
+                <h2 className="truncate text-lg font-semibold text-foreground">“{submitted}”</h2>
+              )}
               <p className="text-xs tabular-nums text-muted-foreground">
-                {cards.length >= 48 ? "Top 48 matches · add a set or number to narrow it" : `${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+                {browsing
+                  ? [`${cards.length} ${cards.length === 1 ? "card" : "cards"}`, setInfo?.code, releasedLabel(setInfo?.released ?? null)].filter(Boolean).join(" · ")
+                  : cards.length >= 48 ? "Top 48 matches · add a set or number to narrow it" : `${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
                 {filtered && ` · ${shown.length} shown`}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 lg:flex lg:shrink-0">
-              <select value={setFilter} onChange={(e) => setSetFilter(e.target.value)} aria-label="Filter by set" className={`${SELECT} lg:w-56`}>
-                <option value="">All sets ({sets.length})</option>
-                {sets.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.count})</option>)}
-              </select>
+              {!browsing && (
+                <select value={setFilter} onChange={(e) => setSetFilter(e.target.value)} aria-label="Filter by set" className={`${SELECT} lg:w-56`}>
+                  <option value="">All sets ({sets.length})</option>
+                  {sets.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.count})</option>)}
+                </select>
+              )}
               <select value={rarityFilter} onChange={(e) => setRarityFilter(e.target.value)} aria-label="Filter by rarity"
                 disabled={!rarities.length} className={`${SELECT} disabled:opacity-50 lg:w-48`}>
                 <option value="">{quotes === null ? "Rarity…" : `All rarities (${rarities.length})`}</option>
                 {rarities.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.count})</option>)}
               </select>
-              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort" className={`${SELECT} col-span-2 lg:w-48`}>
-                {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort" className={`${SELECT} ${browsing ? "" : "col-span-2"} lg:w-48`}>
+                {SORTS.filter((o) => !browsing || o.value !== "best").map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
           </div>
