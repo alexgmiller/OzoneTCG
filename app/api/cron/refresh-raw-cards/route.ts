@@ -1,6 +1,6 @@
 /**
  * Cron-based background raw card price refresh.
- * Runs daily — raw card prices don't move as fast as slab prices.
+ * Runs daily at 02:00 (vercel.json), before refresh-prices writes the snapshot.
  * Authorization: Bearer $CRON_SECRET
  *
  * Processes all raw cards (singles + sealed) across all workspaces.
@@ -12,6 +12,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+// Up to 5 minutes; the loop stops itself before that (time guard below)
+export const maxDuration = 300;
 import { searchRawCard, batchLookupRawCards, makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
 
 const DAILY_STALENESS_MS = 24 * 60 * 60 * 1000;

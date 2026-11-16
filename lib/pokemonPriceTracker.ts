@@ -244,6 +244,22 @@ async function lookupMarketFromTcgDex(cardId: string, endpoint: string): Promise
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+/**
+ * Raw (ungraded) TCGplayer market price via TCGdex, with no image caching.
+ * lookupCard stops at the image cache once a card has art, so it never prices
+ * a single twice; the nightly refresh uses this to keep raw singles current
+ * when JustTCG isn't configured. Null when TCGdex has no match or no price.
+ */
+export async function lookupRawMarketFromTcgDex(
+  name: string,
+  setName?: string | null,
+  cardNumber?: string | null,
+): Promise<number | null> {
+  const match = await lookupImageFromTcgDex(name, setName ?? null, cardNumber ?? null);
+  if (!match) return null;
+  return lookupMarketFromTcgDex(match.cardId, match.endpoint);
+}
+
 export async function lookupCard(
   name: string,
   category: "single" | "slab" | "sealed",
@@ -318,7 +334,8 @@ export async function lookupCard(
   const tcgIoMatch = await lookupFromTcgIo(name, setName, cardNumber);
   if (tcgIoMatch) {
     await setCardCache(cacheKey, name, setName, cardNumber, tcgIoMatch.imageUrl, "pokemontcg");
-    return { imageUrl: tcgIoMatch.imageUrl, market: tcgIoMatch.market };
+    // pokemontcg.io prices the raw card; a slab's value comes from graded comps
+    return { imageUrl: tcgIoMatch.imageUrl, market: category === "single" ? tcgIoMatch.market : null };
   }
 
   // Step 4: Check pokemon_cards table for manually-added images
