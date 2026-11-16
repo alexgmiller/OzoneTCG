@@ -105,7 +105,12 @@ describe("nameLooksRight / pickByNumber", () => {
 
 describe("artVerdict", () => {
   const v = (set: string | null, num: string | null, url: string) => artVerdict({ set_name: set, card_number: num }, url, SETS);
-  const td = (set: string, num: string) => `https://assets.tcgdex.net/en/x/${set}/${num}/high.webp`;
+  const td = (set: string, num: string, lang = "en", serie = "x") => `https://assets.tcgdex.net/${lang}/${serie}/${set}/${num}/high.webp`;
+
+  it("checks a Japanese printing by number only (its set code isn't English)", () => {
+    expect(v("Pokemon 151", "185/165", td("SV2a", "185", "ja", "SV"))).toBe("unknown");
+    expect(v("Pokemon 151", "185/165", td("SV2a", "006", "ja", "SV"))).toBe("wrong");
+  });
 
   it("passes the right card", () => {
     expect(v("SV: 151", "198/165", td("sv03.5", "198"))).toBe("ok");
@@ -115,7 +120,7 @@ describe("artVerdict", () => {
   it("catches the audit's wrong images", () => {
     expect(v("Sun & Moon Promo", "SM168", td("sm9", "33"))).toBe("wrong");          // name-only guess
     expect(v("Scarlet & Violet Promo", "027", td("swsh10.5", "027"))).toBe("wrong"); // right number, wrong set
-    expect(v("Celebrations: Classic Collection", "88/92", td("A1a", "032"))).toBe("wrong"); // TCG Pocket art
+    expect(v("Celebrations: Classic Collection", "88/92", td("A1a", "032", "en", "tcgp"))).toBe("wrong"); // TCG Pocket art
     expect(v("VSTAR Universe", "259/172", td("swsh12.5", "GG67"))).toBe("wrong");  // JP card, English art
   });
   it("can't tell for other hosts or an unplaceable set with a matching number", () => {
