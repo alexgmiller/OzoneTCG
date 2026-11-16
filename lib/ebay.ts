@@ -684,40 +684,99 @@ export function calculateSoldPricing(
 // Ungraded, fixed-price listings for one card, turned into an asking-price
 // estimate. Null without eBay keys, on any error, or with too few listings
 // that are really this card.
-import { askingEstimate, askingQuery, type AskingCard, type AskingEstimate } from "./ebayAsking";
+import {
+  askingQuery, conditionEstimates, listingCondition, matchingListings,
+  type AskingCard, type AskingEstimate, type AskingListing, type ConditionAsking,
+} from "./ebayAsking";
 
-export type EbayAsking = AskingEstimate & { searchUrl: string };
+/** Plan C: the headline estimate (near mint when there's enough, else all
+ *  listings), the per-condition ones, and a link to the search */
+export type EbayAsking = AskingEstimate & ConditionAsking & { basis: "nm" | "all"; searchUrl: string };
+
+// eBay's card-condition descriptor ("Near mint or better", "Excellent"…) when a
+// listing summary carries it
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function descriptorText(item: any): string | null {
+  const ds = Array.isArray(item?.conditionDescriptors) ? item.conditionDescriptors : [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const text = ds.flatMap((d: any) => (Array.isArray(d?.values) ? d.values : []).map((v: any) => String(v?.content ?? "")))
+    .filter(Boolean).join(", ");
+  return text || null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function rawListings(q: string): Promise<{ status: number; total: number | null; items: any[] }> {
+  const token = await getEbayToken();
+  const params = new URLSearchParams({
+    q,
+    // 4000 = Ungraded (trading-card condition); auctions' current bids aren't prices
+    filter: "buyingOptions:{FIXED_PRICE},priceCurrency:USD,conditionIds:{4000}",
+    category_ids: POKEMON_CATEGORY_ID,
+    limit: "50",
+  });
+  const res = await fetch(`${EBAY_BROWSE_URL}?${params}`, {
+    headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": "EBAY_US" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return { status: res.status, total: null, items: [] };
+  const json = await res.json();
+  return { status: res.status, total: json.total ?? null, items: json.itemSummaries ?? [] };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toListing = (i: any): AskingListing => ({ title: String(i.title ?? ""), price: Number(i.price?.value), condition: descriptorText(i) });
 
 export async function lookupEbayAsking(card: AskingCard): Promise<EbayAsking | null> {
   if (!process.env.EBAY_APP_ID || !process.env.EBAY_CERT_ID) return null;
   const q = askingQuery(card);
   try {
-    const token = await getEbayToken();
-    const params = new URLSearchParams({
-      q,
-      // 4000 = Ungraded (trading-card condition); auctions' current bids aren't prices
-      filter: "buyingOptions:{FIXED_PRICE},priceCurrency:USD,conditionIds:{4000}",
-      category_ids: POKEMON_CATEGORY_ID,
-      limit: "50",
-    });
-    const res = await fetch(`${EBAY_BROWSE_URL}?${params}`, {
-      headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": "EBAY_US" },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) {
-      console.warn(`[eBay-asking] HTTP ${res.status} for "${q}"`);
+    const raw = await rawListings(q);
+    if (raw.status !== 200) {
+      console.warn(`[eBay-asking] HTTP ${raw.status} for "${q}"`);
       return null;
     }
-    const json = await res.json();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const listings = (json.itemSummaries ?? []).map((i: any) => ({ title: String(i.title ?? ""), price: Number(i.price?.value) }));
-    const estimate = askingEstimate(listings, card);
-    console.log(`[eBay-asking] "${q}": ${listings.length} listings → ${estimate ? `$${estimate.price} from ${estimate.count}` : "no estimate"}`);
-    if (!estimate) return null;
+    const est = conditionEstimates(raw.items.map(toListing), card);
+    const headline = est.nm ?? est.all;
+    console.log(`[eBay-asking] "${q}": ${raw.items.length} listings → NM ${est.nm?.price ?? "-"} (${est.nm?.count ?? 0}), played ${est.played?.price ?? "-"} (${est.played?.count ?? 0})`);
+    if (!headline) return null;
     const search = new URLSearchParams({ _nkw: q, _sacat: POKEMON_CATEGORY_ID, LH_BIN: "1" });
-    return { ...estimate, searchUrl: `https://www.ebay.com/sch/i.html?${search}` };
+    return { ...headline, ...est, basis: est.nm ? "nm" : "all", searchUrl: `https://www.ebay.com/sch/i.html?${search}` };
   } catch (e) {
     console.warn("[eBay-asking] failed:", e instanceof Error ? e.message : e);
     return null;
+  }
+}
+
+// What eBay returns for one card, for Settings → Check price sources: how the
+// listings sort by condition, the estimates, and a few raw summaries (to see
+// whether they carry the card-condition descriptor)
+export async function debugEbayAsking(card: AskingCard) {
+  if (!process.env.EBAY_APP_ID || !process.env.EBAY_CERT_ID) return { configured: false as const };
+  const q = askingQuery(card);
+  try {
+    const raw = await rawListings(q);
+    const listings = raw.items.map(toListing);
+    const matched = matchingListings(listings, card);
+    const count = (c: string) => matched.filter((l) => listingCondition(l) === c).length;
+    return {
+      configured: true as const,
+      query: q,
+      http: raw.status,
+      total: raw.total,
+      returned: raw.items.length,
+      matched: matched.length,
+      byCondition: { nm: count("nm"), played: count("played"), unstated: count("unknown") },
+      estimates: conditionEstimates(listings, card),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      samples: raw.items.slice(0, 5).map((i: any) => ({
+        title: String(i.title ?? "").slice(0, 80),
+        price: i.price?.value ?? null,
+        condition: i.condition ?? null,
+        descriptors: descriptorText(i),
+        hasDescriptorField: Array.isArray(i.conditionDescriptors),
+      })),
+    };
+  } catch (e) {
+    return { configured: true as const, query: q, error: e instanceof Error ? e.message : String(e) };
   }
 }

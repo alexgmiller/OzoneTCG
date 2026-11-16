@@ -23,6 +23,7 @@ async function SettingsLoader() {
     ebay: !!(process.env.EBAY_APP_ID && process.env.EBAY_CERT_ID),
     justtcg: !!process.env.JUSTTCG_API_KEY,
     psa: !!process.env.PSA_API_KEY,
+    ppt: !!process.env.POKEMON_PRICE_TRACKER_API_KEY,
   };
 
   return (

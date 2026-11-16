@@ -4,10 +4,10 @@ import { useState } from "react";
 import { KeyRound } from "lucide-react";
 import { useToast } from "@/components/ui";
 import { syncedAgo } from "@/lib/catalog/tcgplayerSyncStatus";
-import { syncJapaneseCatalog, type JapaneseCatalogStatus } from "../actions";
+import { checkPriceSources, syncJapaneseCatalog, type JapaneseCatalogStatus } from "../actions";
 import { ActionButton, Section, SettingRow, StatusDot } from "./SettingsPrimitives";
 
-export type ApiStatus = { ebay: boolean; justtcg: boolean; psa: boolean };
+export type ApiStatus = { ebay: boolean; justtcg: boolean; psa: boolean; ppt: boolean };
 
 // ── Pricing sources ──
 export function PricingSourcesSection({
@@ -28,7 +28,11 @@ export function PricingSourcesSection({
       <SettingRow label="PSA Cert Lookup" description="Cert scanner · PSA_API_KEY">
         <StatusDot ok={apiStatus.psa} label="Not configured" />
       </SettingRow>
+      <SettingRow label="PokemonPriceTracker" description="Sealed prices · POKEMON_PRICE_TRACKER_API_KEY">
+        <StatusDot ok={apiStatus.ppt} label="Not configured" />
+      </SettingRow>
       <JapaneseCatalogRow initial={japaneseCatalog} />
+      <CheckSourcesRow />
       <SettingRow
         label="Auto-refresh"
         description="High value (over $200): 2 hrs · Mid ($50–$200): 4 hrs · Low (under $50): 8 hrs"
@@ -75,5 +79,43 @@ function JapaneseCatalogRow({ initial }: { initial: JapaneseCatalogStatus | null
         {syncing ? "Syncing…" : "Sync now"}
       </ActionButton>
     </SettingRow>
+  );
+}
+
+// ── Check price sources ──
+// Asks PokemonPriceTracker and eBay about one card and shows what each sent
+// back (shortened), so we can see whether the key works and what data comes
+// with it. Costs a few PokemonPriceTracker credits per tap.
+function CheckSourcesRow() {
+  const toast = useToast();
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function check() {
+    setChecking(true);
+    try {
+      setResult(JSON.stringify(await checkPriceSources(), null, 1));
+    } catch {
+      toast.error("The check didn't run. Check your connection and try again.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div>
+      <SettingRow label="Check price sources" description="One PokemonPriceTracker call and one eBay search for Psyduck 286/SM-P" stack>
+        <ActionButton onClick={check} disabled={checking} className="w-full sm:w-auto">
+          {checking ? "Checking…" : "Check"}
+        </ActionButton>
+      </SettingRow>
+      {result && (
+        <div className="px-4 pb-3">
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-surface-2 p-3 font-mono text-xs text-foreground">
+            {result}
+          </pre>
+        </div>
+      )}
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { justTcgPricedRecently, nightlyMarketSource, usablePrice, type Category,
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { tcgplayerItemPrices } from "@/lib/tcgplayerPrices";
 import { lookupEbayAsking } from "@/lib/ebay";
+import { estimateFor } from "@/lib/ebayAsking";
 import { cardLang } from "@/lib/cardArtMatch";
 
 // ── Nightly refresh (03:00) ──
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
   // Fetch all non-sold items across all workspaces
   const { data: items, error } = await supabase
     .from("items")
-    .select("id, workspace_id, name, category, set_name, card_number, image_url, product_type, language, market")
+    .select("id, workspace_id, name, category, set_name, card_number, image_url, product_type, language, market, condition")
     .neq("status", "sold");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -90,7 +91,9 @@ export async function GET(req: NextRequest) {
           // blank, so a real price is never replaced by an asking price.
           if (source === "tcgplayer" && category === "single" && !usablePrice(market) && !usablePrice(item.market)) {
             const lang = /^ja/i.test(item.language ?? "") || cardLang(item) === "ja" ? "ja" : "en";
-            market = (await lookupEbayAsking({ name: item.name, cardNumber: item.card_number, lang }))?.price ?? null;
+            const asking = await lookupEbayAsking({ name: item.name, cardNumber: item.card_number, lang });
+            // Near mint (or unknown) items read the NM listings, played ones the played listings
+            market = asking ? estimateFor(asking, item.condition)?.price ?? null : null;
             if (usablePrice(market)) fromEbay++;
           }
 
