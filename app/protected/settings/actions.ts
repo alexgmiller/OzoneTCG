@@ -326,19 +326,29 @@ export async function syncJapaneseCatalog(): Promise<JapaneseSyncResult> {
 }
 
 // ── Check price sources ──
-// One PokemonPriceTracker request and one eBay search for the same card
-// (Psyduck 286/SM-P, a Japanese promo with no TCGplayer price), returned as-is
-// so their data can be compared before building on either. Costs a few
+// PokemonPriceTracker for two cards (Psyduck 286/SM-P, a Japanese promo with
+// no TCGplayer price, and Charizard ex 199/165, an English card with plenty of
+// sales, to show the full data) and one eBay search for Psyduck, returned
+// as-is so the data can be compared before building on either. Costs 4
 // PokemonPriceTracker credits per tap.
 const CHECK_CARD = { label: "Psyduck 286/SM-P (Japanese promo)", tcgPlayerId: 598363, name: "Psyduck", cardNumber: "286/SM-P", lang: "ja" as const };
+const CHECK_CARD_EN = { label: "Charizard ex 199/165 (151)", tcgPlayerId: 517045 };
 
 export async function checkPriceSources() {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
-  const [pokemonPriceTracker, ebayListings] = await Promise.all([
-    checkPokemonPriceTracker(CHECK_CARD.tcgPlayerId),
+  const [japanese, english, ebayListings] = await Promise.all([
+    checkPokemonPriceTracker(CHECK_CARD.tcgPlayerId, "ja"),
+    checkPokemonPriceTracker(CHECK_CARD_EN.tcgPlayerId, "en"),
     debugEbayAsking({ name: CHECK_CARD.name, cardNumber: CHECK_CARD.cardNumber, lang: CHECK_CARD.lang }),
   ]);
-  return { card: CHECK_CARD.label, checkedAt: new Date().toISOString(), pokemonPriceTracker, ebayListings };
+  return {
+    checkedAt: new Date().toISOString(),
+    ebayListings: { card: CHECK_CARD.label, ...ebayListings },
+    pokemonPriceTracker: {
+      japanese: { card: CHECK_CARD.label, ...japanese },
+      english: { card: CHECK_CARD_EN.label, ...english },
+    },
+  };
 }

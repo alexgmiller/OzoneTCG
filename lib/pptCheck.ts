@@ -1,8 +1,11 @@
 // ── PokemonPriceTracker check ──
-// One request for one card with eBay sales and history included, to see
-// whether the deployed key works and what data the API offers (sold prices by
-// condition, graded sales…) before building on it. Used by Settings → Check
-// price sources. The key never leaves the server.
+// One request for one card with eBay (graded) sales included, to see whether
+// the deployed key works and what data the API offers before building on it.
+// Used by Settings → Check price sources. The key never leaves the server.
+//
+// Japanese cards need language=japanese: without it the API only searches
+// English cards, and a Japanese tcgPlayerId comes back empty. History is left
+// out (the free plan keeps only 3 days of it), so each card costs 2 credits.
 
 const PPT_CARDS = "https://www.pokemonpricetracker.com/api/v2/cards";
 
@@ -17,12 +20,16 @@ export type PptCheck = {
   sample?: unknown;
 };
 
-export async function checkPokemonPriceTracker(tcgPlayerId: number): Promise<PptCheck> {
+export function pptCheckParams(tcgPlayerId: number, lang: "en" | "ja"): URLSearchParams {
+  const params = new URLSearchParams({ tcgPlayerId: String(tcgPlayerId), includeEbay: "true", days: "30" });
+  if (lang === "ja") params.set("language", "japanese");
+  return params;
+}
+
+export async function checkPokemonPriceTracker(tcgPlayerId: number, lang: "en" | "ja"): Promise<PptCheck> {
   const key = process.env.POKEMON_PRICE_TRACKER_API_KEY?.trim();
   if (!key) return { configured: false };
-  const params = new URLSearchParams({
-    tcgPlayerId: String(tcgPlayerId), includeEbay: "true", includeHistory: "true", days: "30",
-  });
+  const params = pptCheckParams(tcgPlayerId, lang);
   try {
     const res = await fetch(`${PPT_CARDS}?${params}`, {
       headers: { Authorization: `Bearer ${key}` },
