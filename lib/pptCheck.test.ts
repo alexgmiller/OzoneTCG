@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { shrink } from "./pptCheck";
+import { pptCheckParams, shrink } from "./pptCheck";
+
+describe("pptCheckParams", () => {
+  it("asks for Japanese cards in Japanese", () => {
+    expect(pptCheckParams(598363, "ja").get("language")).toBe("japanese");
+  });
+  it("leaves English to the default and skips history", () => {
+    const p = pptCheckParams(517045, "en");
+    expect(p.has("language")).toBe(false);
+    expect(p.has("includeHistory")).toBe(false);
+    expect(p.get("includeEbay")).toBe("true");
+  });
+});
 
 describe("shrink", () => {
   it("keeps the first array items, counts the rest, and cuts long strings", () => {

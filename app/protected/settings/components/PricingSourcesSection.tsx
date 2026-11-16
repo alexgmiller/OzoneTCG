@@ -83,9 +83,9 @@ function JapaneseCatalogRow({ initial }: { initial: JapaneseCatalogStatus | null
 }
 
 // ── Check price sources ──
-// Asks PokemonPriceTracker and eBay about one card and shows what each sent
-// back (shortened), so we can see whether the key works and what data comes
-// with it. Costs a few PokemonPriceTracker credits per tap.
+// Asks eBay about one card and PokemonPriceTracker about two, and shows what
+// each sent back (shortened), so we can see whether the key works and what
+// data comes with it. Costs 4 PokemonPriceTracker credits per tap.
 function CheckSourcesRow() {
   const toast = useToast();
   const [checking, setChecking] = useState(false);
@@ -104,7 +104,7 @@ function CheckSourcesRow() {
 
   return (
     <div>
-      <SettingRow label="Check price sources" description="One PokemonPriceTracker call and one eBay search for Psyduck 286/SM-P" stack>
+      <SettingRow label="Check price sources" description="eBay listings for Psyduck 286/SM-P, then PokemonPriceTracker for Psyduck and Charizard ex 199/165" stack>
         <ActionButton onClick={check} disabled={checking} className="w-full sm:w-auto">
           {checking ? "Checking…" : "Check"}
         </ActionButton>
