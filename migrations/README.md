@@ -37,6 +37,7 @@ file is the source of truth for what has been applied.
 | `20261013_pos.sql` | ✅ | applied 2026-10-14. card_transactions payment_method/counterparty/show_session_id/client_id/paid_by/sale_price; deal_logs.transaction_id. Optional commented backfill of legacy deals into the ledger at the bottom. |
 | `20261016_inventory_snapshots.sql` | ✅ | applied 2026-11-16 (optional backfill skipped). Home value chart. One row per workspace per day (total_fmv, total_cost, item_count), written by the 03:00 refresh-prices cron after it updates prices. Days without a snapshot are estimated from item acquired/sold dates at today's prices (`valueHistory` in `app/protected/dashboard/home.ts`). |
 | `20261116_drop_shows_calendar.sql` | ✅ | applied 2026-11-16 (check returned no rows). Drops card_shows, scraper_runs and workspace_bookmarked_shows; nothing used them after internal-v1. show_sessions is untouched. |
+| `20261116_card_art.sql` | ⬜ | Card art memory: one image per card (key = language + name + set + number, lib/cardArtMatch.ts → cardKey), reused for every copy. Manual images always win. Until applied, card_art reads/writes are skipped and images behave as before. |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.
 
@@ -50,7 +51,7 @@ SELECT t.expected,
 FROM (VALUES
   ('card_transactions'), ('card_images'), ('card_search_frequency'),
   ('sold_comps'), ('pop_snapshots'), ('card_embeddings'), ('scan_photos'),
-  ('workspace_partners'), ('workspace_saved_locations'), ('inventory_snapshots')
+  ('workspace_partners'), ('workspace_saved_locations'), ('inventory_snapshots'), ('card_art')
 ) AS t(expected)
 LEFT JOIN information_schema.tables c
   ON c.table_schema = 'public' AND c.table_name = t.expected

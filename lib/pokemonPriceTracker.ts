@@ -3,11 +3,14 @@ import { makeLookupKey, getCardCache, setCardCache, getManualImage, findManualCa
 import { getCardImage } from "./cardImages";
 import {
   artVerdict, nameLooksRight, normNum, numberKeys, parentSetId, pickByNumber, resolveSetIds,
-  type TcgdexCard, type TcgdexSet,
+  type TcgdexCard,
 } from "./cardArtMatch";
+import { TCGDEX_EN, TCGDEX_JA, tcgdexSetCards, tcgdexSetList } from "./tcgdexSets";
+import { getCardArt, rememberCardArt } from "./cardArt";
 
-const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
-const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
+// Re-exported for callers that already import it from here
+export { tcgdexSetList };
+
 const TCGIO_BASE = "https://api.pokemontcg.io/v2";
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -47,31 +50,6 @@ type TcgDexMatch = { imageUrl: string; cardId: string; endpoint: string };
 //      printing has this number.
 //   3. Otherwise no image. A name tile beats the wrong card.
 // Japanese cards only ever match Japanese printings.
-
-// Per-process memo: one fetch of the set list and of each set's cards per run
-const setListMemo = new Map<string, Promise<TcgdexSet[]>>();
-const setCardsMemo = new Map<string, Promise<TcgdexCard[]>>();
-
-function memoFetch<T>(memo: Map<string, Promise<T>>, key: string, url: string, pick: (json: unknown) => T, empty: T): Promise<T> {
-  let p = memo.get(key);
-  if (!p) {
-    p = makeFetchWithTimeout(url, { cache: "no-store" })
-      .then(async (res) => (res.ok ? pick(await res.json()) : empty))
-      .catch(() => { memo.delete(key); return empty; });
-    memo.set(key, p);
-  }
-  return p;
-}
-
-export function tcgdexSetList(endpoint: string = TCGDEX_EN): Promise<TcgdexSet[]> {
-  return memoFetch(setListMemo, endpoint, `${endpoint}/sets`,
-    (j) => (Array.isArray(j) ? (j as TcgdexSet[]) : []), []);
-}
-
-function tcgdexSetCards(endpoint: string, setId: string): Promise<TcgdexCard[]> {
-  return memoFetch(setCardsMemo, `${endpoint}|${setId}`, `${endpoint}/sets/${encodeURIComponent(setId)}`,
-    (j) => ((j as { cards?: TcgdexCard[] })?.cards ?? []), []);
-}
 
 // Trainer Gallery / Galarian Gallery / Classic Collection entries often have
 // no image in their own listing; TCGdex keeps their art in the parent set's
@@ -293,6 +271,13 @@ export async function lookupCard(
   // ── Fallback chain for singles and slabs ──────────────────────────────────
 
   const cacheKey = makeLookupKey(name, setName, cardNumber);
+  const card = { name, set_name: setName, card_number: cardNumber };
+
+  // Step -1: The card art memory (lib/cardArt.ts). An image a person set for
+  // this card wins over everything; a remembered automatic find comes after
+  // the curated card_images table.
+  const remembered = await getCardArt(card);
+  if (remembered?.source === "manual") return { imageUrl: remembered.imageUrl, market: null };
 
   // Step 0: Check card_images (our authoritative database — manually curated + bulk-imported)
   const lang = category === "slab" ? "English" : "English"; // extend when JP/CN slabs needed
@@ -301,6 +286,7 @@ export async function lookupCard(
     console.log(`[PriceTracker] card_images hit for "${name}" (verified=${ownImage.verified})`);
     return { imageUrl: ownImage.imageUrl, market: null };
   }
+  if (remembered) return { imageUrl: remembered.imageUrl, market: null };
 
   // Step 1: Check local cache (Supabase card_image_cache)
   // Manual entries are trusted. Automatic ones were cached by the old
@@ -310,11 +296,16 @@ export async function lookupCard(
   const cached = await getCardCache(cacheKey);
   if (cached.hit) {
     if (cached.source === "manual" || cached.source === "manual_admin") {
+      // Carry an older manual pick over into the card art memory
+      if (cached.imageUrl) await rememberCardArt(card, cached.imageUrl, "manual");
       return { imageUrl: cached.imageUrl, market: null };
     }
     const stale = cached.imageUrl === null
       || artVerdict({ set_name: setName, card_number: cardNumber }, cached.imageUrl, await tcgdexSetList()) === "wrong";
-    if (!stale) return { imageUrl: cached.imageUrl, market: null };
+    if (!stale && cached.imageUrl) {
+      await rememberCardArt(card, cached.imageUrl, cached.source === "pokemontcg" ? "pokemontcg" : "tcgdex");
+      return { imageUrl: cached.imageUrl, market: null };
+    }
   }
 
   // Step 1.5: Check for a prior manual cache entry (cross-key manual image lookup)
@@ -331,6 +322,7 @@ export async function lookupCard(
       ? await lookupMarketFromTcgDex(tcgDexMatch.cardId, tcgDexMatch.endpoint)
       : null;
     await setCardCache(cacheKey, name, setName, cardNumber, tcgDexMatch.imageUrl, "tcgdex");
+    await rememberCardArt(card, tcgDexMatch.imageUrl, "tcgdex");
     return { imageUrl: tcgDexMatch.imageUrl, market };
   }
 
@@ -338,6 +330,7 @@ export async function lookupCard(
   const tcgIoMatch = await lookupFromTcgIo(name, setName, cardNumber);
   if (tcgIoMatch) {
     await setCardCache(cacheKey, name, setName, cardNumber, tcgIoMatch.imageUrl, "pokemontcg");
+    await rememberCardArt(card, tcgIoMatch.imageUrl, "pokemontcg");
     // pokemontcg.io prices the raw card; a slab's value comes from graded comps
     return { imageUrl: tcgIoMatch.imageUrl, market: category === "single" ? tcgIoMatch.market : null };
   }
@@ -349,6 +342,7 @@ export async function lookupCard(
   const catalogUrl = await getManualImage(name, cardNumber, setIds);
   if (catalogUrl) {
     await setCardCache(cacheKey, name, setName, cardNumber, catalogUrl, "tcgdex");
+    await rememberCardArt(card, catalogUrl, "catalog");
     return { imageUrl: catalogUrl, market: null };
   }
 
