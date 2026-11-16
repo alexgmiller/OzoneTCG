@@ -2,6 +2,7 @@
 // See .claude/design-system.md for when to use each.
 
 export { SectionHeader } from "./SectionHeader";
+export { PageHeader } from "./PageHeader";
 export { MoneyDisplay } from "./MoneyDisplay";
 export type { MoneyTone } from "./MoneyDisplay";
 export { StatCard } from "./StatCard";

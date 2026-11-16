@@ -56,7 +56,7 @@ export default function ShowDetailActions({ show, hasActive }: { show: ShowSumma
             {ending ? "Cancel" : "End show"}
           </button>
         </div>
-        {ending && <EndShowPanel showId={show.id} />}
+        {ending && <EndShowPanel showId={show.id} showName={show.name} />}
       </div>
     );
   }

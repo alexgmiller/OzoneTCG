@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { PageHeader } from "@/components/ui";
 import type { ShowSession } from "./actions";
 import NewShowForm from "./NewShowForm";
 import ShowsList from "./ShowsList";
@@ -25,7 +26,7 @@ export default async function ShowsServer() {
   // column (sticky); DOM order stays the phone order
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4 py-4 lg:max-w-6xl">
-      <h1 className="text-xl font-bold tracking-tight text-foreground">Shows</h1>
+      <PageHeader title="Shows" />
       <div className="space-y-4 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
         <div className="lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
           <NewShowForm hasActive={hasActive} />

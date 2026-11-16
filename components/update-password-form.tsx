@@ -68,7 +68,7 @@ export function UpdatePasswordForm({
                 {error}
               </p>
             )}
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" loading={isLoading}>
               {isLoading ? "Saving…" : "Save new password"}
             </Button>
           </form>

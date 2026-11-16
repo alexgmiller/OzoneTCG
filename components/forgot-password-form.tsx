@@ -89,7 +89,7 @@ export function ForgotPasswordForm({
                   {error}
                 </p>
               )}
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" loading={isLoading}>
                 {isLoading ? "Sending…" : "Send reset email"}
               </Button>
               <p className="text-center text-sm text-muted-foreground">

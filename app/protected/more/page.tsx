@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, LogOut } from "lucide-react";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { PageHeader } from "@/components/ui";
 import { MORE_GROUPS } from "@/components/shell/nav";
 
 // ── More ──
@@ -21,10 +22,7 @@ export default function MorePage() {
 
   return (
     <div className="mx-auto w-full max-w-lg py-4 lg:max-w-4xl">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">More</h1>
-        <ThemeSwitcher />
-      </div>
+      <PageHeader title="More" actions={<ThemeSwitcher />} className="mb-4" />
 
       <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
         {MORE_GROUPS.map((g) => (

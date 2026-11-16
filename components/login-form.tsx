@@ -92,7 +92,7 @@ export function LoginForm({
                 {error}
               </p>
             )}
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" loading={isLoading}>
               {isLoading ? "Logging in…" : "Login"}
             </Button>
           </form>

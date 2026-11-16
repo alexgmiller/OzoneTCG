@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Square, X } from "lucide-react";
 import { IconButton, MoneyDisplay, TabStrip, useToast } from "@/components/ui";
 import { startAutoSync } from "@/lib/offlineSync";
-import { endShowSession, startShow, type ActiveShowInfo } from "@/app/protected/shows/actions";
+import { startShow, type ActiveShowInfo } from "@/app/protected/shows/actions";
+import EndShowPanel from "@/app/protected/shows/EndShowPanel";
 import type { Mode, PickItem } from "./ledger";
 import { BTN_ACCENT, CARD, INPUT } from "./ui";
 import { POS_GRID } from "./DealColumns";
@@ -86,14 +87,8 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
               {ending && (
                 <div className={CARD}>
                   <p className="section-label">End {activeShow.name}</p>
-                  <div className="flex gap-2">
-                    <input className={`${INPUT} flex-1 tabular-nums`} type="number" inputMode="decimal" value={cash}
-                      onChange={(e) => setCash(e.target.value)} placeholder="Counted cash (optional)" aria-label="Counted cash" />
-                    <button type="button" className={BTN_ACCENT} disabled={busy}
-                      onClick={() => run(() => endShowSession(activeShow.id, cash ? Number(cash) : null))}>
-                      End show
-                    </button>
-                  </div>
+                  {/* Shared with Shows: validates the cash and asks before closing */}
+                  <EndShowPanel showId={activeShow.id} showName={activeShow.name} />
                 </div>
               )}
             </div>

@@ -2,14 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/components/ui";
+import { useConfirm, useToast } from "@/components/ui";
 import { endShowSession } from "./actions";
 import { btnDanger, inputCls } from "./shared";
 
-// Counted-cash input + confirm; used by the live card and the detail page
-export default function EndShowPanel({ showId }: { showId: string }) {
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+// Counted-cash input + a confirm dialog before the show closes. Used by POS,
+// the live show card and the show detail page, so ending works the same way
+// everywhere.
+export default function EndShowPanel({ showId, showName }: { showId: string; showName?: string }) {
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const [cash, setCash] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -19,6 +24,15 @@ export default function EndShowPanel({ showId }: { showId: string }) {
       toast.error("Counted cash must be 0 or more");
       return;
     }
+    const ok = await confirm({
+      title: showName ? `End ${showName}?` : "End this show?",
+      description: counted !== null
+        ? `The show closes with ${usd.format(counted)} counted, and new deals stop attaching to it.`
+        : "The show closes and new deals stop attaching to it. No counted cash will be recorded.",
+      confirmLabel: "End show",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await endShowSession(showId, counted);

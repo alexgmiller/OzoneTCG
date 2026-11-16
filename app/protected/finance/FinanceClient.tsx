@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { EmptyState, MoneyDisplay, SectionHeader, StatCard, useToast } from "@/components/ui";
+import { EmptyState, MoneyDisplay, PageHeader, SectionHeader, StatCard, useToast } from "@/components/ui";
 import { exportExpensesCSV, exportTransactionsCSV } from "@/app/protected/settings/actions";
 import type { FinanceData, PayPeriodPnl } from "./actions";
 import type { MonthPnl } from "./math";
@@ -127,7 +127,7 @@ export default function FinanceClient({ data }: { data: FinanceData }) {
   // expenses by category and exports in the right column
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5 py-4 lg:max-w-6xl">
-      <h1 className="text-xl font-bold tracking-tight text-foreground">Finance</h1>
+      <PageHeader title="Finance" />
 
       {/* ── Year to date ── */}
       <section className="space-y-2">
