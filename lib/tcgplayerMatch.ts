@@ -44,9 +44,19 @@ const EN_ALIASES: [RegExp, string][] = [
   [/^(wizards|wotc)( black star)? promo$/, "wotc promo"],
   [/^ex (.+)$/, "$1"],                          // "EX Delta Species" → "Delta Species"
 ];
+// Vintage Japanese sets are listed under their original Japanese names. Note
+// "Base Expansion Pack" is the 2001 e-series set; Base Set is "Expansion Pack".
 const JA_ALIASES: [RegExp, string][] = [
+  [/^base( set)?$/, "expansion pack"],
+  [/^jungle$/, "pokemon jungle"],
+  [/^fossil$/, "mystery of the fossils"],
   [/^team rocket$/, "rocket gang"],
-  [/^base set$/, "base expansion pack"],
+  [/^gym heroes$/, "leaders stadium"],
+  [/^gym challenge$/, "challenge from the darkness"],
+  [/^neo genesis$/, "gold silver to a new world"],
+  [/^neo discovery$/, "crossing the ruins"],
+  [/^neo revelation$/, "awakening legends"],
+  [/^neo destiny$/, "darkness and to light"],
   [/^(sm|sun and moon) promo$/, "sun and moon promo"],
   [/^(swsh|sword and shield) promo$/, "sword and shield promo"],
   [/^(sv|scarlet and violet) promo$/, "sv p promotional cards"],
@@ -79,6 +89,32 @@ export function resolveGroups(setName: string | null | undefined, groups: TcgGro
     return (a.size >= 2 && within(a, b)) || (b.size >= 2 && within(b, a));
   }));
   return loose.length <= 3 ? loose.map((c) => c.g) : [];
+}
+
+// ── Last resort ──
+// When a set name maps to nothing, the closest-named groups by shared words
+// (ignoring filler like "the", "pokemon", "card"): at most `limit`, each
+// sharing at least half its meaningful words with the set name. This only
+// widens where to look: pickProduct still has to find the exact card (same
+// number and name, or the only card with that name), so a loose guess at the
+// set can't put the wrong card's art on an item.
+const FILLER = new Set(["the", "and", "to", "a", "of", "pokemon", "card", "cards", "set", "japanese", "jp", "promo", "promotional"]);
+const meaningful = (s: string) => new Set(s.split(" ").filter((w) => w && !FILLER.has(w)));
+
+export function closestGroups(setName: string | null | undefined, groups: TcgGroup[], lang: "en" | "ja", limit = 3): TcgGroup[] {
+  if (!setName?.trim()) return [];
+  const want = new Set(itemSetVariants(setName, lang).flatMap((v) => [...meaningful(v)]));
+  if (!want.size) return [];
+  return groups
+    .map((g) => {
+      const have = meaningful(norm(groupCore(g.name)));
+      const shared = [...want].filter((w) => have.has(w)).length;
+      return { g, score: shared / Math.max(want.size, have.size), shared };
+    })
+    .filter((x) => x.shared > 0 && x.score >= 0.5)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((x) => x.g);
 }
 
 const field = (p: TcgProduct, key: string) => p.extendedData?.find((e) => e.name === key)?.value ?? null;

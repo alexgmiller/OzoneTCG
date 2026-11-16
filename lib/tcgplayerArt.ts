@@ -9,7 +9,7 @@
 // each relevant group once. Any failure means "no match", never an error.
 
 import { cardLang } from "./cardArtMatch";
-import { CATEGORY, hiResImage, pickProduct, resolveGroups, type TcgGroup, type TcgProduct } from "./tcgplayerMatch";
+import { CATEGORY, closestGroups, hiResImage, pickProduct, resolveGroups, type TcgGroup, type TcgProduct } from "./tcgplayerMatch";
 
 const TCGCSV = "https://tcgcsv.com/tcgplayer";
 const TIMEOUT_MS = 15_000; // product lists are a few hundred KB
@@ -46,7 +46,11 @@ export async function lookupTcgplayerArt(
 ): Promise<TcgplayerArt | null> {
   const lang = cardLang({ name, set_name: setName ?? null });
   const category = CATEGORY[lang];
-  const matched = resolveGroups(setName, await groups(category), lang);
+  const all = await groups(category);
+  // Mapped set first; if the name maps to nothing, the closest-named sets as a
+  // last resort (the card itself must still match exactly — see closestGroups)
+  const mapped = resolveGroups(setName, all, lang);
+  const matched = mapped.length ? mapped : closestGroups(setName, all, lang);
   for (const g of matched) {
     const p = pickProduct(await products(category, g.groupId), name, cardNumber);
     const imageUrl = hiResImage(p?.imageUrl);
