@@ -1,15 +1,14 @@
 export type Category = "single" | "slab" | "sealed";
 export type Owner = "alex" | "mila" | "shared" | "consigner";
-export type Status = "inventory" | "grading";
+export type Status = "inventory" | "sold" | "grading";
 export type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
 export type SortKey =
   | "date-desc" | "date-asc"
   | "name-asc"  | "name-desc"
   | "market-desc" | "market-asc"
   | "cost-desc"   | "cost-asc"
-  | "fmv-desc"    | "fmv-asc"
-  | "margin-desc" | "margin-asc"
-  | "movement-desc" | "movement-asc";
+  | "sticker-desc" | "sticker-asc"
+  | "days-desc"    | "days-asc";
 
 export type ConsignerOption = { id: string; name: string; rate: number };
 
@@ -29,6 +28,7 @@ export type Item = {
   set_name: string | null;
   card_number: string | null;
   grade: string | null;
+  cert_number: string | null;
   cost_basis: number | null;
   buy_percentage: number | null;
   acquisition_type: string | null;
@@ -41,6 +41,9 @@ export type Item = {
   product_type: string | null;
   quantity: number;
   language: string;
+  // Only present on rows fetched with status "sold"
+  sold_price?: number | null;
+  sold_at?: string | null;
 };
 
 export type ItemForm = {
@@ -59,6 +62,7 @@ export type ItemForm = {
   setName: string;
   cardNumber: string;
   grade: string;
+  certNumber: string;
   stickerPrice: string;
   // Sealed product metadata
   productType: string;
@@ -70,3 +74,7 @@ export type StagedItem = ItemForm & { _id: string };
 
 // PSA 10 eBay price lookup state per grading item
 export type Psa10Entry = { medianPrice: number | null; count: number; loading: boolean; fetched: boolean; rateLimited?: boolean };
+
+// ── Filters ──
+export type ConsignerFilter = "all" | "none" | string;
+export type HistoryDuration = "7d" | "30d" | "90d" | "180d";

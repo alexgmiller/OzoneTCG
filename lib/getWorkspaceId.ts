@@ -1,20 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 
+// Single-company app: every signed-in user works in the one workspace set by env.
 export async function getWorkspaceId() {
   const supabase = await createClient();
 
   const { data: auth, error: authErr } = await supabase.auth.getUser();
   if (authErr || !auth.user) throw new Error("Not logged in");
 
-  const { data, error } = await supabase
-    .from("workspace_members")
-    .select("workspace_id")
-    .eq("user_id", auth.user.id)
-    .limit(1)
-    .maybeSingle();
+  const workspaceId = process.env.OZONE_WORKSPACE_ID;
+  if (!workspaceId) throw new Error("OZONE_WORKSPACE_ID is not set");
 
-  if (error) throw error;
-  if (!data?.workspace_id) throw new Error("No workspace membership found");
-
-  return data.workspace_id as string;
+  return workspaceId;
 }

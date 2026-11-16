@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { Loader2 } from "lucide-react";
+import { MoneyDisplay } from "@/components/ui";
 
 export type AutocompleteCard = {
   name: string;
@@ -20,7 +22,7 @@ type Props = {
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 };
 
-// ── Frequency map — module-level cache shared across all instances ─────────────
+// ── Frequency map — module-level cache shared across all instances ──
 
 type FreqEntry = { count: number; lastUsed: string; name: string };
 type FreqMap = Record<string, FreqEntry>;
@@ -82,7 +84,10 @@ if (typeof window !== "undefined") {
   loadFreqMap();
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ──
+
+const dropdownClass =
+  "absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-border bg-card";
 
 export default function CardAutocomplete({
   value,
@@ -243,35 +248,36 @@ export default function CardAutocomplete({
       />
 
       {loading && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-xl shadow-xl px-3 py-2.5 text-xs text-muted-foreground flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin shrink-0" />
+        <div className={`${dropdownClass} flex h-11 items-center gap-2 px-3 text-xs text-muted-foreground`}>
+          <Loader2 size={14} className="shrink-0 animate-spin" />
           Searching…
         </div>
       )}
 
       {open && !loading && suggestions.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-xl shadow-xl overflow-hidden max-h-72 overflow-y-auto">
+        <div className={`${dropdownClass} max-h-72 overflow-y-auto`}>
           {suggestions.map((card, i) => (
             <button
               key={i}
+              type="button"
               onMouseDown={(e) => { e.preventDefault(); handleSelect(card); }}
-              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted/60 text-left border-b last:border-0 transition-colors"
+              className="flex min-h-11 w-full items-center gap-3 border-b border-border px-3 py-2 text-left transition-colors duration-150 last:border-0 hover:bg-muted"
             >
               {card.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={card.imageUrl} alt="" className="h-10 w-7 object-contain shrink-0 rounded" />
+                <img src={card.imageUrl} alt="" className="h-10 w-7 shrink-0 rounded-lg object-contain" />
               ) : (
-                <div className="h-10 w-7 bg-muted rounded shrink-0" />
+                <div className="h-10 w-7 shrink-0 rounded-lg bg-muted" />
               )}
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{card.name}</div>
-                <div className="text-xs text-muted-foreground truncate">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-foreground">{card.name}</div>
+                <div className="truncate text-xs text-muted-foreground">
                   {card.setName}
                   {card.cardNumber && ` · #${card.cardNumber}`}
                 </div>
               </div>
               {card.market != null && (
-                <span className="text-xs font-medium text-green-700 shrink-0">${card.market.toFixed(2)}</span>
+                <MoneyDisplay amount={card.market} tone="neutral" className="shrink-0 text-xs font-medium text-foreground" />
               )}
             </button>
           ))}

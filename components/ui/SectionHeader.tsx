@@ -1,11 +1,7 @@
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
-/**
- * SectionHeader — uppercase mono label used above lists, sections, panels.
- *
- * USE when you need a short categorical label that introduces a block of content.
- * DON'T use as a page title (use a real heading) or inside dense table cells.
- */
+// ── SectionHeader ──
+// Uppercase mono label above lists, sections, panels. Not a page title.
 export function SectionHeader({
   children,
   action,

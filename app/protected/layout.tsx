@@ -1,74 +1,41 @@
-import { EnvVarWarning } from "@/components/env-var-warning";
-import { AuthButton } from "@/components/auth-button";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import MobileBottomNav from "@/components/NavLinks";
-import { hasEnvVars } from "@/lib/utils";
-import Link from "next/link";
-import { Suspense } from "react";
-import { hasPinConfigured } from "@/app/protected/guest/actions";
-import { getActiveShow } from "@/app/protected/show/actions";
+import TabBar from "@/components/shell/TabBar";
+import Rail from "@/components/shell/Rail";
+import ActiveShowBanner from "@/components/ActiveShowBanner";
+import { getActiveShow } from "@/app/protected/shows/actions";
 
-function money(v: number) {
-  return `$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-export default async function ProtectedLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [pinConfigured, activeShow] = await Promise.all([
-    hasPinConfigured().catch(() => false),
-    getActiveShow().catch(() => null),
-  ]);
-
-  return (
-    <main className="min-h-screen flex flex-col">
-      <div className="flex-1 w-full flex flex-col">
-        <nav className="nav-glass w-full h-14 sticky top-0 z-40">
-          <div className="w-full h-full flex justify-between items-center px-4 text-sm">
-            <Link href="/protected/dashboard" className="font-bold text-base tracking-tight">
-              <span style={{ color: "var(--accent-primary)" }}>Ozone</span><span style={{ color: "var(--text-bright)" }}>TCG</span>
-            </Link>
-
-            <div className="flex items-center gap-2">
-              <ThemeSwitcher />
-              {!hasEnvVars ? (
-                <EnvVarWarning />
-              ) : (
-                <Suspense>
-                  <AuthButton />
-                </Suspense>
-              )}
-            </div>
-          </div>
-        </nav>
-
-        {/* Active show banner — visible on all pages when a show is running */}
-        {activeShow && (
-          <a
-            href="/protected/show"
-            className="w-full flex items-center justify-between px-4 py-1.5 text-xs font-medium gap-3 border-b border-amber-400/20 bg-amber-400/8 hover:bg-amber-400/12 transition-colors"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-              <span className="text-amber-700 dark:text-amber-300 font-semibold truncate">
-                Show active: {activeShow.name}
-              </span>
-            </div>
-            <span className="text-amber-600 dark:text-amber-400 shrink-0 tabular-nums">
-              Cash: {money(activeShow.expected_cash)} →
-            </span>
-          </a>
-        )}
-
-        {/* pb-16 leaves room for the mobile bottom tab bar */}
-        <div className="flex-1 flex flex-col px-4 sm:px-8 lg:px-14 pb-16 md:pb-0">
-          {children}
+export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  // Every page needs the workspace; say so plainly instead of a production error digest
+  if (!process.env.OZONE_WORKSPACE_ID) {
+    return (
+      <div className="min-h-dvh bg-bg p-5 text-foreground">
+        <div className="mx-auto w-full max-w-md space-y-3 rounded-2xl bg-surface p-5">
+          <h1 className="text-lg font-semibold">Setup needed</h1>
+          <p className="text-sm text-muted-foreground">
+            The <code className="font-mono">OZONE_WORKSPACE_ID</code> environment variable is not set for this
+            deployment. Add it in Vercel (Settings → Environment Variables, for Preview and Production) or in
+            <code className="font-mono"> .env.local</code>, then redeploy.
+          </p>
         </div>
       </div>
-      {/* Rendered outside the sticky/backdrop-blur nav to keep fixed positioning intact on Safari */}
-      <MobileBottomNav hasPinConfigured={pinConfigured} hasActiveShow={!!activeShow} />
-    </main>
+    );
+  }
+
+  const activeShow = await getActiveShow().catch(() => null);
+  const hasActiveShow = !!activeShow;
+
+  return (
+    <div className="min-h-dvh bg-bg">
+      <Rail hasActiveShow={hasActiveShow} />
+      <TabBar hasActiveShow={hasActiveShow} />
+
+      {/* Rail is fixed on md+, so content shifts right by its width.
+          On mobile the floating tab bar needs clearance at the bottom. */}
+      <div className="flex min-h-dvh flex-col md:pl-20">
+        <ActiveShowBanner show={activeShow} />
+        <main className="pb-tabbar-safe flex w-full flex-1 flex-col px-4 md:px-8 md:pb-5">
+          {children}
+        </main>
+      </div>
+    </div>
   );
 }

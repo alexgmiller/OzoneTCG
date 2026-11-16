@@ -1,10 +1,19 @@
-import { getPendingActions, markSynced, markFailed } from "./offlineQueue";
-import {
-  recordShowBuy,
-  recordShowSell,
-  recordShowTrade,
-  addShowExpense,
-} from "@/app/protected/show/actions";
+import { getPendingActions, markSynced, markFailed, type PendingAction } from "./offlineQueue";
+import { recordBuy, recordSell, recordTrade } from "@/app/protected/pos/actions";
+
+// Actions queued by the old Show Mode can no longer be replayed
+const LEGACY = "Queued by the old Show Mode — re-enter it in POS, then clear the queue";
+
+async function run(action: PendingAction): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payload = action.payload as any;
+  switch (action.actionType) {
+    case "pos-buy": await recordBuy(payload); break;
+    case "pos-sell": await recordSell(payload); break;
+    case "pos-trade": await recordTrade(payload); break;
+    default: throw new Error(LEGACY);
+  }
+}
 
 export async function replayPendingActions(): Promise<{ synced: number; failed: number }> {
   let actions;
@@ -20,24 +29,7 @@ export async function replayPendingActions(): Promise<{ synced: number; failed: 
 
   for (const action of actions) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload = action.payload as any;
-      switch (action.actionType) {
-        case "buy":
-        case "deal-buy":
-          await recordShowBuy(payload);
-          break;
-        case "sell":
-          await recordShowSell(payload);
-          break;
-        case "trade":
-        case "deal-trade":
-          await recordShowTrade(payload);
-          break;
-        case "expense":
-          await addShowExpense(payload);
-          break;
-      }
+      await run(action);
       await markSynced(action.id);
       synced++;
     } catch (e) {
@@ -64,24 +56,7 @@ export async function replayOneAction(id: string): Promise<{ synced: boolean }> 
   if (!action) return { synced: false };
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payload = action.payload as any;
-    switch (action.actionType) {
-      case "buy":
-      case "deal-buy":
-        await recordShowBuy(payload);
-        break;
-      case "sell":
-        await recordShowSell(payload);
-        break;
-      case "trade":
-      case "deal-trade":
-        await recordShowTrade(payload);
-        break;
-      case "expense":
-        await addShowExpense(payload);
-        break;
-    }
+    await run(action);
     await markSynced(id);
     window.dispatchEvent(new CustomEvent("offline-sync-result", { detail: { synced: 1, failed: 0 } }));
     return { synced: true };

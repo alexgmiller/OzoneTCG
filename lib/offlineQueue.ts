@@ -5,7 +5,8 @@ const STORE = "pending_actions";
 export type PendingAction = {
   id: string;
   timestamp: number;
-  actionType: "buy" | "sell" | "trade" | "deal-buy" | "deal-trade" | "expense";
+  // "buy" … "expense" are legacy Show Mode entries that may still sit in a queue
+  actionType: "pos-buy" | "pos-sell" | "pos-trade" | "buy" | "sell" | "trade" | "deal-buy" | "deal-trade" | "expense";
   payload: Record<string, unknown>;
   status: "pending" | "syncing" | "failed";
   retryCount: number;
@@ -116,24 +117,11 @@ export async function clearAll(): Promise<void> {
 /** Label suitable for display — extracted from the action payload */
 export function pendingActionLabel(action: PendingAction): string {
   const p = action.payload as Record<string, unknown>;
+  const n = (k: string) => (Array.isArray(p[k]) ? (p[k] as unknown[]).length : 0);
   switch (action.actionType) {
-    case "buy":
-    case "deal-buy":
-      return (p.name as string) ?? "Buy";
-    case "sell":
-      return (p.item_name as string) ?? "Sell";
-    case "trade":
-    case "deal-trade": {
-      const out = p.goingOut as Array<{ name: string }> | undefined;
-      const inn = p.comingIn as Array<{ name: string }> | undefined;
-      const outNames = out?.map((g) => g.name).join(", ");
-      const inNames = inn?.map((c) => c.name).join(", ");
-      if (outNames && inNames) return `${outNames} → ${inNames}`;
-      return outNames ?? inNames ?? "Trade";
-    }
-    case "expense":
-      return (p.description as string) ?? "Expense";
-    default:
-      return "Action";
+    case "pos-buy": return `Buy · ${n("cards")} card${n("cards") === 1 ? "" : "s"}`;
+    case "pos-sell": return `Sell · ${n("itemIds")} item${n("itemIds") === 1 ? "" : "s"}`;
+    case "pos-trade": return `Trade · ${n("goingOut")} out, ${n("comingIn")} in`;
+    default: return `Old Show Mode ${action.actionType}`;
   }
 }

@@ -9,8 +9,8 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/cron/scrape-shows",
-      "schedule": "0 5 * * *"
+      "path": "/api/cron/sync-catalog",
+      "schedule": "0 5 * * 1"
     }
   ]
 }

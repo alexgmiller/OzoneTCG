@@ -24,9 +24,8 @@ export default function LoadingScreen() {
   return (
     <div className="loading-screen">
       <div className="loading-screen-inner">
-        <div className="loading-wordmark">
-          <span style={{ color: "var(--accent-primary)" }}>Ozone</span>
-          <span style={{ color: "var(--text-bright)" }}>TCG</span>
+        <div className="loading-wordmark text-foreground">
+          <span className="text-primary">Ozone</span>TCG
         </div>
         <div className="loading-ring" />
         <p key={key} className="loading-message">

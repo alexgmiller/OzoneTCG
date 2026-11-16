@@ -20,6 +20,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
+  viewportFit: "cover", // lets env(safe-area-inset-bottom) reach the floating tab bar
 };
 
 const lexend = Lexend({

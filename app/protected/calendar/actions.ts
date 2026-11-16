@@ -1,19 +1,15 @@
 "use server";
 
-/**
- * Calendar server actions
- *
- * MIGRATION — run in Supabase SQL editor to support scheduled shows:
- *   ALTER TABLE show_sessions
- *     DROP CONSTRAINT IF EXISTS show_sessions_status_check;
- *   ALTER TABLE show_sessions
- *     ADD CONSTRAINT show_sessions_status_check
- *     CHECK (status IN ('scheduled', 'active', 'completed'));
- */
+// ── Calendar server actions ───────────────────────────────────────────────────
+// show_sessions.status must allow 'scheduled' | 'active' | 'completed'.
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { revalidatePath } from "next/cache";
+import { addExpense } from "@/app/protected/expenses/actions";
+import { countTradesByDay, groupTrades, type TradeCountRow, type TradeDetailRow } from "./trades";
+
+const TRADE_TYPES = ["trade_in", "trade_out"];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -57,13 +53,14 @@ export type SellEntry = {
   margin: number | null;
 };
 
+// One trade deal from card_transactions; card_name reads "out → in"
 export type TradeEntry = {
   id: string;
   card_name: string | null;
   notes: string | null;
-  scanned_at: string;
+  scanned_at: string; // card_transactions.date
   deal_photo_url: string | null;
-  show_session_id: string;
+  show_session_id: string | null;
 };
 
 export type ExpenseEntry = {
@@ -145,14 +142,14 @@ export async function getCalendarMonthData(
       .gte("date", monthStart)
       .lte("date", monthEnd),
 
-    // Trades via show_scans — filter through workspace session IDs
+    // Trades: one per trade_group_id with a trade_in/trade_out row that day
     supabase
-      .from("show_scans")
-      .select("scanned_at, show_sessions!inner(workspace_id)")
-      .eq("action", "trade")
-      .eq("show_sessions.workspace_id", workspaceId)
-      .gte("scanned_at", monthStart)
-      .lte("scanned_at", rangeEnd),
+      .from("card_transactions")
+      .select("id, trade_group_id, date")
+      .eq("workspace_id", workspaceId)
+      .in("transaction_type", TRADE_TYPES)
+      .gte("date", monthStart)
+      .lte("date", rangeEnd),
   ]);
 
   const dayMap = new Map<string, DayActivity>();
@@ -199,11 +196,8 @@ export async function getCalendarMonthData(
     getDay(d).shows.push({ id: show.id, name: show.name, status: show.status });
   }
 
-  for (const t of tradesRes.data ?? []) {
-    const d = (t as { scanned_at: string }).scanned_at?.slice(0, 10);
-    if (!d) continue;
-    getDay(d).tradeCount++;
-  }
+  const tradeCounts = countTradesByDay((tradesRes.data ?? []) as TradeCountRow[]);
+  for (const [d, count] of tradeCounts) getDay(d).tradeCount += count;
 
   for (const day of dayMap.values()) {
     day.netPL = day.cashIn - day.cashOut;
@@ -220,13 +214,6 @@ export async function getDayDetail(dateStr: string): Promise<DayDetail> {
 
   const dayStart = dateStr + "T00:00:00";
   const dayEnd = dateStr + "T23:59:59";
-
-  // Fetch workspace show session IDs for this day (for trade filtering)
-  const { data: daySessions } = await supabase
-    .from("show_sessions")
-    .select("id")
-    .eq("workspace_id", workspaceId);
-  const allSessionIds = (daySessions ?? []).map((s) => s.id);
 
   const [buysRes, sellsRes, tradesRes, expensesRes, showsRes] = await Promise.all([
     supabase
@@ -248,16 +235,14 @@ export async function getDayDetail(dateStr: string): Promise<DayDetail> {
       .lte("sold_at", dayEnd)
       .order("sold_at"),
 
-    allSessionIds.length > 0
-      ? supabase
-          .from("show_scans")
-          .select("id, card_name, notes, scanned_at, deal_photo_url, show_session_id")
-          .eq("action", "trade")
-          .in("show_session_id", allSessionIds)
-          .gte("scanned_at", dayStart)
-          .lte("scanned_at", dayEnd)
-          .order("scanned_at")
-      : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from("card_transactions")
+      .select("id, trade_group_id, transaction_type, date, notes, show_session_id, card:items!card_id(name)")
+      .eq("workspace_id", workspaceId)
+      .in("transaction_type", TRADE_TYPES)
+      .gte("date", dayStart)
+      .lte("date", dayEnd)
+      .order("date"),
 
     supabase
       .from("expenses")
@@ -283,7 +268,7 @@ export async function getDayDetail(dateStr: string): Promise<DayDetail> {
     date: dateStr,
     buys: buysRes.data ?? [],
     sells,
-    trades: tradesRes.data ?? [],
+    trades: groupTrades((tradesRes.data ?? []) as unknown as TradeDetailRow[]),
     expenses: expensesRes.data ?? [],
     shows: showsRes.data ?? [],
   };
@@ -302,6 +287,7 @@ export async function scheduleShow(data: {
   location?: string;
   hours?: string;
   startingCash?: number;
+  boothFee?: number;
   notes?: string;
 }): Promise<string> {
   const supabase = await createClient();
@@ -339,7 +325,22 @@ export async function scheduleShow(data: {
   }
 
   if (result.error) throw new Error(result.error.message);
+  const showId = result.data.id as string;
+
+  // Booth fee is a shared expense tagged to the show
+  if (data.boothFee && data.boothFee > 0) {
+    await addExpense({
+      description: `Booth fee — ${data.name.trim()}`,
+      cost: data.boothFee,
+      paid_by: "shared",
+      category: "booth_fee",
+      expense_date: data.date,
+      vendor_name: data.location?.trim() || null,
+      show_session_id: showId,
+    });
+  }
+
   revalidatePath("/protected/calendar");
   revalidatePath("/protected/shows");
-  return result.data.id as string;
+  return showId;
 }

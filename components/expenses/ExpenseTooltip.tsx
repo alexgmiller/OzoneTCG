@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 
+// ── Inline info tooltip (tap to toggle, tap outside to close) ─────────────────
+
 export function ExpenseTooltip({ content }: { content: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -27,17 +29,14 @@ export function ExpenseTooltip({ content }: { content: string }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="opacity-40 hover:opacity-70 transition-opacity duration-150 ml-1"
+        className="-my-3 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground"
         aria-label="More info"
       >
-        <Info size={12} />
+        <Info size={14} />
       </button>
       {open && (
-        <div
-          className="absolute left-5 top-0 z-[70] w-56 rounded-xl border border-white/10 bg-slate-900 p-3 shadow-lg"
-          style={{ background: "rgba(15,23,42,0.97)" }}
-        >
-          <p className="text-xs leading-relaxed opacity-75">{content}</p>
+        <div className="absolute left-8 top-0 z-10 w-56 rounded-xl border border-border bg-card p-3">
+          <p className="text-xs leading-relaxed text-muted-foreground">{content}</p>
         </div>
       )}
     </div>

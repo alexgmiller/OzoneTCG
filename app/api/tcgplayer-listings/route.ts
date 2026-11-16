@@ -41,9 +41,8 @@ async function findProductIdByName(name: string, setName?: string): Promise<numb
   if (!Array.isArray(cards) || !cards.length) return null;
 
   // If setName given, prefer a card from that set
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sorted = setName
-    ? [...cards].sort((a: any) =>
+    ? [...cards].sort((a: { id?: string }) =>
         String(a.id ?? "").startsWith(setName) ? -1 : 1
       )
     : cards;

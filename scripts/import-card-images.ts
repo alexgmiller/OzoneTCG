@@ -80,7 +80,6 @@ type PtcgCard = {
   number: string;
   set: { id: string; name: string };
   images: { small?: string; large?: string };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subtypes?: string[];
 };
 
@@ -247,7 +246,6 @@ async function main() {
   console.log();
   console.log("Next steps:");
   console.log("  • Run with --set <id> to import a specific set");
-  console.log("  • Use the admin page at /protected/admin/images to upload JP/CN/sealed images");
   console.log("  • Run the mirror script later to download + re-host images locally");
 }
 

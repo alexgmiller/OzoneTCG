@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import ExpensesClient from "./ExpensesClient";
 import type { ExpenseCategory, DocType, SavedLocation } from "./actions";
-import type { BusinessStructure } from "@/lib/businessFeatures";
 
 type PaidBy = "alex" | "mila" | "shared";
 
@@ -60,7 +59,7 @@ export default async function ExpensesServer() {
       .limit(50),
     supabase
       .from("workspaces")
-      .select("business_structure,home_address")
+      .select("home_address")
       .eq("id", workspaceId)
       .maybeSingle(),
     supabase
@@ -73,8 +72,6 @@ export default async function ExpensesServer() {
 
   if (expensesResult.error) throw new Error(expensesResult.error.message);
 
-  const businessStructure: BusinessStructure =
-    (workspaceResult.data?.business_structure as BusinessStructure | null) ?? "sole_prop";
   const homeAddress = (workspaceResult.data?.home_address as string | null) ?? null;
   const savedLocations = (locationsResult.data ?? []) as unknown as SavedLocation[];
 
@@ -84,7 +81,6 @@ export default async function ExpensesServer() {
         workspaceId={workspaceId}
         initialExpenses={(expensesResult.data ?? []) as unknown as ExpenseRow[]}
         showSessions={(showsResult.data ?? []) as unknown as ShowSessionSummary[]}
-        businessStructure={businessStructure}
         homeAddress={homeAddress}
         savedLocations={savedLocations}
       />

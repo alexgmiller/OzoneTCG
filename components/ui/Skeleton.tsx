@@ -1,18 +1,9 @@
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
-/**
- * Skeleton — shimmer placeholder sized to the shape it's replacing.
- *
- * USE while data is loading. Size the Skeleton to match the final content
- * so there's no layout shift on resolve.
- * DON'T use a spinner in its place for list/grid loading — always skeleton.
- * DON'T animate a generic "loading..." — shape-matched skeletons only.
- *
- * Rendering is delegated to the `.skeleton` class in globals.css, which owns
- * the shimmer keyframes and resolves its colours from the surface tokens, so
- * it reads correctly in both light and dark themes. A plain white overlay
- * would be invisible against a light background.
- */
+// ── Skeleton ──
+// Shimmer placeholder sized to the shape it replaces. The `.skeleton` class in
+// globals.css owns the keyframes and reads its colours from the surface tokens,
+// so it renders correctly in both themes.
 export function Skeleton({
   className,
   variant = "rect",

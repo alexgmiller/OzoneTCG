@@ -1,18 +1,20 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { hasPinConfigured } from "@/app/protected/guest/actions";
+import { Skeleton } from "@/components/ui";
 import { loadSettings, loadWorkspaceData, getSavedLocations } from "./actions";
 import SettingsClient from "./SettingsClient";
 
+// ── Loader ──
 async function SettingsLoader() {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return <div className="p-8 text-center opacity-40">Not signed in.</div>;
+  if (!auth.user) {
+    return <div className="py-6 text-center text-sm text-muted-foreground">Not signed in.</div>;
+  }
 
-  const [settings, workspaceData, pinConfigured, savedLocations] = await Promise.all([
+  const [settings, workspaceData, savedLocations] = await Promise.all([
     loadSettings(),
     loadWorkspaceData(),
-    hasPinConfigured().catch(() => false),
     getSavedLocations().catch(() => []),
   ]);
 
@@ -27,18 +29,30 @@ async function SettingsLoader() {
       email={auth.user.email ?? ""}
       settings={settings}
       workspaceData={workspaceData}
-      pinConfigured={pinConfigured}
       apiStatus={apiStatus}
       savedLocations={savedLocations}
     />
   );
 }
 
+// ── Fallback ──
+function SettingsSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-2xl space-y-6 py-6" aria-busy>
+      <div className="space-y-2">
+        <Skeleton className="h-7 w-28" />
+        <Skeleton variant="text" className="w-48" />
+      </div>
+      <Skeleton className="h-44 w-full" />
+      <Skeleton className="h-72 w-full" />
+      <Skeleton className="h-44 w-full" />
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   return (
-    <Suspense fallback={
-      <div className="p-8 text-center opacity-40 text-sm">Loading settings…</div>
-    }>
+    <Suspense fallback={<SettingsSkeleton />}>
       <SettingsLoader />
     </Suspense>
   );

@@ -1,12 +1,8 @@
-import {
-  recordShowBuy,
-  recordShowSell,
-  recordShowTrade,
-  addShowExpense,
-} from "@/app/protected/show/actions";
-import { queueAction } from "./offlineQueue";
+import { recordBuy, recordSell, recordTrade } from "@/app/protected/pos/actions";
+import type { BuyInput, SellInput, TradeInput } from "@/app/protected/pos/ledger";
+import { queueAction, type PendingAction } from "./offlineQueue";
 
-type SyncResult = { queued: false; result: { scanId: string } };
+type SyncResult = { queued: false; result: { id: string } };
 type QueuedResult = { queued: true; id: string };
 export type OfflineResult = SyncResult | QueuedResult;
 
@@ -24,54 +20,21 @@ function isNetworkError(e: unknown): boolean {
   return false;
 }
 
-export async function offlineRecordShowBuy(
-  payload: Parameters<typeof recordShowBuy>[0] & { client_id?: string }
+// client_id is fixed before the first attempt so a replay can't record twice
+async function withQueue<T extends { client_id?: string | null }>(
+  type: PendingAction["actionType"],
+  run: (p: T) => Promise<{ id: string }>,
+  payload: T,
 ): Promise<OfflineResult> {
+  const p = { ...payload, client_id: payload.client_id ?? crypto.randomUUID() };
   try {
-    const result = await recordShowBuy(payload);
-    return { queued: false, result };
+    return { queued: false, result: await run(p) };
   } catch (e) {
     if (!isNetworkError(e)) throw e;
-    const id = await queueAction("buy", payload as Record<string, unknown>);
-    return { queued: true, id };
+    return { queued: true, id: await queueAction(type, p as Record<string, unknown>) };
   }
 }
 
-export async function offlineRecordShowSell(
-  payload: Parameters<typeof recordShowSell>[0] & { client_id?: string }
-): Promise<OfflineResult> {
-  try {
-    const result = await recordShowSell(payload);
-    return { queued: false, result };
-  } catch (e) {
-    if (!isNetworkError(e)) throw e;
-    const id = await queueAction("sell", payload as Record<string, unknown>);
-    return { queued: true, id };
-  }
-}
-
-export async function offlineRecordShowTrade(
-  payload: Parameters<typeof recordShowTrade>[0] & { client_id?: string }
-): Promise<OfflineResult> {
-  try {
-    const result = await recordShowTrade(payload);
-    return { queued: false, result };
-  } catch (e) {
-    if (!isNetworkError(e)) throw e;
-    const id = await queueAction("trade", payload as Record<string, unknown>);
-    return { queued: true, id };
-  }
-}
-
-export async function offlineAddShowExpense(
-  payload: Parameters<typeof addShowExpense>[0] & { client_id?: string }
-): Promise<OfflineResult> {
-  try {
-    const result = await addShowExpense(payload);
-    return { queued: false, result };
-  } catch (e) {
-    if (!isNetworkError(e)) throw e;
-    const id = await queueAction("expense", payload as Record<string, unknown>);
-    return { queued: true, id };
-  }
-}
+export const offlineRecordBuy = (p: BuyInput) => withQueue("pos-buy", recordBuy, p);
+export const offlineRecordSell = (p: SellInput) => withQueue("pos-sell", recordSell, p);
+export const offlineRecordTrade = (p: TradeInput) => withQueue("pos-trade", recordTrade, p);

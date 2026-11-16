@@ -1,6 +1,13 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { Check, Flag, Loader2, Upload } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// ── CardImage ──
+// Shows the card image when available, otherwise a token-styled placeholder.
+// onUpload → placeholder gets a tap-to-upload button.
+// onReport → image gets a hover/focus "wrong image" flag button.
 
 type Props = {
   src: string | null | undefined;
@@ -8,20 +15,28 @@ type Props = {
   setName?: string | null;
   cardNumber?: string | null;
   className?: string;
-  /** If provided, the placeholder shows an upload button */
   onUpload?: (file: File) => Promise<void>;
-  /** If provided, shows a small flag button on the image for reporting incorrect images */
   onReport?: () => Promise<void>;
-  /** Show an "Unverified" badge — for images that came from automated sources */
+  // Badge for images that came from automated sources.
   unverified?: boolean;
 };
 
-/**
- * Smart card image component.
- * Shows the card image if available, otherwise renders a styled placeholder.
- * If onUpload is provided, the placeholder has a tap-to-upload button.
- */
-export default function CardImage({ src, name, setName, cardNumber, className = "", onUpload, onReport, unverified }: Props) {
+const badgeClass =
+  "pointer-events-none absolute top-2 rounded-full border px-2 py-0.5 font-mono text-xs font-semibold";
+
+const iconButtonClass =
+  "flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground disabled:opacity-40";
+
+export default function CardImage({
+  src,
+  name,
+  setName,
+  cardNumber,
+  className = "",
+  onUpload,
+  onReport,
+  unverified,
+}: Props) {
   const [failed, setFailed] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [reported, setReported] = useState(false);
@@ -39,41 +54,47 @@ export default function CardImage({ src, name, setName, cardNumber, className = 
 
   if (src && !failed) {
     return (
-      <div className={`relative group ${className}`}>
+      <div className={cn("group relative", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={name}
           loading="lazy"
-          className="w-full h-auto rounded-lg"
+          className="h-auto w-full rounded-lg"
           onError={() => setFailed(true)}
         />
-        {/* Unverified badge */}
         {unverified && (
-          <span className="absolute top-1 left-1 text-[8px] font-semibold px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 pointer-events-none">
+          <span
+            className={cn(
+              badgeClass,
+              "left-2 border-warning-border bg-warning-soft text-warning-strong dark:text-warning",
+            )}
+          >
             Unverified
           </span>
         )}
-        {/* Report button — visible on hover */}
         {onReport && !reported && (
           <button
             type="button"
             onClick={handleReport}
             disabled={reporting}
             title="Report wrong image"
-            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full bg-black/60 text-white/70 hover:text-white flex items-center justify-center"
-          >
-            {reporting ? (
-              <span className="text-[8px] animate-spin">⟳</span>
-            ) : (
-              <svg width="9" height="9" viewBox="0 0 9 9" fill="currentColor">
-                <path d="M1.5 1h4.5l-1 2 1 2H2.5L1.5 1zM1.5 1v7" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none"/>
-              </svg>
+            aria-label="Report wrong image"
+            className={cn(
+              iconButtonClass,
+              "absolute right-2 top-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100",
             )}
+          >
+            {reporting ? <Loader2 size={16} className="animate-spin" /> : <Flag size={16} />}
           </button>
         )}
         {reported && (
-          <span className="absolute top-1 right-1 text-[8px] font-semibold px-1 py-0.5 rounded bg-rose-500/20 text-rose-400">
+          <span
+            className={cn(
+              badgeClass,
+              "right-2 border-negative-border bg-negative-soft text-negative-strong dark:text-negative",
+            )}
+          >
             Reported
           </span>
         )}
@@ -91,6 +112,8 @@ export default function CardImage({ src, name, setName, cardNumber, className = 
     />
   );
 }
+
+// ── Placeholder ──
 
 function CardPlaceholder({
   name,
@@ -126,26 +149,27 @@ function CardPlaceholder({
 
   return (
     <div
-      className={`w-full aspect-[5/7] rounded-lg relative overflow-hidden flex flex-col items-center justify-between p-2 select-none ${className}`}
-      style={{
-        background: "linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--muted)/0.6) 100%)",
-        border: "1px solid hsl(var(--border))",
-      }}
+      className={cn(
+        "relative flex aspect-[5/7] w-full select-none flex-col items-center justify-between overflow-hidden rounded-lg border border-border bg-gradient-to-br from-muted to-muted/60 p-2",
+        className,
+      )}
     >
-      {/* Decorative large initials */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden>
-        <span className="text-7xl font-black opacity-[0.06] leading-none tracking-tighter">
+      {/* Decorative ghost initials */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
+        <span className="text-6xl font-bold leading-none tracking-tighter text-foreground/5">
           {initials}
         </span>
       </div>
 
       {/* Top row: card number + upload button */}
-      <div className="w-full flex items-start justify-between z-10">
+      <div className="z-10 flex w-full items-start justify-between">
         {cardNumber ? (
-          <span className="text-[8px] font-mono bg-background/40 text-foreground/50 px-1.5 py-0.5 rounded-full">
+          <span className="rounded-full bg-background/60 px-2 py-0.5 font-mono text-xs text-muted-foreground">
             {cardNumber}
           </span>
-        ) : <span />}
+        ) : (
+          <span />
+        )}
 
         {onUpload && (
           <>
@@ -159,19 +183,17 @@ function CardPlaceholder({
             <button
               type="button"
               title="Upload image"
+              aria-label="Upload image"
               disabled={uploading || done}
               onClick={() => inputRef.current?.click()}
-              className="w-6 h-6 rounded-full bg-background/60 border border-border flex items-center justify-center text-foreground/50 hover:text-foreground hover:bg-background/90 transition-colors disabled:opacity-40"
+              className={iconButtonClass}
             >
               {uploading ? (
-                <span className="animate-spin text-[10px]">⟳</span>
+                <Loader2 size={16} className="animate-spin" />
               ) : done ? (
-                <span className="text-[10px] text-green-600">✓</span>
+                <Check size={16} className="text-positive-strong dark:text-positive" />
               ) : (
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M5 7V3M3 5l2-2 2 2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M1 8.5h8" strokeLinecap="round"/>
-                </svg>
+                <Upload size={16} />
               )}
             </button>
           </>
@@ -179,8 +201,8 @@ function CardPlaceholder({
       </div>
 
       {/* Center: card name */}
-      <div className="flex-1 flex items-center justify-center z-10 px-1">
-        <p className="text-center text-xs font-semibold text-foreground/70 leading-snug line-clamp-3">
+      <div className="z-10 flex flex-1 items-center justify-center px-2">
+        <p className="line-clamp-3 text-center text-xs font-semibold leading-snug text-foreground/70">
           {name}
         </p>
       </div>
@@ -188,7 +210,7 @@ function CardPlaceholder({
       {/* Bottom: set name */}
       {setName && (
         <div className="z-10 w-full">
-          <p className="text-center text-[8px] text-foreground/40 truncate leading-none">{setName}</p>
+          <p className="truncate text-center text-xs leading-none text-muted-foreground">{setName}</p>
         </div>
       )}
     </div>
