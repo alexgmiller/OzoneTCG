@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,12 @@ export function DisplaySection({
   onChange: SettingsUpdate;
 }) {
   const { theme: currentTheme, setTheme } = useTheme();
-  const activeTheme = (currentTheme ?? settings.theme) as ThemeValue;
+  // next-themes only knows the device's theme in the browser. Render the saved
+  // setting on the server and the first client pass so hydration matches, then
+  // switch to the live theme (same approach as ThemeSwitcher).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const activeTheme = ((mounted ? currentTheme : null) ?? settings.theme) as ThemeValue;
 
   return (
     <Section icon={Monitor} title="Display">
