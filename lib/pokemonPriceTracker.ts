@@ -7,6 +7,7 @@ import {
 } from "./cardArtMatch";
 import { TCGDEX_EN, TCGDEX_JA, tcgdexSetCards, tcgdexSetList } from "./tcgdexSets";
 import { getCardArt, rememberCardArt } from "./cardArt";
+import { lookupTcgplayerArt } from "./tcgplayerArt";
 
 // Re-exported for callers that already import it from here
 export { tcgdexSetList };
@@ -324,6 +325,15 @@ export async function lookupCard(
     await setCardCache(cacheKey, name, setName, cardNumber, tcgDexMatch.imageUrl, "tcgdex");
     await rememberCardArt(card, tcgDexMatch.imageUrl, "tcgdex");
     return { imageUrl: tcgDexMatch.imageUrl, market };
+  }
+
+  // Step 2.5: TCGplayer via TCGCSV — promos and Japanese sets TCGdex lacks art
+  // for. Remembered in card_art only (its URLs aren't TCGdex/pokemontcg.io, so
+  // the legacy cache's set + number re-check can't read them).
+  const tcgplayer = await lookupTcgplayerArt(name, setName, cardNumber);
+  if (tcgplayer) {
+    await rememberCardArt(card, tcgplayer.imageUrl, "tcgplayer");
+    return { imageUrl: tcgplayer.imageUrl, market: null };
   }
 
   // Step 3: Try pokemontcg.io (fallback — wider set coverage)
