@@ -2,6 +2,7 @@
 
 import { syncedAgo } from "@/lib/catalog/tcgplayerSyncStatus";
 import { Modal, MoneyDisplay } from "@/components/ui";
+import { PriceHistory } from "./PriceHistory";
 import type { SlabPrice, RawCardPrice } from "../InventoryServer";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { type FMVResult } from "@/lib/fmv";
@@ -156,6 +157,13 @@ export function ItemDetailModal({
           </div>
         )}
       </div>
+
+      {/* ── Price history (held items; sold ones stop getting points) ── */}
+      {!sold && (
+        <div className="mt-2 border-t border-border pt-4">
+          <PriceHistory itemId={it.id} />
+        </div>
+      )}
 
       {/* ── Links ── */}
       <div className="mt-2 space-y-1 border-t border-border pt-2">
