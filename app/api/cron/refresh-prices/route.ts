@@ -7,6 +7,7 @@ import { tcgplayerItemPrices } from "@/lib/tcgplayerPrices";
 import { lookupEbayAsking } from "@/lib/ebay";
 import { estimateFor } from "@/lib/ebayAsking";
 import { cardLang } from "@/lib/cardArtMatch";
+import { adjustForCondition, learnFactors, MIN_NM_PRICE, type ConditionPriceRow, type LearnedFactors } from "@/lib/conditionPricing";
 
 // ── Nightly refresh (03:00) ──
 // Runs last of the three price jobs (see lib/nightlyPricing.ts for who owns
@@ -61,6 +62,9 @@ export async function GET(req: NextRequest) {
   }
   let fromTcgplayer = 0;
   let fromEbay = 0;
+  // Played singles priced from a one-price source get a condition discount
+  const condition = await conditionFactors(supabase);
+  let conditionAdjusted = 0;
 
   for (let i = 0; i < items.length; i += BATCH) {
     if (Date.now() - started > LOOKUP_BUDGET_MS) {
@@ -85,6 +89,12 @@ export async function GET(req: NextRequest) {
             if (market != null) fromTcgplayer++;
             else if (category === "sealed") market = result?.market ?? null;
             else market = result?.market ?? await lookupRawMarketFromTcgDex(item.name, item.set_name, item.card_number);
+            // TCGplayer's and TCGdex's single price reads as near mint
+            if (category === "single" && usablePrice(market)) {
+              const adjusted = adjustForCondition(market, item.condition, condition.factors);
+              if (adjusted !== market) conditionAdjusted++;
+              market = adjusted;
+            }
           }
           // Plan C: a single with no sales price anywhere and no price of its
           // own gets the low end of current eBay listings. It only fills a
@@ -92,8 +102,15 @@ export async function GET(req: NextRequest) {
           if (source === "tcgplayer" && category === "single" && !usablePrice(market) && !usablePrice(item.market)) {
             const lang = /^ja/i.test(item.language ?? "") || cardLang(item) === "ja" ? "ja" : "en";
             const asking = await lookupEbayAsking({ name: item.name, cardNumber: item.card_number, lang });
-            // Near mint (or unknown) items read the NM listings, played ones the played listings
-            market = asking ? estimateFor(asking, item.condition)?.price ?? null : null;
+            // Near mint (or unknown) items read the NM listings, played ones
+            // the played listings; a played item without enough played
+            // listings gets the near-mint estimate with the condition discount
+            const est = asking ? estimateFor(asking, item.condition) : null;
+            if (est && asking) {
+              const fromPlayedPool = !!asking.played && est === asking.played;
+              market = fromPlayedPool ? est.price : adjustForCondition(est.price, item.condition, condition.factors);
+              if (market !== est.price) conditionAdjusted++;
+            }
             if (usablePrice(market)) fromEbay++;
           }
 
@@ -118,7 +135,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, ${fromTcgplayer} from TCGplayer, ${fromEbay} from eBay asking, ${justTcgPriced.size} kept from JustTCG, JustTCG ${justTcgConfigured ? "on" : "off"})`);
+  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, ${fromTcgplayer} from TCGplayer, ${fromEbay} from eBay asking, ${conditionAdjusted} discounted for condition, ${justTcgPriced.size} kept from JustTCG, JustTCG ${justTcgConfigured ? "on" : "off"})`);
+  console.log(`[cron/refresh-prices] condition factors ${JSON.stringify(condition.factors)} from ${JSON.stringify(condition.samples)} cards`);
 
   // ── Daily inventory snapshot ──
   // One row per workspace per day feeds the Home value chart. Re-read after the
@@ -127,8 +145,21 @@ export async function GET(req: NextRequest) {
   const snapshots = await writeInventorySnapshots(supabase);
 
   return NextResponse.json({
-    updated, priced, fromTcgplayer, fromEbay, keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
+    updated, priced, fromTcgplayer, fromEbay, conditionAdjusted, conditionFactors: condition,
+    keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
   });
+}
+
+// Condition discounts learned from JustTCG's per-condition prices
+// (lib/conditionPricing.ts), or the defaults if they can't be read
+async function conditionFactors(supabase: ReturnType<typeof createAdminClient>): Promise<LearnedFactors> {
+  const { data, error } = await supabase
+    .from("raw_card_prices")
+    .select("nm_price,lp_price,mp_price,hp_price,dmg_price")
+    .gte("nm_price", MIN_NM_PRICE)
+    .limit(5000);
+  if (error) console.error("[cron/refresh-prices] raw_card_prices read for condition factors failed:", error.message);
+  return learnFactors((data ?? []) as ConditionPriceRow[]);
 }
 
 // Price keys (lib/justtcg → makeRawCardPriceKey) of the singles and sealed
