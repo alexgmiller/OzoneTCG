@@ -6,7 +6,7 @@ import { ChevronRight, ExternalLink, Plus } from "lucide-react";
 import { EmptyState, MoneyDisplay, Sheet, Skeleton, TabStrip } from "@/components/ui";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { addToInventoryHref } from "@/app/protected/inventory/addPrefill";
+import { addToInventoryHref, buyInPosHref, type AddPrefill } from "@/app/protected/inventory/addPrefill";
 import { PriceHistory } from "@/app/protected/inventory/components/PriceHistory";
 import { getCardDetail, getCardPrice, type CardDetail, type StockMatch } from "./actions";
 import type { EbayAsking } from "@/lib/ebay";
@@ -16,7 +16,8 @@ import type { CatalogCard } from "./catalog";
 // ── Card detail ──
 // Header: art beside the name, number, set and rarity. Actions: Add to
 // inventory (opens Inventory's add sheet filled in with this card and its
-// market price) and, with stock, Sell in POS. Then RAW | GRADED:
+// market price), Buy in POS (the POS's Buy tab with this card in the deal)
+// and, with stock, Sell in POS. Then RAW | GRADED:
 //   RAW     TCGplayer market price, then low and market per printing (Holofoil,
 //           Reverse Holofoil…) with a link to the listing; cards TCGCSV doesn't
 //           match fall back to TCGdex (Retry on a slow lookup). With no sales
@@ -27,6 +28,21 @@ import type { CatalogCard } from "./catalog";
 
 type Tab = "raw" | "graded";
 const TABS = [{ value: "raw", label: "Raw" }, { value: "graded", label: "Graded" }] as const;
+
+// The card as Inventory and the POS name it. Inventory marks Japanese cards
+// "(JP)" (lib/cardArtMatch → cardLang), and the TCGdex card id only applies to
+// English ones.
+function prefill(card: CatalogCard, detail: CardDetail | null): AddPrefill {
+  const ja = card.lang === "ja";
+  return {
+    name: ja ? `${card.name} (JP)` : card.name,
+    setName: card.setName,
+    cardNumber: card.cardNumber,
+    imageUrl: card.imageUrl,
+    cardId: ja ? null : card.id,
+    market: detail?.market ?? detail?.asking?.price ?? null,
+  };
+}
 
 // Plan C by condition: near mint (listings that state no condition count
 // here) and played, or one row for all when neither has enough listings
@@ -134,27 +150,21 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
           </div>
 
           {/* ── Actions ── */}
-          <div className="flex gap-2">
-            <Link
-              href={addToInventoryHref(
-                card.lang === "ja"
-                  // Inventory marks Japanese cards "(JP)" (lib/cardArtMatch → cardLang);
-                  // the TCGdex card id field doesn't apply
-                  ? { name: `${card.name} (JP)`, setName: card.setName, cardNumber: card.cardNumber,
-                    imageUrl: card.imageUrl, cardId: null, market: detail?.market ?? detail?.asking?.price ?? null }
-                  : { name: card.name, setName: card.setName, cardNumber: card.cardNumber,
-                    imageUrl: card.imageUrl, cardId: card.id, market: detail?.market ?? detail?.asking?.price ?? null },
-              )}
-              className={cn(buttonVariants(), "flex-1")}
-            >
+          <div className="space-y-2">
+            <Link href={addToInventoryHref(prefill(card, detail))} className={cn(buttonVariants(), "w-full")}>
               <Plus aria-hidden /> Add to inventory
             </Link>
-            {detail && detail.inStock.length > 0 && (
-              <Link href={`/protected/pos?mode=sell&items=${detail.inStock[0].id}`}
-                className={cn(buttonVariants({ variant: "outline" }), "flex-1")}>
-                Sell in POS
+            <div className="flex gap-2">
+              <Link href={buyInPosHref(prefill(card, detail))} className={cn(buttonVariants({ variant: "outline" }), "flex-1")}>
+                Buy in POS
               </Link>
-            )}
+              {detail && detail.inStock.length > 0 && (
+                <Link href={`/protected/pos?mode=sell&items=${detail.inStock[0].id}`}
+                  className={cn(buttonVariants({ variant: "outline" }), "flex-1")}>
+                  Sell in POS
+                </Link>
+              )}
+            </div>
           </div>
 
           {/* ── Raw | Graded ── */}

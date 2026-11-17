@@ -7,7 +7,7 @@ import { IconButton, MoneyDisplay, TabStrip, useToast } from "@/components/ui";
 import { startAutoSync } from "@/lib/offlineSync";
 import { startShow, type ActiveShowInfo } from "@/app/protected/shows/actions";
 import EndShowPanel from "@/app/protected/shows/EndShowPanel";
-import type { Mode, PickItem } from "./ledger";
+import type { Mode, NewCard, PickItem } from "./ledger";
 import { BTN_ACCENT, CARD, INPUT } from "./ui";
 import { POS_GRID } from "./DealColumns";
 import BuyMode from "./BuyMode";
@@ -20,13 +20,15 @@ import TradeMode from "./TradeMode";
 // ending a show lives here, not on a separate page.
 const MODES = [{ value: "buy", label: "Buy" }, { value: "sell", label: "Sell" }, { value: "trade", label: "Trade" }] as const;
 
-export default function PosClient({ activeShow, scheduled, items, buyPct, initialMode, preselected }: {
+export default function PosClient({ activeShow, scheduled, items, buyPct, initialMode, preselected, buyCards = [] }: {
   activeShow: ActiveShowInfo | null;
   scheduled: { id: string; name: string } | null;
   items: PickItem[];
   buyPct: number;
   initialMode: Mode;
   preselected: PickItem[];
+  /** Cards to start a buy with (Search's "Buy in POS") */
+  buyCards?: NewCard[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -37,6 +39,11 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
   const [ending, setEnding] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => startAutoSync(), []);
+  // A card handed over from Search is in the deal now: drop it from the URL so
+  // a refresh doesn't add it again
+  useEffect(() => {
+    if (buyCards.length) router.replace("/protected/pos", { scroll: false });
+  }, [buyCards.length, router]);
 
   const showId = activeShow && attached ? activeShow.id : null;
 
@@ -113,7 +120,7 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
         </div>
       </div>
 
-      {mode === "buy" && <BuyMode showId={showId} buyPct={buyPct} />}
+      {mode === "buy" && <BuyMode showId={showId} buyPct={buyPct} initial={buyCards} />}
       {mode === "sell" && <SellMode showId={showId} items={items} initial={initialMode === "sell" ? preselected : []} />}
       {mode === "trade" && <TradeMode showId={showId} items={items} initial={initialMode === "trade" ? preselected : []} />}
     </div>

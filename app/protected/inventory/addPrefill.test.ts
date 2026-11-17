@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addToInventoryHref, parseAddPrefill, type AddPrefill } from "./addPrefill";
+import { addToInventoryHref, buyInPosHref, parseAddPrefill, parseBuyPrefill, type AddPrefill } from "./addPrefill";
 
 const card: AddPrefill = {
   name: "Mew ex", setName: "Paldean Fates", cardNumber: "232",
@@ -24,5 +24,19 @@ describe("add-to-inventory links", () => {
     expect(parseAddPrefill({ add: "1" })).toBeNull();
     expect(parseAddPrefill({ add: "1", name: "Mew", image: "javascript:alert(1)" })?.imageUrl).toBeNull();
     expect(parseAddPrefill({ add: "1", name: "Mew", market: "abc" })?.market).toBeNull();
+  });
+});
+
+describe("buy-in-POS links", () => {
+  it("round-trips a card to the POS's Buy tab", () => {
+    const href = buyInPosHref(card);
+    expect(href.startsWith("/protected/pos?mode=buy&")).toBe(true);
+    const params = Object.fromEntries(new URL(href, "https://x").searchParams);
+    expect(parseBuyPrefill(params)).toEqual({ ...card, cardId: null });
+  });
+  it("only reads Buy requests with a name", () => {
+    expect(parseBuyPrefill({ mode: "sell", name: "Mew" })).toBeNull();
+    expect(parseBuyPrefill({ mode: "buy" })).toBeNull();
+    expect(parseAddPrefill({ mode: "buy", name: "Mew" })).toBeNull();
   });
 });

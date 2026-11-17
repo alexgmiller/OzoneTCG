@@ -2,15 +2,24 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { getActiveShow, getScheduledShowToday } from "@/app/protected/shows/actions";
-import type { Mode, PickItem } from "./ledger";
+import { parseBuyPrefill } from "@/app/protected/inventory/addPrefill";
+import type { Mode, NewCard, PickItem } from "./ledger";
 import PosClient from "./PosClient";
 import PosLoading from "./loading";
 
-type Params = Promise<{ mode?: string; items?: string }>;
+type Params = Promise<Record<string, string | string[] | undefined>>;
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-// ?mode=sell|trade&items=id,id preloads a selection (e.g. from Inventory)
+// ?mode=sell|trade&items=id,id preloads a selection (e.g. from Inventory).
+// ?mode=buy&name=… starts a buy with that card (Search's "Buy in POS").
 async function PosLoader({ searchParams }: { searchParams: Params }) {
-  const { mode, items: ids } = await searchParams;
+  const params = await searchParams;
+  const mode = first(params.mode);
+  const ids = first(params.items);
+  const buy = parseBuyPrefill(params);
+  const buyCards: NewCard[] = buy
+    ? [{ name: buy.name, category: "single", set_name: buy.setName, card_number: buy.cardNumber, image_url: buy.imageUrl, market: buy.market }]
+    : [];
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
@@ -32,7 +41,7 @@ async function PosLoader({ searchParams }: { searchParams: Params }) {
   return (
     <PosClient activeShow={activeShow} scheduled={scheduled} items={items}
       buyPct={Number(settings.data?.default_buy_pct ?? 70)} initialMode={initialMode}
-      preselected={items.filter((it) => wanted.has(it.id))} />
+      preselected={items.filter((it) => wanted.has(it.id))} buyCards={buyCards} />
   );
 }
 
