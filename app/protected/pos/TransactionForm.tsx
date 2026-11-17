@@ -47,16 +47,18 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<Blob[]>([]);
   const [busy, setBusy] = useState(false);
-  // A check on the button for a moment after a deal saves, until the next card is added
-  const [done, setDone] = useState(false);
+  // The success message, shown on the button for a moment after a deal saves,
+  // until the next card is added. Not a toast: on phones toasts sit on top of
+  // the pinned button, so the two would cover each other.
+  const [done, setDone] = useState<string | null>(null);
   const doneTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(doneTimer.current), []);
-  useEffect(() => { if (ready) setDone(false); }, [ready]);
+  useEffect(() => { if (ready) setDone(null); }, [ready]);
 
-  function flashDone() {
-    setDone(true);
+  function flashDone(message: string) {
+    setDone(message);
     window.clearTimeout(doneTimer.current);
-    doneTimer.current = window.setTimeout(() => setDone(false), 1500);
+    doneTimer.current = window.setTimeout(() => setDone(null), 1500);
     try { navigator.vibrate?.(10); } catch { /* not supported */ }
   }
 
@@ -84,11 +86,11 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
       rememberMethod();
       setAmount(""); setCounterparty(""); setNotes(""); setPhotos([]);
       onDone();
-      flashDone();
+      const recorded = `${mode[0].toUpperCase()}${mode.slice(1)} recorded`;
+      flashDone(shots.length && !res.queued ? `${recorded} · uploading photos` : recorded);
       if (res.queued) {
         toast.warning(shots.length ? "Saved offline — photos weren't kept, add them later" : "Saved offline — will sync when connected");
       } else {
-        toast.success(`${mode[0].toUpperCase()}${mode.slice(1)} recorded${shots.length ? " · uploading photos" : ""}`);
         router.refresh();
         if (shots.length) void uploadPhotos(res.result.id, shots);
       }
@@ -154,9 +156,11 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
             done && !ready && "disabled:opacity-100",
           )}>
           {busy ? "Saving…" : done && !ready
-            ? <><Check size={20} aria-hidden /> {mode[0].toUpperCase()}{mode.slice(1)} recorded</>
+            ? <><Check size={20} aria-hidden /> {done}</>
             : `Confirm ${mode}`}
         </button>
+        {/* Announces the success the way a toast would */}
+        <span role="status" className="sr-only">{done ?? ""}</span>
       </div>
     </div>
   );
