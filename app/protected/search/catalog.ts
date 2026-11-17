@@ -2,7 +2,7 @@
 // here is testable without Supabase. Ranking reuses lib/cardSearchScoring so
 // the catalog orders cards the same way the card autocomplete does.
 
-import { parseTerms, scoreLocalCard } from "@/lib/cardSearchScoring";
+import { fold, parseTerms, scoreLocalCard } from "@/lib/cardSearchScoring";
 import { cardLang } from "@/lib/cardArtMatch";
 import { stripParens } from "@/lib/cardNameUtils";
 import {
@@ -45,7 +45,8 @@ export const CATALOG_LIMIT = 48;
 // picks its name lookup the same way
 export { nameTerms } from "@/lib/cardSearchScoring";
 
-// Every term must appear in the name, set name, set code or number; then best
+// Every term must appear in the name, set name, set code or number (accents
+// ignored); then best
 // match first. Among equal matches, cards with art come before art-less ones
 // (a name-only tile can't show which printing it is), then incoming order.
 export function rankCatalog(
@@ -53,11 +54,11 @@ export function rankCatalog(
 ): CatalogCard[] {
   const terms = parseTerms(rawQuery);
   if (!terms.length) return [];
-  const full = rawQuery.toLowerCase().trim();
+  const full = fold(rawQuery).trim();
 
   return rows
     .filter((r) => {
-      const text = [r.name, r.set_name, r.set_id, r.card_number].map((s) => (s ?? "").toLowerCase()).join(" ");
+      const text = [r.name, r.set_name, r.set_id, r.card_number].map((s) => fold(s ?? "")).join(" ");
       return terms.every((t) => text.includes(t));
     })
     .map((r, i) => ({ r, i, score: scoreLocalCard(r, terms, full) }))

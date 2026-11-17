@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchBaseNames, nameVariants, isJapaneseName } from "@/lib/cardNameUtils";
 import { createClient } from "@/lib/supabase/server";
-import { nameTerms, scoreLocalCard, parseTerms } from "@/lib/cardSearchScoring";
+import { fold, nameLike, nameTerms, scoreLocalCard, parseTerms } from "@/lib/cardSearchScoring";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
 const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
@@ -53,17 +53,12 @@ async function searchLocalDB(
         .from("pokemon_cards")
         .select("id, name, set_id, set_name, card_number, image_url")
         .eq("language", lang)
-        .ilike("name", `%${nameTerm}%`)
+        .ilike("name", nameLike(nameTerm))
         .order("name")
         .limit(CANDIDATES);
       if (error) return [];
       filtered = ((data ?? []) as CardRow[]).filter((c) => {
-        const searchable = [
-          (c.name ?? "").toLowerCase(),
-          (c.set_name ?? "").toLowerCase(),
-          (c.set_id ?? "").toLowerCase(),
-          (c.card_number ?? "").toLowerCase(),
-        ].join(" ");
+        const searchable = [c.name, c.set_name, c.set_id, c.card_number].map((s) => fold(s ?? "")).join(" ");
         return terms.every((term) => searchable.includes(term));
       });
       if (filtered.length) break;
@@ -247,10 +242,10 @@ export async function POST(req: NextRequest) {
 
   // Post-filter TCGdex results against the remaining terms
   // (TCGdex results don't have set_name, only set code — best-effort filter on name terms)
-  const terms = rawQuery.toLowerCase().replace(/[',\-.]/g, " ").split(/\s+/).filter(Boolean);
+  const terms = parseTerms(rawQuery);
   const nameTerms = terms.filter((t) => !/^\d+$/.test(t));
   const filtered = merged.filter((r) => {
-    const searchable = `${r.name.toLowerCase()} ${r.setName.toLowerCase()} ${r.cardNumber.toLowerCase()}`;
+    const searchable = fold(`${r.name} ${r.setName} ${r.cardNumber}`);
     // Require at least the name-related terms to match (set terms may not be matchable via set code)
     return nameTerms.every((t) => searchable.includes(t));
   });

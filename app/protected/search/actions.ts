@@ -6,6 +6,7 @@ import { fetchTcgdexPrice } from "@/lib/tcgdexPrice";
 import { lookupEbayAsking, type EbayAsking } from "@/lib/ebay";
 import { lookupTcgplayerQuotes } from "@/lib/tcgplayerPrices";
 import { stripParens } from "@/lib/cardNameUtils";
+import { nameLike } from "@/lib/cardSearchScoring";
 import { CATEGORY, type Printing, type Quote } from "@/lib/tcgplayerMatch";
 import { tcgGroups, tcgPrices, tcgProducts } from "@/lib/tcgcsv";
 import {
@@ -31,14 +32,14 @@ export async function searchCatalog(query: string, lang: CatalogLang = "en"): Pr
         .from("tcgplayer_cards")
         .select("product_id,name,set_code,set_name,card_number,image_url")
         .eq("lang", "ja")
-        .ilike("name", `%${term}%`)
+        .ilike("name", nameLike(term))
         .order("group_id", { ascending: false })
         .limit(CANDIDATES)
       : await supabase
         .from("pokemon_cards")
         .select("id,name,set_id,set_name,card_number,image_url")
         .eq("language", "en")
-        .ilike("name", `%${term}%`)
+        .ilike("name", nameLike(term))
         .order("set_id", { ascending: false })
         .limit(CANDIDATES);
     if (error) throw new Error(error.message);
