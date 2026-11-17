@@ -1,13 +1,15 @@
 "use client";
 
+import { syncedAgo } from "@/lib/catalog/tcgplayerSyncStatus";
 import { Modal, MoneyDisplay } from "@/components/ui";
+import { PriceHistory } from "./PriceHistory";
 import type { SlabPrice, RawCardPrice } from "../InventoryServer";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { type FMVResult } from "@/lib/fmv";
 import type { ConsignerOption, Item } from "../types";
 import {
   effectiveCost, fmt, fmtDate, getMovement, MovementBadge, sealedTypeLabel, conditionShort, statusLabel, setLine,
-  slabKeyFor, rawConditionPrice, ebayLinks, btnOutline, btnPrimary, pillClass, pillAccent, pillWarning, pillPositive, fieldClass,
+  slabKeyFor, rawItemPrice, ebayLinks, btnOutline, btnPrimary, pillClass, pillAccent, pillWarning, pillPositive, fieldClass,
 } from "../utils";
 
 // ── Item Detail Modal ──
@@ -55,15 +57,18 @@ export function ItemDetailModal({
   const slabKey = slabKeyFor(it);
   const sp = slabKey ? mergedSlabPrices[slabKey] : null;
   const rcp = it.category === "single" ? mergedRawCardPrices[makeRawCardPriceKey(it.name, it.set_name, it.card_number)] : null;
-  const condPrice = rawConditionPrice(rcp, it.condition);
   const sold = it.status === "sold";
-  const marketPrice = it.category === "slab" ? (slabFMVData[it.id]?.fmv ?? it.market) : it.category === "sealed" ? it.market : (condPrice ?? it.market);
+  // Singles and sealed: the price and where it came from (utils → rawItemPrice)
+  const info = it.category === "slab" ? null : rawItemPrice(it, rcp);
+  const marketPrice = it.category === "slab" ? (slabFMVData[it.id]?.fmv ?? it.market) : info?.price ?? null;
   const displayPrice = sold ? it.sold_price ?? null : marketPrice;
-  const priceLabel = sold ? "Sold for" : it.category === "slab" ? "FMV" : "Market";
-  const priceSource = it.category === "slab" ? "eBay" : it.category === "sealed" ? (it.market != null ? "eBay/PPT" : null) : (rcp ? "TCGPlayer" : null);
+  const priceLabel = sold ? "Sold for" : it.category === "slab" ? "FMV" : info?.asking ? "Asking" : "Market";
+  const priceSource = it.category === "slab" ? "eBay" : info?.source ?? null;
   const priceMeta = sold
     ? (it.sold_at ? fmtDate(it.sold_at) : null)
-    : priceSource ? `${priceSource}${it.category === "slab" && sp?.sold_count != null ? ` · ${sp.sold_count} sold` : ""}` : null;
+    : it.category === "slab"
+      ? `${priceSource}${sp?.sold_count != null ? ` · ${sp.sold_count} sold` : ""}`
+      : [priceSource, info?.updatedAt ? syncedAgo(info.updatedAt) : null].filter(Boolean).join(" · ") || null;
   const cost = effectiveCost(it);
   const margin = displayPrice != null && cost != null && cost > 0 ? displayPrice - cost : null;
   const marginPct = margin != null && cost != null && cost > 0 ? (margin / cost) * 100 : null;
@@ -152,6 +157,13 @@ export function ItemDetailModal({
           </div>
         )}
       </div>
+
+      {/* ── Price history (held items; sold ones stop getting points) ── */}
+      {!sold && (
+        <div className="mt-2 border-t border-border pt-4">
+          <PriceHistory itemId={it.id} />
+        </div>
+      )}
 
       {/* ── Links ── */}
       <div className="mt-2 space-y-1 border-t border-border pt-2">

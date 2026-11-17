@@ -13,7 +13,8 @@
 // - Everything else: TCGplayer's market price via TCGCSV (lib/tcgplayerPrices.ts:
 //   the item's printing for singles, the exact product for sealed, English or
 //   Japanese). When TCGplayer has no match, the older source: TCGdex for
-//   singles, PokemonPriceTracker for sealed.
+//   singles, PokemonPriceTracker for sealed. These give one (near-mint) price,
+//   so played singles get a condition discount (lib/conditionPricing.ts).
 
 export type Category = "single" | "slab" | "sealed";
 export type NightlySource = "none" | "tcgplayer";

@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { recordSell } from "@/app/protected/pos/actions";
 import { getCardArt, rememberAndFill } from "@/lib/cardArt";
+import { historyPoints, type HistoryPoint, type HistoryRow } from "@/lib/priceHistory";
 
 type ItemInput = {
   category: "single" | "slab" | "sealed";
@@ -441,4 +442,20 @@ export async function getItemTransactions(cardId: string): Promise<CardTransacti
 
   if (error) throw new Error(error.message);
   return (data ?? []) as CardTransaction[];
+}
+
+// ── Price history ──
+// An item's nightly market values (item_price_history), oldest first, for its
+// chart. RLS limits reads to the item's workspace. Empty until the table
+// exists and the 03:00 job has run.
+export async function getItemPriceHistory(itemId: string): Promise<HistoryPoint[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("item_price_history")
+    .select("date, market")
+    .eq("item_id", itemId)
+    .order("date", { ascending: false })
+    .limit(365);
+  if (error) return [];
+  return historyPoints((data ?? []) as HistoryRow[]);
 }
