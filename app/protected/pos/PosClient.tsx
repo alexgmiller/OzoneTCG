@@ -7,6 +7,7 @@ import { IconButton, MoneyDisplay, TabStrip, useToast } from "@/components/ui";
 import { startAutoSync } from "@/lib/offlineSync";
 import { startShow, type ActiveShowInfo } from "@/app/protected/shows/actions";
 import EndShowPanel from "@/app/protected/shows/EndShowPanel";
+import type { ConditionFactors } from "@/lib/conditionPricing";
 import type { Mode, NewCard, PickItem } from "./ledger";
 import { BTN_ACCENT, CARD, INPUT } from "./ui";
 import { POS_GRID } from "./DealColumns";
@@ -20,11 +21,13 @@ import TradeMode from "./TradeMode";
 // ending a show lives here, not on a separate page.
 const MODES = [{ value: "buy", label: "Buy" }, { value: "sell", label: "Sell" }, { value: "trade", label: "Trade" }] as const;
 
-export default function PosClient({ activeShow, scheduled, items, buyPct, initialMode, preselected, buyCards = [] }: {
+export default function PosClient({ activeShow, scheduled, items, buyPct, factors, initialMode, preselected, buyCards = [] }: {
   activeShow: ActiveShowInfo | null;
   scheduled: { id: string; name: string } | null;
   items: PickItem[];
   buyPct: number;
+  /** Condition discounts for played singles in a buy or trade */
+  factors: ConditionFactors;
   initialMode: Mode;
   preselected: PickItem[];
   /** Cards to start a buy with (Search's "Buy in POS") */
@@ -120,9 +123,9 @@ export default function PosClient({ activeShow, scheduled, items, buyPct, initia
         </div>
       </div>
 
-      {mode === "buy" && <BuyMode showId={showId} buyPct={buyPct} initial={buyCards} />}
+      {mode === "buy" && <BuyMode showId={showId} buyPct={buyPct} factors={factors} initial={buyCards} />}
       {mode === "sell" && <SellMode showId={showId} items={items} initial={initialMode === "sell" ? preselected : []} />}
-      {mode === "trade" && <TradeMode showId={showId} items={items} initial={initialMode === "trade" ? preselected : []} />}
+      {mode === "trade" && <TradeMode showId={showId} items={items} factors={factors} initial={initialMode === "trade" ? preselected : []} />}
     </div>
   );
 }

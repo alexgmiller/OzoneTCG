@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { allocateBundle, round2 } from "./ledger";
+import { allocateBundle, pricedCard, round2, withCondition, type NewCard } from "./ledger";
+import { DEFAULT_FACTORS } from "@/lib/conditionPricing";
 
 const sum = (m: Record<string, number>) => round2(Object.values(m).reduce((s, v) => s + v, 0));
 
@@ -53,4 +54,31 @@ describe("allocateBundle", () => {
   });
 
   it("empty input", () => expect(allocateBundle(100, [])).toEqual({}));
+});
+
+describe("condition in the cart", () => {
+  const single = (over: Partial<NewCard> = {}): NewCard => ({ name: "Charizard", category: "single", market: 100, ...over });
+  const f = { ...DEFAULT_FACTORS, lp: 0.82 };
+
+  it("prices a played single from its near-mint price", () => {
+    expect(pricedCard(single({ condition: "Lightly Played" }), f).market).toBe(82);
+    expect(pricedCard(single({ condition: "Damaged" }), f).market).toBe(35);
+  });
+  it("leaves near mint, unset, slabs, sealed and unpriced cards alone", () => {
+    expect(pricedCard(single(), f).market).toBe(100);
+    expect(pricedCard(single({ condition: "Near Mint" }), f).market).toBe(100);
+    expect(pricedCard(single({ category: "slab", condition: "Damaged" }), f).market).toBe(100);
+    expect(pricedCard(single({ category: "sealed", condition: "Damaged" }), f).market).toBe(100);
+    expect(pricedCard(single({ market: null, condition: "Damaged" }), f).market).toBeNull();
+  });
+  it("keeps the condition on the card it records", () => {
+    expect(pricedCard(single({ condition: "Moderately Played" }), f).condition).toBe("Moderately Played");
+  });
+  it("withCondition sets one line and stores near mint as unset", () => {
+    const cards = [single(), single({ name: "Pikachu" })];
+    const lp = withCondition(cards, 1, "Lightly Played");
+    expect(lp.map((c) => c.condition)).toEqual([undefined, "Lightly Played"]);
+    expect(cards[1].condition).toBeUndefined();
+    expect(withCondition(lp, 1, "Near Mint")[1].condition).toBeUndefined();
+  });
 });

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { MoneyDisplay, SectionHeader } from "@/components/ui";
 import { offlineRecordTrade } from "@/lib/offlineAwareActions";
-import { round2, type NewCard, type PickItem } from "./ledger";
+import type { ConditionFactors } from "@/lib/conditionPricing";
+import { pricedCard, round2, withCondition, type NewCard, type PickItem } from "./ledger";
 import { CardEntry, CardList } from "./BuyMode";
 import ItemPicker from "./ItemPicker";
 import TransactionForm from "./TransactionForm";
@@ -12,15 +13,18 @@ import DealColumns from "./DealColumns";
 const total = (xs: (number | null)[]) => round2(xs.reduce<number>((s, x) => s + (x ?? 0), 0));
 
 // Outgoing cards are valued at market; the cash line settles the difference
-export default function TradeMode({ showId, items, initial = [] }: {
+export default function TradeMode({ showId, items, factors, initial = [] }: {
   showId: string | null;
   items: PickItem[];
+  factors: ConditionFactors;
   initial?: PickItem[];
 }) {
   const [out, setOut] = useState<PickItem[]>(initial);
   const [incoming, setIncoming] = useState<NewCard[]>([]);
   const gave = total(out.map((it) => it.market));
-  const got = total(incoming.map((c) => c.market));
+  // Incoming singles at their price for their condition
+  const incomingPriced = incoming.map((c) => pricedCard(c, factors));
+  const got = total(incomingPriced.map((c) => c.market));
   const diff = Math.abs(round2(got - gave));
 
   const form = (
@@ -29,7 +33,7 @@ export default function TradeMode({ showId, items, initial = [] }: {
       onDone={() => { setOut([]); setIncoming([]); }}
       submit={(f) => offlineRecordTrade({
         goingOut: out.map((it) => ({ itemId: it.id, value: it.market ?? 0 })),
-        comingIn: incoming, cashDifference: f.amount, paid_by: f.paid_by, show_session_id: showId,
+        comingIn: incomingPriced, cashDifference: f.amount, paid_by: f.paid_by, show_session_id: showId,
         payment_method: f.payment_method, counterparty: f.counterparty, notes: f.notes,
       })} />
   );
@@ -51,7 +55,9 @@ export default function TradeMode({ showId, items, initial = [] }: {
           Getting
         </SectionHeader>
         <CardEntry onAdd={(c) => setIncoming((cs) => [...cs, c])} />
-        <CardList cards={incoming} onRemove={(i) => setIncoming((cs) => cs.filter((_, j) => j !== i))} />
+        <CardList cards={incoming} factors={factors}
+          onRemove={(i) => setIncoming((cs) => cs.filter((_, j) => j !== i))}
+          onCondition={(i, c) => setIncoming((cs) => withCondition(cs, i, c))} />
       </section>
 
       {got !== gave && (

@@ -1,5 +1,7 @@
 // Shared POS types and pure helpers (server actions live in actions.ts)
 
+import { adjustForCondition, type ConditionFactors } from "@/lib/conditionPricing";
+
 export const PAYMENT_METHODS = ["cash", "venmo", "zelle", "paypal", "cashapp", "trade", "other"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export type Payer = "alex" | "mila" | "shared";
@@ -58,6 +60,29 @@ export type PickItem = {
 };
 
 export const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// ── Condition in the cart ──
+// A single's price is looked up (or typed) as near mint. In a buy or trade
+// its line carries a condition, and a played copy is priced at that near-mint
+// price times the condition's factor, the same discount the nightly job uses
+// (lib/conditionPricing.ts). Slabs and sealed are never adjusted.
+export const CONDITIONS = [
+  { value: "Near Mint", short: "NM" }, { value: "Lightly Played", short: "LP" },
+  { value: "Moderately Played", short: "MP" }, { value: "Heavily Played", short: "HP" },
+  { value: "Damaged", short: "DMG" },
+] as const;
+export type CardCondition = (typeof CONDITIONS)[number]["value"];
+
+// The card as it is priced and recorded: market adjusted for its condition
+export function pricedCard(c: NewCard, factors: ConditionFactors): NewCard {
+  if (c.category !== "single" || c.market == null) return c;
+  return { ...c, market: adjustForCondition(c.market, c.condition, factors) };
+}
+
+// Sets one line's condition (Near Mint is stored as unset, the default)
+export function withCondition(cards: NewCard[], i: number, condition: CardCondition): NewCard[] {
+  return cards.map((c, j) => (j === i ? { ...c, condition: condition === "Near Mint" ? undefined : condition } : c));
+}
 
 // Splits total across weights to the cent; rounding drift goes to the last share
 export function allocate(total: number, weights: number[]): number[] {
