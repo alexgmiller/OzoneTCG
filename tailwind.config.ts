@@ -125,6 +125,11 @@ export default {
         home: "auto 1fr auto",
       },
 
+      // Press feedback: tappable things shrink slightly while held
+      scale: {
+        press: "0.97",
+      },
+
       transitionDuration: {
         DEFAULT: "150ms",
         150: "150ms",

@@ -27,7 +27,7 @@ export function RangePicker<T extends string>({ value, onChange, ranges, classNa
             aria-checked={active}
             onClick={() => onChange(r)}
             className={cn(
-              "h-9 min-w-10 rounded-full px-2 text-sm font-medium tabular-nums transition-colors duration-150",
+              "tap-target relative h-9 min-w-10 rounded-full px-2 text-sm font-medium tabular-nums transition duration-150 ease-out motion-safe:active:scale-press",
               active ? "text-foreground" : "text-muted-foreground",
             )}
           >

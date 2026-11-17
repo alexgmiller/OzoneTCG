@@ -25,7 +25,7 @@ export function TabStrip<T extends string>({ value, onChange, tabs, className, .
             aria-selected={active}
             onClick={() => onChange(t.value)}
             className={cn(
-              "relative h-11 flex-1 text-sm font-medium transition-colors duration-150",
+              "relative h-11 flex-1 text-sm font-medium transition duration-150 ease-out motion-safe:active:scale-press",
               active ? "text-foreground" : "text-muted-foreground",
             )}
           >

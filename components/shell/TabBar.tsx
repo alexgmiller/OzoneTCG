@@ -31,7 +31,7 @@ export default function TabBar({ hasActiveShow = false }: { hasActiveShow?: bool
             aria-label={t.label}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative flex h-12 w-14 items-center justify-center rounded-full transition-colors duration-150",
+              "relative flex h-12 w-14 items-center justify-center rounded-full transition duration-150 ease-out motion-safe:active:scale-press",
               active ? "bg-surface-2 text-accent" : "text-muted-foreground",
             )}
           >

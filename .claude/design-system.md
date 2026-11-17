@@ -105,10 +105,14 @@ Gaps follow the same scale: `gap-2` chip rows, `gap-3` form fields and tile grid
 |---|---|
 | Color/bg hover | `transition-colors duration-150` |
 | Backdrop fade | `transition-opacity duration-150` |
-| Tile press | `transition-transform duration-150` + `active:scale-[0.98]` |
-| Sheet slide-up | `transition-transform duration-200 ease-out` |
+| Press (buttons, chips, tabs, tiles) | `transition duration-150 ease-out` + `motion-safe:active:scale-press` (0.97; `enabled:` on buttons that can be disabled) |
+| Row press (list rows, menu rows) | `active:bg-surface-2` (or `active:bg-surface` on a surface-2 card) |
+| Sheet, Modal, ContextMenu in/out | `usePresence` (components/ui/usePresence.ts): sheet slides up 200ms ease-out / down 150ms ease-in; modal and menu fade + scale from 95%; scrim fades |
+| Toast in | `animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out` |
 
 **Hard cap: 200ms.** Longer feels sluggish on a show floor.
+
+**Reduced motion.** Every animation and the press scale are off when the device asks for reduced motion (`motion-reduce:animate-none`, `motion-safe:`). Overlays then appear and disappear at once.
 
 ### Don'ts
 - **Don't use `duration-300` or `duration-500`.**
@@ -141,7 +145,7 @@ The tab bar is `--surface` at 80% with `backdrop-blur-md` in both themes (`bg-ta
 
 **Context menu (long-press / right-click).** Dims the page, lifts a `surface-2` `rounded-2xl` card near the item: full-width rows of icon + label separated by `border`. Delete is in `down` and separated by a thicker gap. Threshold 450ms; a scroll cancels. `navigator.vibrate(10)` on open where supported.
 
-**Control sizes (tap targets).** `Button` default / `sm` / `icon` are `h-11`; `Input` is `h-11`; `IconButton` is 44px. Don't shrink them.
+**Control sizes (tap targets).** `Button` default / `sm` / `icon` are `h-11`; `Input` is `h-11`; `IconButton` is 44px. Don't shrink them. A control drawn smaller (`Chip` h-9, `RangePicker`, `SegmentedControl`) carries `.tap-target` (app/globals.css), which makes it take taps across a 44px box; it needs `relative` (or `absolute`) and a parent that doesn't clip, so `ChipRow` pads itself by 4px.
 
 **Toast notifications.** Bottom-centre, stacked, `rounded-2xl`, above the tab bar, max 3 visible. Auto-dismiss 4s (success) / 6s (warning) / never (error). Use `<Toast />`.
 

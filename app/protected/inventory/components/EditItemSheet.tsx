@@ -202,7 +202,7 @@ export function EditItemSheet({ open, mode, form, setForm, initial, consigners, 
             <div className="relative">
               <input className={cn(fieldClass, "pr-11 font-mono")} placeholder="Cert number" value={form.certNumber} inputMode="numeric" onChange={(e) => setForm({ ...form, certNumber: e.target.value })} />
               {onScanCert && (
-                <button type="button" onClick={onScanCert} aria-label="Scan cert" className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={onScanCert} aria-label="Scan cert" className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground">
                   <ScanLine size={18} />
                 </button>
               )}

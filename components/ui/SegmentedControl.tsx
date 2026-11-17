@@ -32,7 +32,7 @@ export function SegmentedControl<T extends string>({
             aria-selected={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex-1 rounded-full font-medium transition-colors duration-150",
+              "tap-target relative flex-1 rounded-full font-medium transition duration-150 ease-out motion-safe:active:scale-press",
               size === "sm" ? "h-8 text-xs" : "h-10 text-sm",
               active ? "bg-surface text-foreground" : "text-muted-foreground",
             )}
