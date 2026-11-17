@@ -8,6 +8,7 @@ import { lookupEbayAsking } from "@/lib/ebay";
 import { estimateFor } from "@/lib/ebayAsking";
 import { cardLang } from "@/lib/cardArtMatch";
 import { adjustForCondition, learnFactors, MIN_NM_PRICE, type ConditionPriceRow, type LearnedFactors } from "@/lib/conditionPricing";
+import { hasMarketSourceColumns, marketStamp, type MarketSource } from "@/lib/marketSource";
 
 // ── Nightly refresh (03:00) ──
 // Runs last of the three price jobs (see lib/nightlyPricing.ts for who owns
@@ -29,11 +30,16 @@ export async function GET(req: NextRequest) {
 
   const supabase = createAdminClient();
 
+  // Where each price came from (once migrations/20261116_item_market_source.sql is applied)
+  const withSource = await hasMarketSourceColumns(supabase);
+  const now = new Date().toISOString();
+
   // Fetch all non-sold items across all workspaces
-  const { data: items, error } = await supabase
+  const { data: rows, error } = await supabase
     .from("items")
-    .select("id, workspace_id, name, category, set_name, card_number, image_url, product_type, language, market, condition")
+    .select(`id, workspace_id, name, category, set_name, card_number, image_url, product_type, language, market, condition${withSource ? ", market_source" : ""}`)
     .neq("status", "sold");
+  const items = rows as unknown as (ItemRow & { market_source?: string | null })[] | null;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!items?.length) return NextResponse.json({ updated: 0, total: 0 });
@@ -84,11 +90,15 @@ export async function GET(req: NextRequest) {
           // returns early from the image cache with no price, so a single whose
           // art is already cached gets its TCGdex price looked up here.
           let market: number | null = null;
+          let marketSource: MarketSource | null = null;
           if (source === "tcgplayer") {
             market = tcgplayer.get(item.id) ?? null;
-            if (market != null) fromTcgplayer++;
-            else if (category === "sealed") market = result?.market ?? null;
-            else market = result?.market ?? await lookupRawMarketFromTcgDex(item.name, item.set_name, item.card_number);
+            if (market != null) { fromTcgplayer++; marketSource = "tcgplayer"; }
+            else if (category === "sealed") { market = result?.market ?? null; marketSource = "pokemonpricetracker"; }
+            else {
+              market = result?.market ?? await lookupRawMarketFromTcgDex(item.name, item.set_name, item.card_number);
+              marketSource = "tcgdex";
+            }
             // TCGplayer's and TCGdex's single price reads as near mint
             if (category === "single" && usablePrice(market)) {
               const adjusted = adjustForCondition(market, item.condition, condition.factors);
@@ -98,8 +108,10 @@ export async function GET(req: NextRequest) {
           }
           // Plan C: a single with no sales price anywhere and no price of its
           // own gets the low end of current eBay listings. It only fills a
-          // blank, so a real price is never replaced by an asking price.
-          if (source === "tcgplayer" && category === "single" && !usablePrice(market) && !usablePrice(item.market)) {
+          // blank (or refreshes an earlier asking estimate), so a real price is
+          // never replaced by an asking price.
+          const askingOnly = !usablePrice(item.market) || item.market_source === "ebay_asking";
+          if (source === "tcgplayer" && category === "single" && !usablePrice(market) && askingOnly) {
             const lang = /^ja/i.test(item.language ?? "") || cardLang(item) === "ja" ? "ja" : "en";
             const asking = await lookupEbayAsking({ name: item.name, cardNumber: item.card_number, lang });
             // Near mint (or unknown) items read the NM listings, played ones
@@ -110,6 +122,7 @@ export async function GET(req: NextRequest) {
               const fromPlayedPool = !!asking.played && est === asking.played;
               market = fromPlayedPool ? est.price : adjustForCondition(est.price, item.condition, condition.factors);
               if (market !== est.price) conditionAdjusted++;
+              marketSource = "ebay_asking";
             }
             if (usablePrice(market)) fromEbay++;
           }
@@ -118,7 +131,11 @@ export async function GET(req: NextRequest) {
           // A looked-up image only fills a blank: it never replaces art the item has
           if (result?.imageUrl && !item.image_url) patch.image_url = result.imageUrl;
           // Only overwrite market with a real price (never null-out an existing value)
-          if (usablePrice(market)) { patch.market = market; priced++; }
+          if (usablePrice(market)) {
+            patch.market = market;
+            if (withSource && marketSource) Object.assign(patch, marketStamp(marketSource, now));
+            priced++;
+          }
           if (Object.keys(patch).length === 0) return;
 
           const { error: updateErr } = await supabase
@@ -187,6 +204,11 @@ async function justTcgPricedKeys(
   }
   return out;
 }
+
+type ItemRow = {
+  id: string; workspace_id: string; name: string; category: string; set_name: string | null; card_number: string | null;
+  image_url: string | null; product_type: string | null; language: string | null; market: number | null; condition: string | null;
+};
 
 type StockRow = { workspace_id: string; market: number | null; cost: number | null };
 
