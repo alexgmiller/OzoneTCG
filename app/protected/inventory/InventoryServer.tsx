@@ -48,6 +48,7 @@ export type SlabPrice = {
 };
 
 const ITEM_COLS = "id,name,category,owner,status,market,cost,condition,notes,created_at,consigner_id,image_url,set_name,card_number,grade,cert_number,cost_basis,buy_percentage,acquisition_type,chain_depth,original_cash_invested,sticker_price,acquired_market_price,acquired_date,product_type,quantity,language";
+const SOURCE_COLS = "market_source,market_updated_at";
 // Most recent sales only — the Transactions ledger holds the full history
 const SOLD_LIMIT = 500;
 
@@ -55,20 +56,30 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId();
 
-  const [itemsResult, soldResult, consignersResult, settings] = await Promise.all([
+  const loadItems = (cols: string) => Promise.all([
     supabase
       .from("items")
-      .select(ITEM_COLS)
+      .select(cols)
       .eq("workspace_id", workspaceId)
       .neq("status", "sold")
       .order("updated_at", { ascending: false }),
     supabase
       .from("items")
-      .select(`${ITEM_COLS},sold_price,sold_at`)
+      .select(`${cols},sold_price,sold_at`)
       .eq("workspace_id", workspaceId)
       .eq("status", "sold")
       .order("sold_at", { ascending: false, nullsFirst: false })
       .limit(SOLD_LIMIT),
+  ]);
+  // The price source columns, falling back to the base columns until
+  // migrations/20261116_item_market_source.sql is applied (42703: no such column)
+  const loadAllItems = async () => {
+    const withSource = await loadItems(`${ITEM_COLS},${SOURCE_COLS}`);
+    return withSource[0].error?.code === "42703" ? loadItems(ITEM_COLS) : withSource;
+  };
+
+  const [[itemsResult, soldResult], consignersResult, settings] = await Promise.all([
+    loadAllItems(),
     supabase
       .from("consigners")
       .select("id,name,rate")
@@ -94,8 +105,9 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
 
   // Never crash the page on a DB error — render with whatever data we have.
   // Price lookups and header counts cover active items only; sold rows show their sale price.
-  const data = itemsResult.data;
-  const soldRows = soldResult.data ?? [];
+  // The select list is built at runtime (price source columns or not), so the rows are typed here
+  const data = itemsResult.data as unknown as Item[] | null;
+  const soldRows = (soldResult.data ?? []) as unknown as Item[];
   const consignerRows = consignersResult.data;
 
   let slabPriceMap: Record<string, SlabPrice> = {};
@@ -140,7 +152,7 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
     <div className="w-full py-4">
       <h1 className="sr-only">Inventory</h1>
       <InventoryClient
-        items={[...(data ?? []), ...soldRows] as Item[]}
+        items={[...(data ?? []), ...soldRows]}
         consigners={(consignerRows ?? []) as ConsignerOption[]}
         workspaceId={workspaceId}
         slabPrices={slabPriceMap}

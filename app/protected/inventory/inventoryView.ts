@@ -13,13 +13,17 @@ export type Filters = {
   status: StatusFilter;
   // "all" | "none" (not consigned) | "any" (any consigner) | a consigner id
   consigner: ConsignerFilter;
+  // Items with no price, or priced from eBay asking listings (not sales)
+  price: PriceFilter;
   sort: SortKey;
 };
+export type PriceFilter = "all" | "none" | "asking";
 
-export const defaultFilters: Filters = { search: "", category: "all", status: "active", consigner: "all", sort: "date-desc" };
+export const defaultFilters: Filters = { search: "", category: "all", status: "active", consigner: "all", price: "all", sort: "date-desc" };
 
 export function countActiveFilters(f: Filters): number {
-  return (f.search.trim() ? 1 : 0) + (f.category !== "all" ? 1 : 0) + (f.status !== "active" ? 1 : 0) + (f.consigner !== "all" ? 1 : 0);
+  return (f.search.trim() ? 1 : 0) + (f.category !== "all" ? 1 : 0) + (f.status !== "active" ? 1 : 0) + (f.consigner !== "all" ? 1 : 0)
+    + (f.price !== "all" ? 1 : 0);
 }
 
 export const SORT_OPTIONS: readonly { value: SortKey; label: string }[] = [
@@ -50,7 +54,8 @@ export function daysInStock(it: Pick<Item, "created_at" | "acquired_date">, now 
   return Number.isFinite(from) ? Math.max(0, Math.floor((now.getTime() - from) / DAY_MS)) : 0;
 }
 
-export function filterItems(items: Item[], f: Filters): Item[] {
+// `priceOf` is the price the row shows (for the "No price" filter)
+export function filterItems(items: Item[], f: Filters, priceOf: (it: Item) => number | null = (it) => it.market): Item[] {
   const q = f.search.trim().toLowerCase();
   return items.filter((it) => {
     if (f.status === "active" ? it.status !== "inventory" : it.status !== f.status) return false;
@@ -59,6 +64,8 @@ export function filterItems(items: Item[], f: Filters): Item[] {
     if (f.consigner === "none" && it.owner === "consigner") return false;
     if (f.consigner === "any" && it.owner !== "consigner") return false;
     if (f.consigner !== "all" && f.consigner !== "none" && f.consigner !== "any" && it.consigner_id !== f.consigner) return false;
+    if (f.price === "none" && priceOf(it) != null) return false;
+    if (f.price === "asking" && (it.category === "slab" || it.market_source !== "ebay_asking")) return false;
     return true;
   });
 }

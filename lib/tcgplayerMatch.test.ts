@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { candidateGroups, closestGroups, groupCore, hiResImage, pickProduct, productCardName, resolveGroups, toCatalogEntry, toQuote, withSubsets, type TcgGroup, type TcgPrice, type TcgProduct } from "./tcgplayerMatch";
+import { candidateGroups, closestGroups, groupCore, hiResImage, pickProduct, pickSealedProduct, printingMarket, productCardName, sealedGroups, resolveGroups, toCatalogEntry, toQuote, withSubsets, type TcgGroup, type TcgPrice, type TcgProduct } from "./tcgplayerMatch";
 
 // Slices of TCGCSV's real group lists
 const EN: TcgGroup[] = [
@@ -229,5 +229,65 @@ describe("catalog rows", () => {
     const plain = { ...card, extendedData: [{ name: "Rarity", value: "None" }, { name: "Number", value: "006/165" }] };
     expect(toCatalogEntry(plain, group, "ja", prices, "T")?.rarity).toBeNull();
     expect(toCatalogEntry({ productId: 1, name: "Booster Box" }, group, "ja", prices, "T")).toBeNull();
+  });
+});
+
+describe("printingMarket", () => {
+  const quote = {
+    productId: 1, url: null, rarity: "Holo Rare", market: 93.7,
+    printings: [{ name: "Holofoil", market: 93.7, low: 75 }, { name: "Reverse Holofoil", market: 97.46, low: 69.95 }],
+  };
+  it("prices the primary printing unless the item names a variant", () => {
+    expect(printingMarket(quote, "Charizard")).toBe(93.7);
+    expect(printingMarket(quote, "Charizard (Reverse Holo)")).toBe(97.46);
+  });
+  it("gives no price for a variant TCGplayer doesn't list", () => {
+    expect(printingMarket(quote, "Charizard 1st Edition")).toBeNull();
+  });
+});
+
+describe("sealed products", () => {
+  const PE: TcgGroup = { groupId: 23821, name: "SV: Prismatic Evolutions" };
+  const SS: TcgGroup = { groupId: 23651, name: "SV08: Surging Sparks" };
+  const S151: TcgGroup = { groupId: 23237, name: "SV: Scarlet & Violet 151" };
+  const ES: TcgGroup = { groupId: 2848, name: "SWSH07: Evolving Skies" };
+  const sealed = (productId: number, name: string): TcgProduct => ({ productId, name, extendedData: [{ name: "CardText", value: "" }] });
+  const PE_PRODUCTS = [
+    sealed(1, "Prismatic Evolutions Elite Trainer Box"),
+    sealed(2, "Prismatic Evolutions Pokemon Center Elite Trainer Box (Exclusive)"),
+    sealed(3, "Prismatic Evolutions Elite Trainer Box Case"),
+    sealed(4, "Prismatic Evolutions Elite Trainer Box (Dollar General Exclusive)"),
+    sealed(5, "Prismatic Evolutions Mini Tin [Umbreon]"),
+    sealed(6, "Prismatic Evolutions Mini Tin [Espeon]"),
+    sealed(7, "Prismatic Evolutions Booster Bundle"),
+    { productId: 8, name: "Umbreon ex - 161/131", extendedData: [{ name: "Number", value: "161/131" }] },
+  ];
+  const item = (name: string, set_name: string | null = null, product_type: string | null = null) => ({ name, set_name, product_type });
+  const pick = (products: TcgProduct[], it: ReturnType<typeof item>, g: TcgGroup) => pickSealedProduct(products, it, g)?.productId ?? null;
+
+  it("matches the exact product kind, never a case, display or exclusive", () => {
+    expect(pick(PE_PRODUCTS, item("Prismatic Evolutions Elite Trainer Box"), PE)).toBe(1);
+    expect(pick(PE_PRODUCTS, item("Prismatic Evolutions ETB", "Prismatic Evolutions"), PE)).toBe(1);
+    expect(pick(PE_PRODUCTS, item("Prismatic Evolutions PC ETB"), PE)).toBe(2);
+    expect(pick(PE_PRODUCTS, item("Prismatic Evolutions ETB Case"), PE)).toBe(3);
+    expect(pick(PE_PRODUCTS, item("Sealed Prismatic Evolutions Booster Bundle"), PE)).toBe(7);
+  });
+  it("reads a set-only name by its product type", () => {
+    expect(pick(PE_PRODUCTS, item("Prismatic Evolutions", "Prismatic Evolutions", "etb"), PE)).toBe(1);
+    expect(pick(PE_PRODUCTS, item("Prismatic Evolutions", "Prismatic Evolutions", "tin"), PE)).toBeNull();
+  });
+  it("refuses to choose between versions", () => {
+    expect(pick(PE_PRODUCTS, item("Prismatic Evolutions Mini Tin"), PE)).toBeNull();
+    expect(pick(PE_PRODUCTS, item("Prismatic Evolutions Mini Tin Umbreon"), PE)).toBe(5);
+    const bundles = [sealed(1, "Surging Sparks Booster Bundle (LGS)"), sealed(2, "Surging Sparks Booster Bundle (Retail)")];
+    expect(pick(bundles, item("Surging Sparks Booster Bundle"), SS)).toBeNull();
+  });
+  it("finds the set inside the name, including plain \"151\"", () => {
+    const groups = [PE, SS, S151, ES, { groupId: 1, name: "Base Set" }];
+    expect(ids(sealedGroups(item("Surging Sparks Booster Box"), groups, "en"))).toEqual([23651]);
+    expect(ids(sealedGroups(item("Pokemon 151 Booster Bundle"), groups, "en"))).toEqual([23237]);
+    expect(ids(sealedGroups(item("Booster Box"), groups, "en"))).toEqual([]);
+    expect(ids(sealedGroups(item("ETB", "Evolving Skies"), groups, "en"))).toEqual([2848]);
+    expect(pick([sealed(9, "151 Booster Bundle")], item("Pokemon 151 Booster Bundle"), S151)).toBe(9);
   });
 });

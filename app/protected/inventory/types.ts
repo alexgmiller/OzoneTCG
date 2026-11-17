@@ -37,6 +37,10 @@ export type Item = {
   sticker_price: number | null;
   acquired_market_price: number | null;
   acquired_date: string | null;
+  // Where market came from and when (lib/marketSource.ts); absent until
+  // migrations/20261116_item_market_source.sql is applied
+  market_source?: string | null;
+  market_updated_at?: string | null;
   // Sealed product metadata
   product_type: string | null;
   quantity: number;

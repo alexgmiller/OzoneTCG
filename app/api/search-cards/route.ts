@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchBaseNames, nameVariants, isJapaneseName } from "@/lib/cardNameUtils";
 import { createClient } from "@/lib/supabase/server";
-import { scoreLocalCard, parseTerms } from "@/lib/cardSearchScoring";
+import { nameTerms, scoreLocalCard, parseTerms } from "@/lib/cardSearchScoring";
 
 const TCGDEX_EN = "https://api.tcgdex.net/v2/en";
 const TCGDEX_JA = "https://api.tcgdex.net/v2/ja";
@@ -20,11 +20,16 @@ type SearchResult = {
 
 // ── Local DB search ───────────────────────────────────────────────────────────
 
+type CardRow = { id: string; name: string; set_id: string | null; set_name: string | null; card_number: string | null; image_url: string | null };
+const CANDIDATES = 300;
+
 /**
  * Multi-term AND search against the local pokemon_cards table.
  *
  * Strategy:
- *  1. Use the longest non-numeric term to hit the name index (fast fetch of candidates).
+ *  1. Use the longest non-numeric term to hit the name index (fast fetch of
+ *     candidates); when it finds nothing, the next one ("charizard evolutions"
+ *     tries "evolutions", then "charizard").
  *  2. Post-filter in JS: every term must appear somewhere in name | set_name | set_id | card_number.
  *  3. Score and sort by relevance.
  *  4. Return top 10 with full set_name (not set_id code).
@@ -39,34 +44,30 @@ async function searchLocalDB(
 
     if (!terms.length) return [];
 
-    // Pick the best term to drive the indexed name lookup.
-    // Longest alphabetic term is most distinctive (e.g. "charizard" beats "ex").
-    const nameTerm =
-      [...terms]
-        .filter((t) => /[a-z]/i.test(t))
-        .sort((a, b) => b.length - a.length)[0] ?? terms[0];
-
-    // Fetch up to 60 candidates by name (uses index)
-    const { data, error } = await supabase
-      .from("pokemon_cards")
-      .select("id, name, set_id, set_name, card_number, image_url")
-      .eq("language", lang)
-      .ilike("name", `%${nameTerm}%`)
-      .order("name")
-      .limit(60);
-
-    if (error || !data?.length) return [];
-
-    // Post-filter: ALL terms must match somewhere in the card's searchable text
-    const filtered = data.filter((c) => {
-      const searchable = [
-        (c.name ?? "").toLowerCase(),
-        (c.set_name ?? "").toLowerCase(),
-        (c.set_id ?? "").toLowerCase(),
-        (c.card_number ?? "").toLowerCase(),
-      ].join(" ");
-      return terms.every((term) => searchable.includes(term));
-    });
+    // Candidates by name (uses the index), then ALL terms must match somewhere
+    // in the card's searchable text. A common name ("charizard") has hundreds
+    // of printings, so pull enough that the set words can still find theirs.
+    let filtered: CardRow[] = [];
+    for (const nameTerm of nameTerms(rawQuery)) {
+      const { data, error } = await supabase
+        .from("pokemon_cards")
+        .select("id, name, set_id, set_name, card_number, image_url")
+        .eq("language", lang)
+        .ilike("name", `%${nameTerm}%`)
+        .order("name")
+        .limit(CANDIDATES);
+      if (error) return [];
+      filtered = ((data ?? []) as CardRow[]).filter((c) => {
+        const searchable = [
+          (c.name ?? "").toLowerCase(),
+          (c.set_name ?? "").toLowerCase(),
+          (c.set_id ?? "").toLowerCase(),
+          (c.card_number ?? "").toLowerCase(),
+        ].join(" ");
+        return terms.every((term) => searchable.includes(term));
+      });
+      if (filtered.length) break;
+    }
 
     if (!filtered.length) return [];
 

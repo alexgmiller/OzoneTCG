@@ -5,6 +5,7 @@ import { makeRawCardPriceKey, priceForCondition } from "@/lib/justtcg";
 import type { FMVResult } from "@/lib/fmv";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
 import type { Condition, Item, ItemForm } from "./types";
+import { marketSourceLabel } from "@/lib/marketSource";
 
 // ── Numbers ──
 export function toNum(v: string) {
@@ -58,7 +59,39 @@ export function rawConditionPrice(rcp: RawCardPrice | null | undefined, conditio
   return priceForCondition({ nm: rcp.nm_price, lp: rcp.lp_price, mp: rcp.mp_price, hp: rcp.hp_price, dmg: rcp.dmg_price }, condition);
 }
 
-// Market price shown for an item: slab FMV, TCGPlayer condition price, or the saved market.
+// JustTCG's per-condition price counts while it's recent. An old row (the key
+// was removed, or the card stopped matching) would otherwise hide the newer
+// price the nightly job has since given the item.
+const JUSTTCG_FRESH_MS = 3 * 86_400_000;
+export function freshRawCardPrice(rcp: RawCardPrice | null | undefined, now = Date.now()): RawCardPrice | null {
+  if (!rcp?.last_updated) return null;
+  return now - new Date(rcp.last_updated).getTime() < JUSTTCG_FRESH_MS ? rcp : null;
+}
+
+// A single's or sealed item's price and where it came from: JustTCG's
+// condition price while fresh, else the item's own (nightly) price, else an
+// old JustTCG price. `asking` marks an eBay asking estimate (not sales).
+export type PriceInfo = { price: number | null; source: string | null; updatedAt: string | null; asking: boolean };
+
+export function rawItemPrice(it: Item, rcp: RawCardPrice | null | undefined, now = Date.now()): PriceInfo {
+  const own: PriceInfo = {
+    price: it.market,
+    source: marketSourceLabel(it.market_source),
+    updatedAt: it.market_updated_at ?? null,
+    asking: it.market_source === "ebay_asking",
+  };
+  if (it.category !== "single") return own;
+  const fresh = freshRawCardPrice(rcp, now);
+  const freshPrice = rawConditionPrice(fresh, it.condition);
+  if (fresh && freshPrice != null) return { price: freshPrice, source: marketSourceLabel("justtcg"), updatedAt: fresh.last_updated, asking: false };
+  if (it.market != null) return own;
+  const oldPrice = rawConditionPrice(rcp, it.condition);
+  return oldPrice != null && rcp
+    ? { price: oldPrice, source: marketSourceLabel("justtcg"), updatedAt: rcp.last_updated, asking: false }
+    : own;
+}
+
+// Market price shown for an item: slab FMV, else rawItemPrice
 export function itemMarketPrice(
   it: Item,
   slabFMVData: Record<string, FMVResult>,
@@ -66,8 +99,7 @@ export function itemMarketPrice(
 ): number | null {
   if (it.category === "slab" && it.grade) return slabFMVData[it.id]?.fmv ?? it.market;
   if (it.category === "sealed") return it.market;
-  const rcp = rawCardPrices[makeRawCardPriceKey(it.name, it.set_name, it.card_number)];
-  return rawConditionPrice(rcp, it.condition) ?? it.market;
+  return rawItemPrice(it, rawCardPrices[makeRawCardPriceKey(it.name, it.set_name, it.card_number)]).price;
 }
 
 // ── Labels ──

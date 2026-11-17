@@ -11,7 +11,7 @@ export function useInventoryView(items: Item[], filters: Filters, priceOf: (it: 
   const sold = filters.status === "sold";
 
   const displayedItems = useMemo(
-    () => sortItems(filterItems(items, filters), filters.sort, priceOf, sold),
+    () => sortItems(filterItems(items, filters, priceOf), filters.sort, priceOf, sold),
     [items, filters, priceOf, sold],
   );
 
