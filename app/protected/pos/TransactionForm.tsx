@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Check } from "lucide-react";
 import { Chip, ChipRow, useToast } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import type { OfflineResult } from "@/lib/offlineAwareActions";
 import { attachPhoto } from "./actions";
 import { METHOD_LABELS, PAYMENT_METHODS, type Mode, type Payer, type PaymentMethod } from "./ledger";
 import { CARD, INPUT } from "./ui";
 import PhotoCapture from "./PhotoCapture";
+import { usePaymentMethod } from "./usePaymentMethod";
 
 export type DealForm = {
   amount: number; // trade: > 0 we pay, < 0 they pay
@@ -22,6 +25,9 @@ const PAYERS = ["shared", "alex", "mila"] as const;
 // ── Transaction form ──
 // Big numeric amount, payment method chips, counterparty + notes, photo
 // thumbnails, and a full-width accent confirm pinned above the tab bar.
+// Confirming answers as soon as the deal is saved: the button shows a check,
+// the phone buzzes, the form clears, and any photos upload in the background.
+// The payment method starts on the one this device last confirmed with.
 export default function TransactionForm({ mode, suggested, ready, submit, onDone, onAmountChange }: {
   mode: Mode;
   suggested: number;
@@ -35,35 +41,57 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
   const toast = useToast();
   const [amount, setAmount] = useState("");
   const [wePay, setWePay] = useState(true);
-  const [method, setMethod] = useState<PaymentMethod>(mode === "trade" ? "trade" : "cash");
+  const [method, setMethod, rememberMethod] = usePaymentMethod(mode);
   const [paidBy, setPaidBy] = useState<Payer>("shared");
   const [counterparty, setCounterparty] = useState("");
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<Blob[]>([]);
   const [busy, setBusy] = useState(false);
+  // A check on the button for a moment after a deal saves, until the next card is added
+  const [done, setDone] = useState(false);
+  const doneTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(doneTimer.current), []);
+  useEffect(() => { if (ready) setDone(false); }, [ready]);
+
+  function flashDone() {
+    setDone(true);
+    window.clearTimeout(doneTimer.current);
+    doneTimer.current = window.setTimeout(() => setDone(false), 1500);
+    try { navigator.vibrate?.(10); } catch { /* not supported */ }
+  }
+
+  // Runs after the deal is recorded; the toast reports a failure
+  async function uploadPhotos(transactionId: string, shots: Blob[]) {
+    let failed = 0;
+    for (const p of shots) {
+      const fd = new FormData();
+      fd.append("photo", new File([p], "photo.jpg", { type: "image/jpeg" }));
+      await attachPhoto(transactionId, fd).catch(() => { failed += 1; });
+    }
+    if (failed) toast.error(failed === 1 ? "A photo failed to upload" : `${failed} photos failed to upload`);
+  }
 
   const value = amount === "" ? suggested : Number(amount) || 0;
 
   async function confirm() {
     setBusy(true);
+    const shots = photos;
     try {
       const res = await submit({
         amount: mode === "trade" ? (wePay ? value : -value) : value,
         payment_method: method, counterparty, notes, paid_by: paidBy,
       });
-      if (res.queued) {
-        toast.warning(photos.length ? "Saved offline — photos weren't kept, add them later" : "Saved offline — will sync when connected");
-      } else {
-        for (const p of photos) {
-          const fd = new FormData();
-          fd.append("photo", new File([p], "photo.jpg", { type: "image/jpeg" }));
-          await attachPhoto(res.result.id, fd).catch(() => toast.error("A photo failed to upload"));
-        }
-        toast.success(`${mode[0].toUpperCase()}${mode.slice(1)} recorded`);
-        router.refresh();
-      }
+      rememberMethod();
       setAmount(""); setCounterparty(""); setNotes(""); setPhotos([]);
       onDone();
+      flashDone();
+      if (res.queued) {
+        toast.warning(shots.length ? "Saved offline — photos weren't kept, add them later" : "Saved offline — will sync when connected");
+      } else {
+        toast.success(`${mode[0].toUpperCase()}${mode.slice(1)} recorded${shots.length ? " · uploading photos" : ""}`);
+        router.refresh();
+        if (shots.length) void uploadPhotos(res.result.id, shots);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't record that");
     } finally {
@@ -121,8 +149,13 @@ export default function TransactionForm({ mode, suggested, ready, submit, onDone
           thumb target); inline on md+ at h-11 to match the other controls */}
       <div className="above-tabbar fixed inset-x-4 z-30 md:static md:inset-auto">
         <button type="button" disabled={!ready || busy} onClick={confirm}
-          className="h-14 w-full rounded-full bg-accent text-base font-semibold text-bg shadow-tabbar transition-colors duration-150 disabled:opacity-40 md:h-11 md:text-sm md:shadow-none">
-          {busy ? "Saving…" : `Confirm ${mode}`}
+          className={cn(
+            "inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-accent text-base font-semibold text-bg shadow-tabbar transition-colors duration-150 disabled:opacity-40 md:h-11 md:text-sm md:shadow-none",
+            done && !ready && "disabled:opacity-100",
+          )}>
+          {busy ? "Saving…" : done && !ready
+            ? <><Check size={20} aria-hidden /> {mode[0].toUpperCase()}{mode.slice(1)} recorded</>
+            : `Confirm ${mode}`}
         </button>
       </div>
     </div>
