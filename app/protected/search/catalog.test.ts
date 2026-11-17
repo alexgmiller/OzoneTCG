@@ -24,6 +24,12 @@ describe("nameTerms", () => {
 });
 
 describe("rankCatalog", () => {
+  it("ignores accents on either side", () => {
+    const rows = [row({ id: "a", name: "Pokémon Catcher", set_name: "Emerging Powers" })];
+    expect(rankCatalog(rows, "pokemon catcher").map((c) => c.id)).toEqual(["a"]);
+    expect(rankCatalog([row({ id: "b", name: "Flabebe" })], "Flabébé").map((c) => c.id)).toEqual(["b"]);
+  });
+
   it("requires every term to match somewhere", () => {
     const rows = [
       row({ id: "a", name: "Charizard ex", set_name: "Obsidian Flames" }),

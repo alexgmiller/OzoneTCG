@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTerms, scoreLocalCard, type ScoredCard } from "./cardSearchScoring";
+import { fold, nameLike, parseTerms, scoreLocalCard, type ScoredCard } from "./cardSearchScoring";
 
 function card(overrides: Partial<ScoredCard> = {}): ScoredCard {
   return { name: "charizard", set_name: "base set", card_number: "4", ...overrides };
@@ -124,5 +124,35 @@ describe("scoreLocalCard — realistic ordering", () => {
       .map((c) => ({ num: c.card_number, s: score(c, "charizard 4") }))
       .sort((a, b) => b.s - a.s);
     expect(ranked[0].num).toBe("4");
+  });
+});
+
+describe("accents", () => {
+  it("fold lowercases and drops accents", () => {
+    expect(fold("Pokémon Catcher")).toBe("pokemon catcher");
+    expect(fold("Flabébé")).toBe("flabebe");
+  });
+  it("fold keeps Japanese voiced kana as single characters", () => {
+    expect(fold("ガブリアス")).toBe("ガブリアス");
+    expect(fold("ガ")).toHaveLength(1);
+  });
+  it("parseTerms drops accents from typed queries", () => {
+    expect(parseTerms("Pokémon Catcher")).toEqual(["pokemon", "catcher"]);
+  });
+  it("scores an accented card name the same as a plain one", () => {
+    const c: ScoredCard = { name: "Pokémon Catcher", set_name: "Emerging Powers", card_number: "95" };
+    expect(score(c, "pokemon catcher")).toBe(score({ ...c, name: "Pokemon Catcher" }, "pokemon catcher"));
+  });
+});
+
+describe("nameLike", () => {
+  it("lets e match an accented letter in longer terms", () => {
+    expect(nameLike("pokemon")).toBe("%pok_mon%");
+    expect(nameLike("flabebe")).toBe("%flab_b_%");
+  });
+  it("keeps short terms exact and escapes wildcards", () => {
+    expect(nameLike("ex")).toBe("%ex%");
+    expect(nameLike("mew")).toBe("%mew%");
+    expect(nameLike("100%")).toBe("%100\\%%");
   });
 });
