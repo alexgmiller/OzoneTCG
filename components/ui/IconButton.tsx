@@ -23,7 +23,7 @@ export const IconButton = forwardRef<HTMLButtonElement, Props>(function IconButt
       aria-label={label}
       aria-pressed={active || undefined}
       className={cn(
-        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-150 disabled:opacity-40",
+        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition duration-150 ease-out motion-safe:enabled:active:scale-press disabled:opacity-40",
         tone === "accent"
           ? "bg-accent text-bg"
           : active

@@ -27,7 +27,7 @@ export function HeroValue({ amount, label, onLabelClick, align = "center", size 
           <button
             type="button"
             onClick={onLabelClick}
-            className="inline-flex h-8 items-center gap-1 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
+            className="tap-target relative inline-flex h-8 items-center gap-1 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             {label}
             <ChevronDown size={14} />

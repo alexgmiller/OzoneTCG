@@ -2,10 +2,12 @@
 
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { POP_MOTION, SCRIM_MOTION, usePresence } from "./usePresence";
 
 // ── Modal ──
 // Fixed overlay: backdrop + panel. One modal at a time; use <Toast /> for
-// passive notifications. Backdrop and panel both transition ≤ 200ms.
+// passive notifications. The backdrop fades and the panel fades and scales in
+// and out (usePresence), all ≤ 200ms.
 export function Modal({
   open,
   onClose,
@@ -28,31 +30,32 @@ export function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  const { present, closing, view } = usePresence(open, { title, children });
+  if (!present) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className={cn("fixed inset-0 z-50 flex items-center justify-center p-4", closing && "pointer-events-none")}>
       <div
-        className="absolute inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150"
+        className={cn("absolute inset-0 bg-scrim backdrop-blur-sm", closing ? SCRIM_MOTION.exit : SCRIM_MOTION.enter)}
         onClick={onClose}
         aria-hidden
       />
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={view.title}
         className={cn(
           "relative max-h-full w-full max-w-md overflow-y-auto rounded-xl border border-border bg-card p-5 text-foreground",
-          "transition-all duration-150",
+          closing ? POP_MOTION.exit : POP_MOTION.enter,
           className,
         )}
       >
-        {title ? (
+        {view.title ? (
           <h2 className="mb-3 text-lg font-semibold tracking-tight text-foreground">
-            {title}
+            {view.title}
           </h2>
         ) : null}
-        {children}
+        {view.children}
       </div>
     </div>
   );

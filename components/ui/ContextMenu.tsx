@@ -4,11 +4,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PressPoint } from "./useLongPress";
+import { POP_MOTION, SCRIM_MOTION, usePresence } from "./usePresence";
 
 // ── ContextMenu ──
 // Dims the page and lifts a surface-2 card near the press point. Full-width
 // rows of icon + label separated by hairlines; a `destructive` row renders
-// in the down colour after a thicker gap. Escape or backdrop closes.
+// in the down colour after a thicker gap. Escape or backdrop closes. The card
+// grows out of the press point and shrinks back into it on close.
 export type ContextMenuItem = {
   label: string;
   icon: LucideIcon;
@@ -49,22 +51,25 @@ export function ContextMenu({ open, at, items, onClose, title }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open || !at) return null;
+  const { present, closing, view } = usePresence(open, { at, items, title });
+  if (!present || !view.at) return null;
 
-  const regular = items.filter((i) => !i.destructive);
-  const destructive = items.filter((i) => i.destructive);
+  const regular = view.items.filter((i) => !i.destructive);
+  const destructive = view.items.filter((i) => i.destructive);
+  // Grow from the edge nearest the press point (the card opens below it, or above when there's no room)
+  const above = pos != null && pos.top < view.at.y;
 
   return (
-    <div className="fixed inset-0 z-50" role="presentation">
-      <div className="absolute inset-0 bg-scrim backdrop-blur-sm" onClick={onClose} aria-hidden />
+    <div className={cn("fixed inset-0 z-50", closing && "pointer-events-none")} role="presentation">
+      <div className={cn("absolute inset-0 bg-scrim backdrop-blur-sm", closing ? SCRIM_MOTION.exit : SCRIM_MOTION.enter)} onClick={onClose} aria-hidden />
       <div
         ref={ref}
         role="menu"
-        aria-label={title ?? "Item actions"}
-        style={{ left: pos?.left ?? at.x, top: pos?.top ?? at.y, width: MENU_W, visibility: pos ? "visible" : "hidden" }}
-        className="absolute overflow-hidden rounded-2xl bg-surface-2"
+        aria-label={view.title ?? "Item actions"}
+        style={{ left: pos?.left ?? view.at.x, top: pos?.top ?? view.at.y, width: MENU_W, visibility: pos ? "visible" : "hidden" }}
+        className={cn("absolute overflow-hidden rounded-2xl bg-surface-2", above ? "origin-bottom" : "origin-top", closing ? POP_MOTION.exit : POP_MOTION.enter)}
       >
-        {title && <div className="truncate px-4 pt-3 text-xs text-muted-foreground">{title}</div>}
+        {view.title && <div className="truncate px-4 pt-3 text-xs text-muted-foreground">{view.title}</div>}
         <Rows items={regular} onClose={onClose} />
         {destructive.length > 0 && (
           <div className="mt-2 border-t-4 border-bg">
@@ -89,7 +94,7 @@ function Rows({ items, onClose }: { items: ContextMenuItem[]; onClose: () => voi
             disabled={i.disabled}
             onClick={() => { onClose(); i.onSelect(); }}
             className={cn(
-              "flex h-12 w-full items-center gap-3 border-b border-border px-4 text-left text-sm font-medium transition-colors duration-150 last:border-b-0 hover:bg-surface disabled:opacity-40",
+              "flex h-12 w-full items-center gap-3 border-b border-border px-4 text-left text-sm font-medium transition-colors duration-150 last:border-b-0 hover:bg-surface active:bg-surface disabled:opacity-40",
               i.destructive ? "text-down" : "text-foreground",
             )}
           >

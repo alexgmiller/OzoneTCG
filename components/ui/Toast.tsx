@@ -77,7 +77,8 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       className={cn(
         "pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-xl border bg-card py-2 pl-4 pr-2",
         "text-sm font-medium",
-        "transition-opacity duration-150",
+        // Rises into place; dismissing removes it at once
+        "animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out motion-reduce:animate-none",
         toneClass,
       )}
     >

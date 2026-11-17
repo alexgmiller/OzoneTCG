@@ -369,7 +369,7 @@ export default function SearchClient({ initialQuery, initialLang, initialSet = n
                 .filter((f) => f.value)
                 .map((f) => (
                   <button key={f.value} type="button" onClick={f.clear} aria-label={`Remove filter ${f.value}`}
-                    className="inline-flex h-9 items-center gap-1 rounded-full bg-accent-tint px-3 text-sm font-medium text-accent">
+                    className="tap-target relative inline-flex h-9 items-center gap-1 rounded-full bg-accent-tint px-3 text-sm font-medium text-accent transition duration-150 ease-out motion-safe:active:scale-press">
                     {f.value} <X size={14} aria-hidden />
                   </button>
                 ))}

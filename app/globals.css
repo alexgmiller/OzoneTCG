@@ -237,3 +237,20 @@ button:active:not(:disabled):not([data-state]), a[role="button"]:active:not([dat
 @media screen and (max-width: 768px) {
   select, input, textarea { font-size: 16px !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAP TARGET (Fitts's law)
+   A control drawn smaller than 44px (Chip, RangePicker, SegmentedControl)
+   still takes taps across a 44px box centred on it. The element must be
+   positioned (relative or absolute) and its parent must not clip overflow.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.tap-target::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}

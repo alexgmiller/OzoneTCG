@@ -113,7 +113,7 @@ function OverlayTile({
       style={width ? { width } : undefined}
       className={cn(
         "group relative block aspect-[63/88] w-full shrink-0 overflow-hidden rounded-2xl bg-surface-2 text-left transition-transform duration-150",
-        onClick && "active:scale-[0.98]",
+        onClick && "motion-safe:active:scale-press",
         selected && "ring-2 ring-accent ring-offset-2 ring-offset-bg",
         className,
       )}

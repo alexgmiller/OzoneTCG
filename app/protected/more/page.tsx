@@ -35,7 +35,7 @@ export default function MorePage() {
                   <li key={i.href} className="border-b border-border last:border-b-0">
                     <Link
                       href={i.href}
-                      className="flex h-14 items-center gap-3 px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-surface-2"
+                      className="flex h-14 items-center gap-3 px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-surface-2 active:bg-surface-2"
                     >
                       <Icon size={20} strokeWidth={1.75} className="text-muted-foreground" />
                       <span className="flex-1">{i.label}</span>

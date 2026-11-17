@@ -30,16 +30,16 @@ export function SearchBar({ value, onChange, onScan, placeholder = "Search", aut
         autoFocus={autoFocus}
         aria-label={placeholder}
         {...inputProps}
-        className="h-full w-full bg-transparent pl-10 pr-20 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+        className="h-full w-full bg-transparent pl-10 pr-24 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none [&::-webkit-search-cancel-button]:hidden"
       />
-      <div className="absolute right-1.5 flex items-center gap-0.5">
+      <div className="absolute right-0 flex items-center">
         {value && (
-          <button type="button" onClick={() => onChange("")} aria-label="Clear" className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={() => onChange("")} aria-label="Clear" className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground">
             <X size={16} />
           </button>
         )}
         {onScan && (
-          <button type="button" onClick={onScan} aria-label="Scan cert" className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={onScan} aria-label="Scan cert" className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground">
             <Camera size={18} />
           </button>
         )}
