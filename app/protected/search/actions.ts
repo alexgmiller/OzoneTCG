@@ -6,10 +6,11 @@ import { fetchTcgdexPrice } from "@/lib/tcgdexPrice";
 import { lookupEbayAsking, type EbayAsking } from "@/lib/ebay";
 import { lookupTcgplayerQuotes } from "@/lib/tcgplayerPrices";
 import { stripParens } from "@/lib/cardNameUtils";
-import type { Printing, Quote } from "@/lib/tcgplayerMatch";
+import { CATEGORY, type Printing, type Quote } from "@/lib/tcgplayerMatch";
+import { tcgGroups, tcgPrices, tcgProducts } from "@/lib/tcgcsv";
 import {
-  JA_ID_PREFIX, matchesCard, nameTerms, productIdOf, rankCatalog,
-  type CatalogCard, type CatalogLang, type CatalogRow,
+  JA_ID_PREFIX, matchesCard, nameTerms, productIdOf, rankCatalog, setCardsFrom, sortSets, toBrowseSet,
+  type BrowseSet, type CatalogCard, type CatalogLang, type CatalogRow,
 } from "./catalog";
 
 // How many name matches to pull before ranking. Enough that a common name
@@ -57,6 +58,23 @@ type JaRow = {
   product_id: number; name: string; set_code: string | null; set_name: string;
   card_number: string | null; image_url: string | null;
 };
+
+// ── Browse by set ──
+// TCGplayer's sets for a language, newest first (lib/tcgcsv.ts keeps the list
+// for hours), and one set's cards with prices from a single download.
+export async function listSets(lang: CatalogLang): Promise<BrowseSet[]> {
+  return sortSets((await tcgGroups(CATEGORY[lang])).map(toBrowseSet));
+}
+
+export async function browseSet(
+  groupId: number, lang: CatalogLang,
+): Promise<{ set: BrowseSet | null; cards: CatalogCard[]; quotes: Record<string, Quote> }> {
+  const category = CATEGORY[lang];
+  const group = (await tcgGroups(category)).find((g) => g.groupId === groupId);
+  if (!group) return { set: null, cards: [], quotes: {} };
+  const [products, prices] = await Promise.all([tcgProducts(category, groupId), tcgPrices(category, groupId)]);
+  return { set: toBrowseSet(group), ...setCardsFrom(products, prices, group, lang) };
+}
 
 // ── Stock per result ──
 // How many in-stock copies you have of each result card (tile footer). One
