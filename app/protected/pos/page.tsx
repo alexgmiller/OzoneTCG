@@ -1,6 +1,9 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { loadConditionFactors } from "@/lib/conditionFactors";
+import { DEFAULT_FACTORS } from "@/lib/conditionPricing";
 import { getActiveShow, getScheduledShowToday } from "@/app/protected/shows/actions";
 import { parseBuyPrefill } from "@/app/protected/inventory/addPrefill";
 import type { Mode, NewCard, PickItem } from "./ledger";
@@ -24,7 +27,7 @@ async function PosLoader({ searchParams }: { searchParams: Params }) {
   const workspaceId = await getWorkspaceId();
   const { data: auth } = await supabase.auth.getUser();
 
-  const [activeShow, scheduled, inventory, settings] = await Promise.all([
+  const [activeShow, scheduled, inventory, settings, condition] = await Promise.all([
     getActiveShow(),
     getScheduledShowToday().catch(() => null),
     supabase.from("items")
@@ -32,6 +35,9 @@ async function PosLoader({ searchParams }: { searchParams: Params }) {
       .eq("workspace_id", workspaceId).eq("status", "inventory")
       .order("name").limit(2000),
     supabase.from("user_settings").select("default_buy_pct").eq("user_id", auth.user?.id ?? "").maybeSingle(),
+    // Played singles in a buy or trade get the nightly job's condition discounts.
+    // Loaded with the page, so they still apply if the show floor goes offline.
+    loadConditionFactors(createAdminClient()).catch(() => null),
   ]);
 
   const items = (inventory.data ?? []) as PickItem[];
@@ -40,7 +46,8 @@ async function PosLoader({ searchParams }: { searchParams: Params }) {
 
   return (
     <PosClient activeShow={activeShow} scheduled={scheduled} items={items}
-      buyPct={Number(settings.data?.default_buy_pct ?? 70)} initialMode={initialMode}
+      buyPct={Number(settings.data?.default_buy_pct ?? 70)} factors={condition?.factors ?? DEFAULT_FACTORS}
+      initialMode={initialMode}
       preselected={items.filter((it) => wanted.has(it.id))} buyCards={buyCards} />
   );
 }

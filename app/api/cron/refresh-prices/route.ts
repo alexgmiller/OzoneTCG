@@ -8,7 +8,8 @@ import { historyRows } from "@/lib/priceHistory";
 import { lookupEbayAsking } from "@/lib/ebay";
 import { estimateFor } from "@/lib/ebayAsking";
 import { cardLang } from "@/lib/cardArtMatch";
-import { adjustForCondition, learnFactors, MIN_NM_PRICE, type ConditionPriceRow, type LearnedFactors } from "@/lib/conditionPricing";
+import { adjustForCondition } from "@/lib/conditionPricing";
+import { loadConditionFactors } from "@/lib/conditionFactors";
 import { hasMarketSourceColumns, marketStamp, type MarketSource } from "@/lib/marketSource";
 
 // ── Nightly refresh (03:00) ──
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
   let fromTcgplayer = 0;
   let fromEbay = 0;
   // Played singles priced from a one-price source get a condition discount
-  const condition = await conditionFactors(supabase);
+  const condition = await loadConditionFactors(supabase);
   let conditionAdjusted = 0;
 
   for (let i = 0; i < items.length; i += BATCH) {
@@ -168,18 +169,6 @@ export async function GET(req: NextRequest) {
     updated, priced, history, fromTcgplayer, fromEbay, conditionAdjusted, conditionFactors: condition,
     keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
   });
-}
-
-// Condition discounts learned from JustTCG's per-condition prices
-// (lib/conditionPricing.ts), or the defaults if they can't be read
-async function conditionFactors(supabase: ReturnType<typeof createAdminClient>): Promise<LearnedFactors> {
-  const { data, error } = await supabase
-    .from("raw_card_prices")
-    .select("nm_price,lp_price,mp_price,hp_price,dmg_price")
-    .gte("nm_price", MIN_NM_PRICE)
-    .limit(5000);
-  if (error) console.error("[cron/refresh-prices] raw_card_prices read for condition factors failed:", error.message);
-  return learnFactors((data ?? []) as ConditionPriceRow[]);
 }
 
 // Price keys (lib/justtcg → makeRawCardPriceKey) of the singles and sealed
