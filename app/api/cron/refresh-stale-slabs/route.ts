@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasMarketSourceColumns, marketStamp } from "@/lib/marketSource";
 import { refreshPokeInvestCards, slabCardKey, slabPokeInvestPrice } from "@/lib/pokeinvestSlabs";
+import { backfillSlabHistory } from "@/lib/pokeinvestHistory";
 // Up to 5 minutes; the loop stops itself before that (time guard below)
 export const maxDuration = 300;
 import {
@@ -117,6 +118,13 @@ export async function GET(req: NextRequest) {
     `[cron] PokeInvest: ${pokeinvestPriced.size}/${items.length} slabs priced, ${pokeinvestChanged} changed · ${JSON.stringify(pokeinvest.stats)}` +
     (pokeinvest.tableMissing ? " · pokeinvest_cards is missing (run migrations/20261118_pokeinvest_cards.sql)" : ""),
   );
+
+  // Charts back to 2022 for the slabs PokeInvest prices (lib/pokeinvestHistory.ts):
+  // one call per card, once, at most 10 a night inside the daily limit
+  const history = await backfillSlabHistory(admin, items.filter((it) => pokeinvestPriced.has(it.id)), {
+    key: process.env.POKEINVEST_API_KEY?.trim(),
+  }).catch((e) => ({ fetched: 0, filled: 0, points: 0, stopped: e instanceof Error ? e.message : String(e) }));
+  console.log(`[cron] PokeInvest history: ${JSON.stringify(history)}`);
 
   if (callCount >= DAILY_BUDGET * BUDGET_WARN_PCT) {
     console.log(`[cron] Daily budget at ${callCount}/${DAILY_BUDGET} — skipping eBay`);
