@@ -39,6 +39,12 @@ export function isSortKey(v: string): v is SortKey {
   return rest.length === 0 && (dir === "asc" || dir === "desc") && SORT_FIELDS.some((f) => f.field === field);
 }
 
+// Settings → Default sort (user_settings.default_sort, stored as text): the
+// sort Inventory opens with. Missing or unknown → DEFAULT_SORT.
+export function sortOrDefault(v: string | null | undefined): SortKey {
+  return v && isSortKey(v) ? v : DEFAULT_SORT;
+}
+
 // Accepts any string (Settings stores default_sort as text); unknown → DEFAULT_SORT
 export function parseSort(k: string): { field: SortField; dir: SortDir } {
   const [field, dir] = (isSortKey(k) ? k : DEFAULT_SORT).split("-") as [SortField, SortDir];

@@ -8,7 +8,8 @@ import { useToast, useConfirm, type PressPoint } from "@/components/ui";
 import { createItems, deleteItem, deleteItems, updateItem, bulkPatchItems } from "./actions";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
 import type { PokeInvestSlabPrice } from "@/lib/pokeinvestSlabs";
-import type { Status, ConsignerOption, Item, ItemForm, Psa10Entry, HistoryDuration } from "./types";
+import type { Status, ConsignerOption, Item, ItemForm, Psa10Entry, HistoryDuration, SortKey } from "./types";
+import { DEFAULT_SORT } from "./sort";
 import type { AddPrefill } from "./addPrefill";
 import { toNum, effectiveCost, blankForm, itemToForm, formToInput } from "./utils";
 import { usePricing } from "./usePricing";
@@ -37,7 +38,8 @@ import GradingSection from "./components/GradingSection";
 // `items` holds in-stock rows plus the most recent sold rows; sold rows only render under the Sold filter.
 // `focusId` (from ?focus=) opens that item's detail on arrival.
 export default function InventoryClient({
-  items, consigners, workspaceId, slabPrices, rawCardPrices, pokeinvestPrices = {}, gradingCost = 20, focusId = null, addPrefill = null,
+  items, consigners, workspaceId, slabPrices, rawCardPrices, pokeinvestPrices = {}, gradingCost = 20, defaultSort = DEFAULT_SORT,
+  focusId = null, addPrefill = null,
 }: {
   items: Item[];
   consigners: ConsignerOption[];
@@ -47,6 +49,8 @@ export default function InventoryClient({
   // Item id → PokeInvest grade price (slabs that have a trusted one)
   pokeinvestPrices?: Record<string, PokeInvestSlabPrice>;
   gradingCost?: number;
+  // Settings → Default sort: the order Inventory opens in
+  defaultSort?: SortKey;
   focusId?: string | null;
   addPrefill?: AddPrefill | null;
 }) {
@@ -61,7 +65,7 @@ export default function InventoryClient({
 
   // ── View, filters, selection ──
   const [view, setView, viewReady] = useViewMode();
-  const [filters, setFiltersState] = useState<Filters>(defaultFilters);
+  const [filters, setFiltersState] = useState<Filters>(() => ({ ...defaultFilters, sort: defaultSort }));
   const sel = useSelection(items);
   const setFilters = (patch: Partial<Filters>) => {
     // Switching pools drops the selection so bulk actions never mix sold and in-stock
