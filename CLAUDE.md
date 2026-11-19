@@ -14,7 +14,7 @@ Next.js (App Router) + TypeScript + Tailwind + shadcn-style primitives.
 - Tokens and Tailwind theme extensions are in `tailwind.config.ts` — don't hard-code colors, extend the theme.
 
 ## UI rules of thumb
-1. **Semantic colors only.** `emerald` = positive, `rose` = negative, `amber` = warning, `violet` = primary. Never `red`, `green`, `yellow`, `blue` in Tailwind classes.
+1. **Semantic colors only.** `up` = positive (profit, FMV above cost, ▲), `down` = negative (loss, ▼, destructive rows); `up-tint` / `down-tint` are their soft backgrounds. `accent` is the one teal, for active and selected states only (`accent-tint` behind a selected chip). `positive` / `negative` / `warning` (with `-soft` / `-strong` / `-border`) still work and resolve to `up` / `down` / amber. Surfaces and text: `bg`, `surface`, `surface-2`, `border`, `foreground`, `muted-foreground`. Never a raw hue class (`red`, `green`, `yellow`, `blue`, `violet`, `emerald`, `rose`, `amber`, …) or a hex value. See design-system §1.
 2. **No shadows.** Depth = border + background contrast. See design-system §6.
 3. **No arbitrary values.** `text-[13px]`, `p-[11px]`, `rounded-[7px]` are banned except one documented exception (inventory card caption = `text-[11px]`).
 4. **Tabular nums on all money and counts.** Use `<MoneyDisplay />` — it handles this.

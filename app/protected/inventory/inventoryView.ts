@@ -3,6 +3,7 @@
 
 import type { Category, ConsignerFilter, Item, SortKey, Status } from "./types";
 import { effectiveCost, nullLast } from "./utils";
+import { DEFAULT_SORT } from "./sort";
 
 // "active" = in-stock inventory rows (grading has its own section); "sold" = the sold pool
 export type StatusFilter = Status | "active";
@@ -19,33 +20,11 @@ export type Filters = {
 };
 export type PriceFilter = "all" | "none" | "asking";
 
-export const defaultFilters: Filters = { search: "", category: "all", status: "active", consigner: "all", price: "all", sort: "date-desc" };
+export const defaultFilters: Filters = { search: "", category: "all", status: "active", consigner: "all", price: "all", sort: DEFAULT_SORT };
 
 export function countActiveFilters(f: Filters): number {
   return (f.search.trim() ? 1 : 0) + (f.category !== "all" ? 1 : 0) + (f.status !== "active" ? 1 : 0) + (f.consigner !== "all" ? 1 : 0)
     + (f.price !== "all" ? 1 : 0);
-}
-
-export const SORT_OPTIONS: readonly { value: SortKey; label: string }[] = [
-  { value: "date-desc",    label: "Newest first" },
-  { value: "date-asc",     label: "Oldest first" },
-  { value: "name-asc",     label: "Name A→Z" },
-  { value: "name-desc",    label: "Name Z→A" },
-  { value: "market-desc",  label: "Value high→low" },
-  { value: "market-asc",   label: "Value low→high" },
-  { value: "cost-desc",    label: "Cost high→low" },
-  { value: "cost-asc",     label: "Cost low→high" },
-  { value: "sticker-desc", label: "Sticker high→low" },
-  { value: "sticker-asc",  label: "Sticker low→high" },
-  { value: "days-desc",    label: "Longest in stock" },
-  { value: "days-asc",     label: "Newest in stock" },
-];
-
-// Short label for the header: "Date ↓", "Value ↑"
-export function sortLabel(k: SortKey): string {
-  const [field, dir] = k.split("-") as [string, "asc" | "desc"];
-  const name = { date: "Date", name: "Name", market: "Value", cost: "Cost", sticker: "Sticker", days: "Days" }[field] ?? field;
-  return `${name} ${dir === "desc" ? "↓" : "↑"}`;
 }
 
 const DAY_MS = 86_400_000;
