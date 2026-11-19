@@ -5,22 +5,24 @@ import { cn } from "@/lib/utils";
 // ── Chip ──
 // Filter pill. Selected = accent tint background + accent text. Drawn 36px
 // tall; .tap-target makes it take taps across 44px.
-type Props = {
+//
+// Extra button props and the ref go through to the <button>, so a Chip can be
+// a menu trigger (<DropdownMenuTrigger asChild>): the trigger opens the menu
+// through the handlers, aria attributes and ref it hands its child. As a
+// trigger it reports the menu's state (aria-expanded), not aria-pressed.
+type Props = Omit<React.ComponentPropsWithRef<"button">, "children"> & {
   selected?: boolean;
-  onClick?: () => void;
   children: React.ReactNode;
-  className?: string;
   icon?: React.ReactNode;
-  disabled?: boolean;
 };
 
-export function Chip({ selected = false, onClick, children, className, icon, disabled }: Props) {
+export function Chip({ selected = false, children, className, icon, type = "button", ...rest }: Props) {
+  const isMenuTrigger = rest["aria-haspopup"] != null;
   return (
     <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      disabled={disabled}
+      type={type}
+      aria-pressed={isMenuTrigger ? undefined : selected}
+      {...rest}
       className={cn(
         "tap-target relative inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition duration-150 ease-out motion-safe:enabled:active:scale-press disabled:opacity-40",
         selected
