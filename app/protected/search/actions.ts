@@ -1,7 +1,9 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { gradedPricesFor, type GradedPrices } from "@/lib/pokeinvestGraded";
 import { fetchTcgdexPrice } from "@/lib/tcgdexPrice";
 import { lookupEbayAsking, type EbayAsking } from "@/lib/ebay";
 import { lookupTcgplayerQuotes } from "@/lib/tcgplayerPrices";
@@ -200,6 +202,28 @@ export async function getCardDetail(card: CatalogCard): Promise<CardDetail> {
     : null;
 
   return { market: price.market, priceFailed: price.failed, quote: price.quote, asking, inStock };
+}
+
+// ── Graded tab: PokeInvest's sold price at each grade ──
+// Asked only when the Graded tab opens. One PokeInvest call per card at most
+// every 3 days, inside the shared daily limit (lib/pokeinvestGraded.ts).
+// productId is the card's TCGplayer product, when the Raw side found it.
+export async function getGradedPrices(card: CatalogCard, productId: number | null): Promise<GradedPrices> {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not logged in");
+  const ja = card.lang === "ja";
+  try {
+    return await gradedPricesFor(
+      createAdminClient(),
+      // Named the way Inventory names it, so slabs and Search share a row
+      { name: ja ? `${card.name} (JP)` : card.name, set_name: card.setName, card_number: card.cardNumber, language: ja ? "ja" : null },
+      { key: process.env.POKEINVEST_API_KEY?.trim(), productId: productId ?? productIdOf(card) },
+    );
+  } catch (e) {
+    console.error("[search] graded prices:", e instanceof Error ? e.message : e);
+    return { status: "unavailable" };
+  }
 }
 
 // ilike treats % and _ as wildcards and \ as their escape

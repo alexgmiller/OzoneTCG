@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PokeInvestGraded, PokeInvestPrices } from "./pokeinvest";
 import {
-  answerMatches, cardDue, gradeMatches, pickSearchHit, refreshPokeInvestCards, searchQuery, slabCardKey,
+  answerMatches, cardDue, DAILY_CALLS, gradeMatches, pickSearchHit, refreshPokeInvestCards, searchQuery, slabCardKey,
   slabPokeInvestPrice, splitName, type PokeInvestCardRow,
 } from "./pokeinvestSlabs";
 
@@ -131,11 +131,14 @@ describe("cardDue", () => {
 
 // ── The nightly refresh, against a fake table and a fake API ──
 
-function fakeAdmin(initial: PokeInvestCardRow[] = [], selectError: unknown = null) {
+// The table: rows for `.in()`, and `usedToday` for the daily-limit count
+function fakeAdmin(initial: PokeInvestCardRow[] = [], selectError: unknown = null, usedToday = 0) {
   const saved: PokeInvestCardRow[] = [];
   const admin = {
     from: () => ({
-      select: () => ({ in: async () => ({ data: selectError ? null : initial, error: selectError }) }),
+      select: (_cols: string, opts?: { head?: boolean }) => opts?.head
+        ? { or: async () => ({ count: usedToday, error: null }) }
+        : { in: async () => ({ data: selectError ? null : initial, error: selectError }) },
       upsert: async (r: PokeInvestCardRow) => { saved.push(r); return { error: null }; },
     }),
   };
@@ -220,5 +223,27 @@ describe("refreshPokeInvestCards", () => {
     const noKey = await refreshPokeInvestCards(fakeAdmin().admin, [ESPEON], { key: undefined });
     expect(noKey.stats.stopped).toBe("no POKEINVEST_API_KEY");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shares the daily limit with every caller", async () => {
+    fetchMock.mockImplementation(async () => json(200, prices("pi_13869", "Espeon VMAX #270", [])));
+    const used = await refreshPokeInvestCards(fakeAdmin([], null, DAILY_CALLS).admin, [ESPEON], { key: "k" });
+    expect(used.stats.stopped).toBe("daily call limit");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // One call left today: a 30-call night still makes only one
+    const oneLeft = await refreshPokeInvestCards(fakeAdmin([], null, DAILY_CALLS - 1).admin, [ESPEON, UMBREON], { key: "k" });
+    expect(oneLeft.stats.calls).toBe(1);
+  });
+
+  it("uses a TCGplayer product it's given instead of looking one up", async () => {
+    const { lookupTcgplayerQuotes } = await import("./tcgplayerPrices");
+    vi.mocked(lookupTcgplayerQuotes).mockClear();
+    fetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/api/prices/16011") ? json(200, prices("pi_16011", "Umbreon GX #SV69", [])) : json(404, {}));
+    const key = slabCardKey(UMBREON.name, UMBREON.set_name, UMBREON.card_number);
+    const { stats } = await refreshPokeInvestCards(fakeAdmin().admin, [UMBREON], { key: "k", products: { [key]: 16011 } });
+    expect(stats.matchedTcgplayer).toBe(1);
+    expect(lookupTcgplayerQuotes).not.toHaveBeenCalled();
   });
 });
