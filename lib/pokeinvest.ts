@@ -84,6 +84,19 @@ export async function getPrices(card: string | number, key: string): Promise<Ans
   return { status: res.status, limits, body };
 }
 
+/** One /api/price-history call: every grade's price over time (counts against the monthly calls) */
+export async function getPriceHistory(card: string | number, key: string): Promise<Answer> {
+  const res = await fetch(`${POKEINVEST_URL}/api/price-history/${encodeURIComponent(String(card))}`, {
+    headers: { "X-API-Key": key },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  const text = await res.text();
+  let body: unknown = text;
+  try { body = JSON.parse(text); } catch { /* not JSON: keep the text */ }
+  return { status: res.status, limits: {}, body };
+}
+
 export type PokeInvestSearchHit = {
   id: string;
   name: string;
