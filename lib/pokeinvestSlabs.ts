@@ -233,14 +233,32 @@ export function cardDue(row: PokeInvestCardRow | undefined, now: number, refetch
   return !row.fetched_at || now - new Date(row.fetched_at).getTime() >= refetchMs ? "refetch" : null;
 }
 
+// ── The daily limit, shared by every caller ──
+// Slabs, Search and singles all spend from DAILY_CALLS a UTC day, so a month
+// stays under the free key's 1,000. Calls are counted from the table: cards
+// fetched or checked today (one call each, near enough).
+export const DAILY_CALLS = 30;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function callsToday(admin: SupabaseClient<any, any, any>, now = new Date()): Promise<number> {
+  const day = `${now.toISOString().slice(0, 10)}T00:00:00.000Z`;
+  const { count, error } = await admin
+    .from("pokeinvest_cards")
+    .select("card_key", { count: "exact", head: true })
+    .or(`fetched_at.gte.${day},checked_at.gte.${day}`);
+  // Unknown counts as used up: better a stale price than a blown month
+  return error ? DAILY_CALLS : count ?? 0;
+}
+
 // Brings the slabs' cards up to date in pokeinvest_cards and returns every
 // row for them (fresh or cached). Without the table (migration not applied)
-// it returns nothing and slabs keep their eBay values.
+// it returns nothing and slabs keep their eBay values. `products` gives cards
+// whose TCGplayer product is already known (Search), skipping the lookup.
 export async function refreshPokeInvestCards(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: SupabaseClient<any, any, any>,
   slabs: SlabRef[],
-  opts: { key: string | undefined; maxCalls?: number; refetchMs?: number; now?: Date },
+  opts: { key: string | undefined; maxCalls?: number; refetchMs?: number; now?: Date; products?: Record<string, number> },
 ): Promise<{ rows: Map<string, PokeInvestCardRow>; stats: RefreshStats; tableMissing: boolean }> {
   const stats: RefreshStats = { cards: 0, fetched: 0, matchedTcgplayer: 0, matchedSearch: 0, unmatched: 0, calls: 0, stopped: null };
   const rows = new Map<string, PokeInvestCardRow>();
@@ -263,10 +281,16 @@ export async function refreshPokeInvestCards(
   // New cards first, then the oldest prices
   due.sort((a, b) => (a.need === b.need ? (rows.get(a.k)?.fetched_at ?? "").localeCompare(rows.get(b.k)?.fetched_at ?? "") : a.need === "match" ? -1 : 1));
 
+  if (!due.length) return { rows, stats, tableMissing: false };
+
+  // Today's share of the daily limit
+  const left = Math.min(opts.maxCalls ?? NIGHTLY_CALLS, DAILY_CALLS - (await callsToday(admin, now)));
+  if (left <= 0) { stats.stopped = "daily call limit"; return { rows, stats, tableMissing: false }; }
+
   // TCGplayer products for the cards to match, one lookup per language
-  const products = new Map<string, number>();
+  const products = new Map<string, number>(Object.entries(opts.products ?? {}));
   for (const lang of ["en", "ja"] as const) {
-    const toMatch = due.filter((d) => d.need === "match" && langOf(d.s) === lang);
+    const toMatch = due.filter((d) => d.need === "match" && !products.has(d.k) && langOf(d.s) === lang);
     if (!toMatch.length) continue;
     const quotes = await lookupTcgplayerQuotes(
       toMatch.map((d) => ({ key: d.k, name: d.s.name, setName: d.s.set_name, cardNumber: d.s.card_number })),
@@ -275,7 +299,7 @@ export async function refreshPokeInvestCards(
     for (const [k, q] of Object.entries(quotes)) products.set(k, q.productId);
   }
 
-  const budget: CallBudget = { left: opts.maxCalls ?? NIGHTLY_CALLS, stopped: null };
+  const budget: CallBudget = { left, stopped: null };
   const stamp = now.toISOString();
   for (const { k, s, need } of due) {
     if (budget.stopped) break;
@@ -310,7 +334,7 @@ export async function refreshPokeInvestCards(
     rows.set(k, next);
   }
 
-  stats.calls = (opts.maxCalls ?? NIGHTLY_CALLS) - budget.left;
+  stats.calls = left - budget.left;
   stats.stopped = budget.stopped;
   return { rows, stats, tableMissing: false };
 }

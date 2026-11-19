@@ -84,7 +84,15 @@ export async function getPrices(card: string | number, key: string): Promise<Ans
   return { status: res.status, limits, body };
 }
 
-export type PokeInvestSearchHit = { id: string; name: string; set: string; page_url?: string };
+export type PokeInvestSearchHit = {
+  id: string;
+  name: string;
+  set: string;
+  page_url?: string;
+  /** The free search's own headline prices (no call spent) */
+  psa_10_usd?: number | null;
+  ungraded_usd?: number | null;
+};
 
 // Keyless search (free, no monthly calls): "charizard base set 4" →
 // { cards: [{ id, name, set, … }], query }. Names carry the number

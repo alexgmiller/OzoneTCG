@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, ExternalLink, Plus } from "lucide-react";
-import { EmptyState, MoneyDisplay, Sheet, Skeleton, TabStrip } from "@/components/ui";
+import { MoneyDisplay, Sheet, Skeleton, TabStrip } from "@/components/ui";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { addToInventoryHref, buyInPosHref, type AddPrefill } from "@/app/protected/inventory/addPrefill";
 import { PriceHistory } from "@/app/protected/inventory/components/PriceHistory";
-import { getCardDetail, getCardPrice, type CardDetail, type StockMatch } from "./actions";
+import { getCardDetail, getCardPrice, getGradedPrices, type CardDetail, type StockMatch } from "./actions";
 import type { EbayAsking } from "@/lib/ebay";
 import type { AskingEstimate } from "@/lib/ebayAsking";
+import type { GradedPrices, GradeRow } from "@/lib/pokeinvestGraded";
 import type { CatalogCard } from "./catalog";
 
 // ── Card detail ──
@@ -23,7 +24,9 @@ import type { CatalogCard } from "./catalog";
 //           match fall back to TCGdex (Retry on a slow lookup). With no sales
 //           price anywhere, plan C: the low end of current eBay listings,
 //           labelled as asking prices (lib/ebayAsking.ts). Your raw copies.
-//   GRADED  your graded copies; graded market prices need a graded data source
+//   GRADED  what the card sells for at each grade (PokeInvest's sold medians,
+//           fetched when the tab opens; lib/pokeinvestGraded.ts), then your
+//           graded copies
 // Under the copies, the first copy's value night by night (item_price_history).
 
 type Tab = "raw" | "graded";
@@ -65,6 +68,85 @@ function AskingRows({ asking }: { asking: EbayAsking }) {
   );
 }
 
+// ── Market by grade ──
+// PSA first, best grade first; the first 8 until "Show all". Raw (any
+// condition) last, for comparing against the graded prices.
+const GRADES_SHOWN = 8;
+
+function GradeRowItem({ label, row }: { label: string; row: Pick<GradeRow, "median" | "sales" | "windowDays"> }) {
+  return (
+    <li className="flex h-11 items-center gap-3 border-b border-border px-3 text-sm last:border-b-0">
+      <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{label}</span>
+      <span className="text-xs tabular-nums text-muted-foreground">{row.sales} sold · {row.windowDays}d</span>
+      <MoneyDisplay amount={row.median} tone="neutral" className="w-20 text-right font-semibold text-foreground" />
+    </li>
+  );
+}
+
+function MarketByGrade({ prices }: { prices: GradedPrices | null }) {
+  const [all, setAll] = useState(false);
+  if (!prices) {
+    return (
+      <div className="space-y-2" aria-label="Loading prices by grade">
+        <Skeleton className="h-11 w-full rounded-xl" />
+        <Skeleton className="h-11 w-full rounded-xl" />
+      </div>
+    );
+  }
+  if (prices.status === "none") return <p className="text-sm text-muted-foreground">No graded sales on PokeInvest for this card.</p>;
+  if (prices.status === "unavailable") return <p className="text-sm text-muted-foreground">Graded prices didn&apos;t load. Close and reopen the card to retry.</p>;
+
+  const credit = (
+    // PokeInvest's credit, required wherever its prices show
+    <a href={prices.pageUrl ?? "https://www.pokeinvest.io"} target="_blank" rel="noopener noreferrer"
+      className="inline-flex h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+      Prices by PokeInvest <ExternalLink size={12} aria-hidden />
+    </a>
+  );
+
+  if (prices.status === "quick") {
+    return (
+      <div>
+        <ul className="overflow-hidden rounded-2xl bg-surface-2" aria-label="Prices by grade">
+          {prices.psa10 != null && (
+            <li className="flex h-11 items-center gap-3 border-b border-border px-3 text-sm last:border-b-0">
+              <span className="flex-1 font-mono text-xs text-foreground">PSA 10</span>
+              <MoneyDisplay amount={prices.psa10} tone="neutral" className="w-20 text-right font-semibold text-foreground" />
+            </li>
+          )}
+          {prices.raw != null && (
+            <li className="flex h-11 items-center gap-3 border-b border-border px-3 text-sm last:border-b-0">
+              <span className="flex-1 font-mono text-xs text-muted-foreground">Raw · any condition</span>
+              <MoneyDisplay amount={prices.raw} tone="neutral" className="w-20 text-right font-semibold text-foreground" />
+            </li>
+          )}
+        </ul>
+        <p className="pt-2 text-xs text-muted-foreground">Every grade loads tomorrow: today&apos;s PokeInvest lookups are used up.</p>
+        {credit}
+      </div>
+    );
+  }
+
+  const shown = all ? prices.grades : prices.grades.slice(0, GRADES_SHOWN);
+  return (
+    <div>
+      <ul className="overflow-hidden rounded-2xl bg-surface-2" aria-label="Prices by grade">
+        {shown.map((g) => <GradeRowItem key={`${g.grader} ${g.grade}`} label={`${g.grader} ${g.grade}`} row={g} />)}
+        {prices.raw && (all || prices.grades.length <= GRADES_SHOWN) && <GradeRowItem label="Raw · any condition" row={prices.raw} />}
+      </ul>
+      <div className="flex items-center justify-between">
+        {credit}
+        {prices.grades.length > GRADES_SHOWN && (
+          <button type="button" onClick={() => setAll((v) => !v)}
+            className="h-11 px-2 text-xs font-semibold text-accent transition-colors duration-150 hover:text-foreground">
+            {all ? "Show fewer" : `Show all ${prices.grades.length}`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CopyList({ copies, label }: { copies: StockMatch[]; label: (s: StockMatch) => string }) {
   return (
     <ul className="overflow-hidden rounded-2xl bg-surface-2">
@@ -88,6 +170,9 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
   const [retrying, setRetrying] = useState(false);
   const [tab, setTab] = useState<Tab>("raw");
   const latest = useRef(0);
+  // PokeInvest's prices by grade, asked once per card when Graded first opens
+  const [gradedPrices, setGradedPrices] = useState<GradedPrices | null>(null);
+  const gradedAsked = useRef<string | null>(null);
 
   // Re-ask TCGdex for just the price after a timeout; stock is already loaded
   async function retryPrice() {
@@ -106,6 +191,8 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
     setDetail(null);
     setFailed(false);
     setTab("raw");
+    setGradedPrices(null);
+    gradedAsked.current = null;
     getCardDetail(card)
       .then((d) => {
         if (id !== latest.current) return;
@@ -115,6 +202,16 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
       })
       .catch(() => { if (id === latest.current) setFailed(true); });
   }, [card]);
+
+  // Waits for the Raw side's TCGplayer match, which identifies the card exactly
+  useEffect(() => {
+    if (!card || tab !== "graded" || gradedAsked.current === card.id || (!detail && !failed)) return;
+    gradedAsked.current = card.id;
+    const id = latest.current;
+    getGradedPrices(card, detail?.quote?.productId ?? null)
+      .then((p) => { if (id === latest.current) setGradedPrices(p); })
+      .catch(() => { if (id === latest.current) setGradedPrices({ status: "unavailable" }); });
+  }, [card, tab, detail, failed]);
 
   const raw = detail?.inStock.filter((s) => s.category !== "slab") ?? [];
   const graded = detail?.inStock.filter((s) => s.category === "slab") ?? [];
@@ -249,11 +346,13 @@ export default function CardDetailSheet({ card, onClose }: { card: CatalogCard |
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="section-label">Your graded copies</div>
+              <div className="section-label">Market by grade</div>
+              <MarketByGrade key={card.id} prices={gradedPrices} />
+              <div className="section-label pt-2">Your graded copies</div>
               {!detail ? (
                 failed ? null : <Skeleton className="h-11 w-full rounded-xl" />
               ) : graded.length === 0 ? (
-                <EmptyState title="No graded copies in stock" hint="Graded market prices by grade need a graded price source." />
+                <p className="text-sm text-muted-foreground">None in stock.</p>
               ) : (
                 <>
                   <CopyList copies={graded} label={(s) => s.grade ?? "Graded"} />
