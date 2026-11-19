@@ -12,10 +12,15 @@
  *
  * Daily eBay call budget: 5,000. Stops at 80% (4,000 calls).
  * Each slab refresh = 2 calls (active + sold listings).
+ *
+ * PokeInvest goes first (lib/pokeinvestSlabs.ts): a slab whose exact grade
+ * has a PokeInvest price (3+ sales within a year) takes it and skips eBay.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { hasMarketSourceColumns, marketStamp } from "@/lib/marketSource";
+import { refreshPokeInvestCards, slabCardKey, slabPokeInvestPrice } from "@/lib/pokeinvestSlabs";
 // Up to 5 minutes; the loop stops itself before that (time guard below)
 export const maxDuration = 300;
 import {
@@ -65,19 +70,20 @@ export async function GET(req: NextRequest) {
     .gte("last_updated", `${today}T00:00:00.000Z`);
   let callCount = (todayCount ?? 0) * 2;
 
-  if (callCount >= DAILY_BUDGET * BUDGET_WARN_PCT) {
-    console.log(`[cron] Daily budget at ${callCount}/${DAILY_BUDGET} — skipping`);
-    return NextResponse.json({ skipped: true, reason: "budget", callCount });
-  }
-
   // ── Fetch all slab items with their cached prices ─────────────────────────
-  const { data: items, error: itemsErr } = await admin
+  const withSource = await hasMarketSourceColumns(admin);
+  const { data: rows, error: itemsErr } = await admin
     .from("items")
-    .select("id,name,grade,set_name,card_number,workspace_id,market")
+    .select(`id,name,grade,set_name,card_number,language,workspace_id,market${withSource ? ",market_source" : ""}`)
     .eq("category", "slab")
     .neq("status", "sold")
     .neq("status", "grading")
     .not("grade", "is", null);
+  type SlabRow = {
+    id: string; name: string; grade: string; set_name: string | null; card_number: string | null;
+    language: string | null; workspace_id: string; market: number | null; market_source?: string | null;
+  };
+  const items = rows as unknown as SlabRow[] | null;
 
   if (itemsErr) {
     console.error("[cron] items fetch error:", itemsErr);
@@ -88,8 +94,37 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ processed: 0, skipped: 0, elapsed: 0 });
   }
 
-  // Build lookup keys
-  const keyed = items.flatMap((it) => {
+  // ── PokeInvest first ──────────────────────────────────────────────────────
+  // Brings each card's PokeInvest prices up to date (one call per card every
+  // 3 days), then gives every slab with a trusted grade price that price.
+  const pokeinvest = await refreshPokeInvestCards(admin, items, { key: process.env.POKEINVEST_API_KEY?.trim() });
+  const pokeinvestPriced = new Set<string>();
+  let pokeinvestChanged = 0;
+  for (const it of items) {
+    const price = slabPokeInvestPrice(pokeinvest.rows.get(slabCardKey(it.name, it.set_name, it.card_number)), it.grade);
+    if (!price) continue;
+    pokeinvestPriced.add(it.id);
+    if (it.market === price.median && (!withSource || it.market_source === "pokeinvest")) continue;
+    const { error } = await admin
+      .from("items")
+      .update({ market: price.median, ...(withSource ? marketStamp("pokeinvest", price.fetchedAt ?? new Date().toISOString()) : {}) })
+      .eq("id", it.id)
+      .eq("workspace_id", it.workspace_id);
+    if (error) console.error(`[cron] PokeInvest price for ${it.name} not saved:`, error.message);
+    else pokeinvestChanged++;
+  }
+  console.log(
+    `[cron] PokeInvest: ${pokeinvestPriced.size}/${items.length} slabs priced, ${pokeinvestChanged} changed · ${JSON.stringify(pokeinvest.stats)}` +
+    (pokeinvest.tableMissing ? " · pokeinvest_cards is missing (run migrations/20261118_pokeinvest_cards.sql)" : ""),
+  );
+
+  if (callCount >= DAILY_BUDGET * BUDGET_WARN_PCT) {
+    console.log(`[cron] Daily budget at ${callCount}/${DAILY_BUDGET} — skipping eBay`);
+    return NextResponse.json({ skipped: true, reason: "budget", callCount, pokeinvest: { priced: pokeinvestPriced.size, changed: pokeinvestChanged, ...pokeinvest.stats } });
+  }
+
+  // eBay for the rest
+  const keyed = items.filter((it) => !pokeinvestPriced.has(it.id)).flatMap((it) => {
     const parsed = parseGrade(it.grade);
     if (!parsed) return [];
     const key = makeSlabPriceKey(it.name, it.set_name, it.card_number, parsed.company, parsed.grade);
@@ -192,7 +227,7 @@ export async function GET(req: NextRequest) {
       if (fairMarketValue != null) {
         await admin
           .from("items")
-          .update({ market: fairMarketValue })
+          .update({ market: fairMarketValue, ...(withSource ? marketStamp("ebay", new Date().toISOString()) : {}) })
           .eq("id", item.id)
           .eq("workspace_id", item.workspace_id);
       }
@@ -215,5 +250,8 @@ export async function GET(req: NextRequest) {
   const elapsed = Math.round((Date.now() - started) / 1000);
   console.log(`[cron] Done. processed=${processed} skipped=${skipped} callCount=${callCount} elapsed=${elapsed}s`);
 
-  return NextResponse.json({ processed, skipped, callCount, elapsed, staleCount: stale.length });
+  return NextResponse.json({
+    processed, skipped, callCount, elapsed, staleCount: stale.length,
+    pokeinvest: { priced: pokeinvestPriced.size, changed: pokeinvestChanged, ...pokeinvest.stats },
+  });
 }
