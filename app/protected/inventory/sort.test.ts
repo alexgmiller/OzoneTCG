@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  DEFAULT_SORT, SORT_FIELDS, flipSort, isSortKey, parseSort, sortDirLabel, sortForField, toSortKey,
+  DEFAULT_SORT, SORT_FIELDS, flipSort, isSortKey, parseSort, sortDirLabel, sortForField, sortOrDefault, toSortKey,
 } from "./sort";
 import { defaultFilters } from "./inventoryView";
 import type { SortKey } from "./types";
@@ -66,5 +66,18 @@ describe("SortKey ↔ field + direction", () => {
     expect(sortDirLabel("name-asc")).toBe("A to Z");
     expect(sortDirLabel("market-desc")).toBe("High to low");
     expect(sortDirLabel("days-desc")).toBe("Longest first");
+  });
+});
+
+describe("sortOrDefault (Settings → Default sort)", () => {
+  it("opens Inventory in the saved sort", () => {
+    expect(sortOrDefault("market-desc")).toBe("market-desc");
+    expect(sortOrDefault("name-asc")).toBe("name-asc");
+  });
+  it("falls back to newest first for a missing or unknown value", () => {
+    expect(sortOrDefault(null)).toBe(DEFAULT_SORT);
+    expect(sortOrDefault(undefined)).toBe(DEFAULT_SORT);
+    expect(sortOrDefault("")).toBe(DEFAULT_SORT);
+    expect(sortOrDefault("price_high")).toBe(DEFAULT_SORT);
   });
 });

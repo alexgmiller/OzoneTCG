@@ -6,6 +6,7 @@ import { makeSlabPriceKey, type SlabSale } from "@/lib/ebay";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
 import { CARD_COLUMNS, slabCardKey, slabPokeInvestPrice, type PokeInvestCardRow, type PokeInvestSlabPrice } from "@/lib/pokeinvestSlabs";
 import { loadSettings } from "@/app/protected/settings/actions";
+import { sortOrDefault } from "./sort";
 import InventoryClient from "./InventoryClient";
 import type { Item, ConsignerOption } from "./types";
 
@@ -175,6 +176,7 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
         rawCardPrices={rawCardPriceMap}
         pokeinvestPrices={pokeinvestPriceMap}
         gradingCost={settings?.grading_cost ?? 20}
+        defaultSort={sortOrDefault(settings?.default_sort)}
         focusId={focusId}
         addPrefill={addPrefill}
       />
