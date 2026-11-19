@@ -179,6 +179,13 @@ export function ItemDetailModal({
             <span className="text-xs text-muted-foreground">{pokeinvest.grade} · {pokeinvest.windowDays} days →</span>
           </a>
         )}
+        {/* A single the nightly job priced from PokeInvest's raw sales */}
+        {!pokeinvest && !sold && it.category !== "slab" && it.market_source === "pokeinvest" && (
+          <a href="https://www.pokeinvest.io" target="_blank" rel="noopener noreferrer" className={linkClass}>
+            <span>Prices by PokeInvest</span>
+            <span className="text-xs text-muted-foreground">sold, any condition →</span>
+          </a>
+        )}
         <a href={links.sold} target="_blank" rel="noopener noreferrer" className={linkClass}><span>eBay Sold</span><span className="text-muted-foreground">→</span></a>
         <a href={links.listed} target="_blank" rel="noopener noreferrer" className={linkClass}><span>eBay Listed</span><span className="text-muted-foreground">→</span></a>
         {it.category !== "slab" && (
