@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { makeSlabPriceKey, type SlabSale } from "@/lib/ebay";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
+import { CARD_COLUMNS, slabCardKey, slabPokeInvestPrice, type PokeInvestCardRow, type PokeInvestSlabPrice } from "@/lib/pokeinvestSlabs";
 import { loadSettings } from "@/app/protected/settings/actions";
 import InventoryClient from "./InventoryClient";
 import type { Item, ConsignerOption } from "./types";
@@ -112,6 +113,8 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
 
   let slabPriceMap: Record<string, SlabPrice> = {};
   let rawCardPriceMap: Record<string, RawCardPrice> = {};
+  // Item id → its PokeInvest grade price, for slabs that have a trusted one
+  let pokeinvestPriceMap: Record<string, PokeInvestSlabPrice> = {};
 
   try {
     const admin = createAdminClient();
@@ -130,6 +133,19 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
         .select("lookup_key,median_price,avg_price,low_price,high_price,comp_count,previous_median,sold_median,sold_avg,sold_low,sold_high,sold_count,fair_market_value,last_updated,active_items,sold_items")
         .in("lookup_key", slabLookupKeys);
       slabPriceMap = Object.fromEntries((priceRows ?? []).map((r) => [r.lookup_key, r as SlabPrice]));
+    }
+
+    // ── PokeInvest grade prices (lib/pokeinvestSlabs.ts) ──
+    // Missing until migrations/20261118_pokeinvest_cards.sql is applied; then
+    // slabs simply keep their eBay values
+    const cardKeys = [...new Set(slabs.map((it) => slabCardKey(it.name, it.set_name, it.card_number)))];
+    if (cardKeys.length > 0) {
+      const { data: piRows } = await admin.from("pokeinvest_cards").select(CARD_COLUMNS).in("card_key", cardKeys);
+      const byKey = new Map(((piRows ?? []) as PokeInvestCardRow[]).map((r) => [r.card_key, r]));
+      pokeinvestPriceMap = Object.fromEntries(slabs.flatMap((it) => {
+        const price = slabPokeInvestPrice(byKey.get(slabCardKey(it.name, it.set_name, it.card_number)), it.grade);
+        return price ? [[it.id, price]] : [];
+      }));
     }
 
     // ── Cached TCGPlayer prices (singles + sealed) ──
@@ -157,6 +173,7 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
         workspaceId={workspaceId}
         slabPrices={slabPriceMap}
         rawCardPrices={rawCardPriceMap}
+        pokeinvestPrices={pokeinvestPriceMap}
         gradingCost={settings?.grading_cost ?? 20}
         focusId={focusId}
         addPrefill={addPrefill}

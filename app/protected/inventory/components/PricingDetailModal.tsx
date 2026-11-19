@@ -120,14 +120,26 @@ export function PricingDetailModal({
               {fmvVal != null ? (
                 <div className="flex items-baseline gap-2">
                   <MoneyDisplay amount={fmvVal} tone="neutral" className="text-base font-bold" />
-                  <span className="text-xs text-muted-foreground">{fmvData?.mode ?? "—"}</span>
+                  {fmvData?.pokeinvest ? (
+                    // PokeInvest's credit, required wherever its prices show
+                    <a href={fmvData.pokeinvest.pageUrl ?? "https://www.pokeinvest.io"} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+                      Prices by PokeInvest
+                    </a>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{fmvData?.mode ?? "—"}</span>
+                  )}
                   <MovementBadge pct={getMovement(fmvVal, pdi.acquired_market_price)} />
                 </div>
               ) : (
                 <span className="text-sm text-muted-foreground">No price data</span>
               )}
             </div>
-            {(fmvData?.soldAnchor != null || fmvData?.listedAnchor != null) && (
+            {fmvData?.pokeinvest ? (
+              <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                {fmvData.pokeinvest.grade}: median of {fmvData.pokeinvest.sales} sales in {fmvData.pokeinvest.windowDays} days · eBay below
+              </div>
+            ) : (fmvData?.soldAnchor != null || fmvData?.listedAnchor != null) && (
               <div className="mt-1 text-xs text-muted-foreground tabular-nums">
                 {fmvData.soldAnchor != null && `Sold: ${fmt(fmvData.soldAnchor)} (${fmvData.soldCount})`}
                 {fmvData.soldAnchor != null && fmvData.listedAnchor != null && " · "}

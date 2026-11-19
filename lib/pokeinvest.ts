@@ -68,9 +68,10 @@ function errorFor(status: number): string {
   return `PokeInvest answered ${status}.`;
 }
 
-type Answer = { status: number; limits: Record<string, string>; body: unknown };
+export type Answer = { status: number; limits: Record<string, string>; body: unknown };
 
-async function getPrices(card: string | number, key: string): Promise<Answer> {
+/** One /api/prices call (counts against the monthly calls) */
+export async function getPrices(card: string | number, key: string): Promise<Answer> {
   const res = await fetch(pokeinvestPricesUrl(card), {
     headers: { "X-API-Key": key },
     cache: "no-store",
@@ -81,6 +82,23 @@ async function getPrices(card: string | number, key: string): Promise<Answer> {
   let body: unknown = text;
   try { body = JSON.parse(text); } catch { /* not JSON: keep the text */ }
   return { status: res.status, limits, body };
+}
+
+export type PokeInvestSearchHit = { id: string; name: string; set: string; page_url?: string };
+
+// Keyless search (free, no monthly calls): "charizard base set 4" →
+// { cards: [{ id, name, set, … }], query }. Names carry the number
+// ("Umbreon GX #SV69"); `number` is usually null.
+export async function searchCards(q: string, limit = 10): Promise<PokeInvestSearchHit[]> {
+  const res = await fetch(`${POKEINVEST_URL}/api/search?limit=${limit}&q=${encodeURIComponent(q)}`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) return [];
+  const body = await res.json().catch(() => null) as unknown;
+  const list = Array.isArray(body) ? body : (body as { cards?: unknown[] } | null)?.cards ?? [];
+  return list.filter((h): h is PokeInvestSearchHit =>
+    !!h && typeof h === "object" && typeof (h as PokeInvestSearchHit).id === "string" && typeof (h as PokeInvestSearchHit).name === "string");
 }
 
 export type PokeInvestCheck = {

@@ -3,7 +3,11 @@
  * No Node.js / browser-only imports allowed here.
  */
 
-export type FMVMode = "blended" | "active_only" | "sold_only" | "none";
+import type { PokeInvestSlabPrice } from "./pokeinvestSlabs";
+
+// "pokeinvest": PokeInvest's sold median for the slab's grade (lib/pokeinvestSlabs.ts),
+// used before the eBay modes whenever it's trusted
+export type FMVMode = "pokeinvest" | "blended" | "active_only" | "sold_only" | "none";
 
 export type FMVResult = {
   fmv: number | null;
@@ -12,7 +16,13 @@ export type FMVResult = {
   listedAnchor: number | null;  // IQR-filtered Q1 of active listing prices
   soldCount: number;            // # sold items used (after filter)
   activeCount: number;          // # active items used (after filter)
+  pokeinvest?: PokeInvestSlabPrice; // set when mode is "pokeinvest"
 };
+
+/** A slab's FMV from its PokeInvest grade price */
+export function pokeinvestFMV(p: PokeInvestSlabPrice): FMVResult {
+  return { fmv: p.median, mode: "pokeinvest", soldAnchor: p.median, listedAnchor: null, soldCount: p.sales, activeCount: 0, pokeinvest: p };
+}
 
 /** Linear-interpolation percentile on a pre-sorted array. */
 export function pctile(sorted: number[], p: number): number {

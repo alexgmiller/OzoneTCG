@@ -7,6 +7,7 @@ import { subscribeWorkspaceTable } from "@/lib/supabase/realtime";
 import { useToast, useConfirm, type PressPoint } from "@/components/ui";
 import { createItems, deleteItem, deleteItems, updateItem, bulkPatchItems } from "./actions";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
+import type { PokeInvestSlabPrice } from "@/lib/pokeinvestSlabs";
 import type { Status, ConsignerOption, Item, ItemForm, Psa10Entry, HistoryDuration } from "./types";
 import type { AddPrefill } from "./addPrefill";
 import { toNum, effectiveCost, blankForm, itemToForm, formToInput } from "./utils";
@@ -36,13 +37,15 @@ import GradingSection from "./components/GradingSection";
 // `items` holds in-stock rows plus the most recent sold rows; sold rows only render under the Sold filter.
 // `focusId` (from ?focus=) opens that item's detail on arrival.
 export default function InventoryClient({
-  items, consigners, workspaceId, slabPrices, rawCardPrices, gradingCost = 20, focusId = null, addPrefill = null,
+  items, consigners, workspaceId, slabPrices, rawCardPrices, pokeinvestPrices = {}, gradingCost = 20, focusId = null, addPrefill = null,
 }: {
   items: Item[];
   consigners: ConsignerOption[];
   workspaceId: string;
   slabPrices: Record<string, SlabPrice>;
   rawCardPrices: Record<string, RawCardPrice>;
+  // Item id → PokeInvest grade price (slabs that have a trusted one)
+  pokeinvestPrices?: Record<string, PokeInvestSlabPrice>;
   gradingCost?: number;
   focusId?: string | null;
   addPrefill?: AddPrefill | null;
@@ -52,7 +55,7 @@ export default function InventoryClient({
   const confirm = useConfirm();
   // Pricing (FMV, refresh, background loop) only ever runs over in-stock rows
   const activeItems = useMemo(() => items.filter((it) => it.status !== "sold"), [items]);
-  const pricing = usePricing(activeItems, slabPrices, rawCardPrices);
+  const pricing = usePricing(activeItems, slabPrices, rawCardPrices, pokeinvestPrices);
   const { priceFor } = pricing;
   const [busy, setBusy] = useState(false);
 

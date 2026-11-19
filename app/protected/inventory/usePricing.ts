@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { computeBlendedFMV, type FMVResult } from "@/lib/fmv";
+import { computeBlendedFMV, pokeinvestFMV, type FMVResult } from "@/lib/fmv";
+import type { PokeInvestSlabPrice } from "@/lib/pokeinvestSlabs";
 import type { SlabPrice, RawCardPrice } from "./InventoryServer";
 import type { Item } from "./types";
 import { EBAY_DAILY_BUDGET, EBAY_BUDGET_WARN_PCT, getSlabTierMs, isSlabTierStale, slabKeyFor, itemMarketPrice } from "./utils";
@@ -11,7 +12,13 @@ import { refreshRawCardPrice } from "./rawPricingActions";
 import type { BgStatus } from "./components/PricingStatus";
 
 // ── Pricing state: cached prices, FMV, per-item refresh and the background slab loop ──
-export function usePricing(items: Item[], slabPrices: Record<string, SlabPrice>, rawCardPrices: Record<string, RawCardPrice>) {
+export function usePricing(
+  items: Item[],
+  slabPrices: Record<string, SlabPrice>,
+  rawCardPrices: Record<string, RawCardPrice>,
+  // Item id → PokeInvest grade price; these slabs use it and skip the eBay loop
+  pokeinvestPrices: Record<string, PokeInvestSlabPrice> = {},
+) {
   const router = useRouter();
 
   // Local overrides let a refresh update the UI without a full router.refresh() per item
@@ -30,12 +37,14 @@ export function usePricing(items: Item[], slabPrices: Record<string, SlabPrice>,
   const [dailyCallCount, setDailyCallCount] = useState(0);
   const bgRef = useRef<{ paused: boolean; aborted: boolean }>({ paused: false, aborted: false });
 
-  // ── Blended FMV per slab ──
+  // ── FMV per slab: PokeInvest's grade price, else blended eBay ──
   const slabFMVData = useMemo(() => {
     const result: Record<string, FMVResult> = {};
     for (const it of items) {
       const key = slabKeyFor(it);
       if (!key) continue;
+      const pi = pokeinvestPrices[it.id];
+      if (pi) { result[it.id] = pokeinvestFMV(pi); continue; }
       const sp = mergedSlabPrices[key];
       if (!sp) {
         result[it.id] = { fmv: it.market, mode: "none", soldAnchor: null, listedAnchor: null, soldCount: 0, activeCount: 0 };
@@ -46,7 +55,7 @@ export function usePricing(items: Item[], slabPrices: Record<string, SlabPrice>,
       result[it.id] = computeBlendedFMV(validSold, validActive);
     }
     return result;
-  }, [items, mergedSlabPrices]);
+  }, [items, mergedSlabPrices, pokeinvestPrices]);
 
   const priceFor = useCallback((it: Item) => itemMarketPrice(it, slabFMVData, mergedRawCardPrices), [slabFMVData, mergedRawCardPrices]);
 
@@ -114,7 +123,8 @@ export function usePricing(items: Item[], slabPrices: Record<string, SlabPrice>,
     const ctrl = { paused: false, aborted: false };
     bgRef.current = ctrl;
 
-    const allSlabs = items.filter((it) => it.category === "slab" && it.grade && it.status !== "grading");
+    // Slabs PokeInvest prices don't need eBay
+    const allSlabs = items.filter((it) => it.category === "slab" && it.grade && it.status !== "grading" && !pokeinvestPrices[it.id]);
     if (allSlabs.length === 0) { setBgStatus("done"); return; }
 
     const withFmv = allSlabs.map((it) => {

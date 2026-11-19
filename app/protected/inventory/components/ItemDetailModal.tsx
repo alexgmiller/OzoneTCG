@@ -63,12 +63,16 @@ export function ItemDetailModal({
   const marketPrice = it.category === "slab" ? (slabFMVData[it.id]?.fmv ?? it.market) : info?.price ?? null;
   const displayPrice = sold ? it.sold_price ?? null : marketPrice;
   const priceLabel = sold ? "Sold for" : it.category === "slab" ? "FMV" : info?.asking ? "Asking" : "Market";
-  const priceSource = it.category === "slab" ? "eBay" : info?.source ?? null;
+  // A slab's PokeInvest grade price (sold median), when it has a trusted one
+  const pokeinvest = it.category === "slab" ? slabFMVData[it.id]?.pokeinvest ?? null : null;
+  const priceSource = it.category === "slab" ? (pokeinvest ? "PokeInvest" : "eBay") : info?.source ?? null;
   const priceMeta = sold
     ? (it.sold_at ? fmtDate(it.sold_at) : null)
-    : it.category === "slab"
-      ? `${priceSource}${sp?.sold_count != null ? ` · ${sp.sold_count} sold` : ""}`
-      : [priceSource, info?.updatedAt ? syncedAgo(info.updatedAt) : null].filter(Boolean).join(" · ") || null;
+    : pokeinvest
+      ? `PokeInvest · ${pokeinvest.sales} sold`
+      : it.category === "slab"
+        ? `${priceSource}${sp?.sold_count != null ? ` · ${sp.sold_count} sold` : ""}`
+        : [priceSource, info?.updatedAt ? syncedAgo(info.updatedAt) : null].filter(Boolean).join(" · ") || null;
   const cost = effectiveCost(it);
   const margin = displayPrice != null && cost != null && cost > 0 ? displayPrice - cost : null;
   const marginPct = margin != null && cost != null && cost > 0 ? (margin / cost) * 100 : null;
@@ -104,7 +108,8 @@ export function ItemDetailModal({
         <div className="flex min-h-11 items-center justify-between">
           <div>
             <span className="font-mono text-xs uppercase tracking-[0.18em] text-neutral">{priceLabel}</span>
-            {priceMeta && <span className="ml-2 text-xs text-muted-foreground">{priceMeta}</span>}
+            {/* Kept whole: on a phone it moves under the label rather than splitting */}
+            {priceMeta && <span className="ml-2 inline-block whitespace-nowrap text-xs text-muted-foreground">{priceMeta}</span>}
           </div>
           <div className="flex items-center gap-2">
             {displayPrice != null ? <MoneyDisplay amount={displayPrice} tone={sold ? "positive" : "neutral"} className="text-lg font-bold" /> : <span className="text-lg text-muted-foreground">—</span>}
@@ -167,6 +172,13 @@ export function ItemDetailModal({
 
       {/* ── Links ── */}
       <div className="mt-2 space-y-1 border-t border-border pt-2">
+        {/* PokeInvest's credit, required wherever its prices show; opens the card's sales */}
+        {pokeinvest && !sold && (
+          <a href={pokeinvest.pageUrl ?? "https://www.pokeinvest.io"} target="_blank" rel="noopener noreferrer" className={linkClass}>
+            <span>Prices by PokeInvest</span>
+            <span className="text-xs text-muted-foreground">{pokeinvest.grade} · {pokeinvest.windowDays} days →</span>
+          </a>
+        )}
         <a href={links.sold} target="_blank" rel="noopener noreferrer" className={linkClass}><span>eBay Sold</span><span className="text-muted-foreground">→</span></a>
         <a href={links.listed} target="_blank" rel="noopener noreferrer" className={linkClass}><span>eBay Listed</span><span className="text-muted-foreground">→</span></a>
         {it.category !== "slab" && (

@@ -6,7 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type MarketSource = "justtcg" | "tcgplayer" | "tcgdex" | "pokemonpricetracker" | "ebay_asking";
+export type MarketSource = "justtcg" | "tcgplayer" | "tcgdex" | "pokemonpricetracker" | "ebay_asking" | "pokeinvest" | "ebay";
 
 const LABELS: Record<MarketSource, string> = {
   justtcg: "TCGplayer by condition",
@@ -14,6 +14,9 @@ const LABELS: Record<MarketSource, string> = {
   tcgdex: "TCGdex",
   pokemonpricetracker: "PokemonPriceTracker",
   ebay_asking: "eBay asking",
+  // Slabs: PokeInvest's sold median for the grade, else eBay sold + listings
+  pokeinvest: "PokeInvest",
+  ebay: "eBay",
 };
 
 export function marketSourceLabel(source: string | null | undefined): string | null {

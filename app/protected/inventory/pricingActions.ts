@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
+import { hasMarketSourceColumns, marketStamp } from "@/lib/marketSource";
+import { refreshPokeInvestCards, slabCardKey, slabPokeInvestPrice } from "@/lib/pokeinvestSlabs";
 
 // ── Single-item lookups ──
 export async function refreshItemPrice(
@@ -94,6 +96,26 @@ export async function refreshSlabPrice(
   const workspaceId = await getWorkspaceId();
 
   const lookupKey = makeSlabPriceKey(name, setName, cardNumber, parsed.company, parsed.grade);
+  const withSource = await hasMarketSourceColumns(supabase);
+
+  // ── PokeInvest first ──
+  // A tap on ↻ refetches the card's PokeInvest prices when they're over a day
+  // old (1 call); the background loop only reads them. When the grade has a
+  // trusted price, that's the slab's value and eBay below won't replace it.
+  const manual = maxAgeMs === undefined;
+  const pokeinvest = await refreshPokeInvestCards(
+    admin,
+    [{ name, set_name: setName ?? null, card_number: cardNumber ?? null }],
+    { key: manual ? process.env.POKEINVEST_API_KEY?.trim() : undefined, maxCalls: 2, refetchMs: 86_400_000 },
+  ).catch(() => null);
+  const pokeinvestPrice = slabPokeInvestPrice(pokeinvest?.rows.get(slabCardKey(name, setName, cardNumber)), grade);
+  if (pokeinvestPrice) {
+    await supabase
+      .from("items")
+      .update({ market: pokeinvestPrice.median, ...(withSource ? marketStamp("pokeinvest", pokeinvestPrice.fetchedAt ?? new Date().toISOString()) : {}) })
+      .eq("id", itemId)
+      .eq("workspace_id", workspaceId);
+  }
 
   // Server-side staleness guard — only applies to background auto-refresh calls (maxAgeMs set).
   // Manual calls (maxAgeMs undefined) always hit eBay.
@@ -185,11 +207,11 @@ export async function refreshSlabPrice(
   }
   console.log("[refreshSlabPrice] upserted", lookupKey, "active:", activePricing.median, "sold:", soldPricing?.median);
 
-  // Update item market price with fair market value
-  if (fairMarketValue != null) {
+  // Update item market price with fair market value, unless PokeInvest prices it
+  if (fairMarketValue != null && !pokeinvestPrice) {
     await supabase
       .from("items")
-      .update({ market: fairMarketValue })
+      .update({ market: fairMarketValue, ...(withSource ? marketStamp("ebay", new Date().toISOString()) : {}) })
       .eq("id", itemId)
       .eq("workspace_id", workspaceId);
   }
