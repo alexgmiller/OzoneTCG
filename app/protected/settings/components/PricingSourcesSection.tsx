@@ -7,7 +7,7 @@ import { syncedAgo } from "@/lib/catalog/tcgplayerSyncStatus";
 import { checkPriceSources, syncJapaneseCatalog, type JapaneseCatalogStatus } from "../actions";
 import { ActionButton, Section, SettingRow, StatusDot } from "./SettingsPrimitives";
 
-export type ApiStatus = { ebay: boolean; justtcg: boolean; psa: boolean; ppt: boolean };
+export type ApiStatus = { ebay: boolean; justtcg: boolean; psa: boolean; ppt: boolean; pokeinvest: boolean };
 
 // ── Pricing sources ──
 export function PricingSourcesSection({
@@ -30,6 +30,9 @@ export function PricingSourcesSection({
       </SettingRow>
       <SettingRow label="PokemonPriceTracker" description="Sealed prices · POKEMON_PRICE_TRACKER_API_KEY">
         <StatusDot ok={apiStatus.ppt} label="Not configured" />
+      </SettingRow>
+      <SettingRow label="PokeInvest" description="Sold prices by grade, and raw · POKEINVEST_API_KEY">
+        <StatusDot ok={apiStatus.pokeinvest} label="Not configured" />
       </SettingRow>
       <JapaneseCatalogRow initial={japaneseCatalog} />
       <CheckSourcesRow />
@@ -83,9 +86,10 @@ function JapaneseCatalogRow({ initial }: { initial: JapaneseCatalogStatus | null
 }
 
 // ── Check price sources ──
-// Asks eBay about one card and PokemonPriceTracker about two, and shows what
-// each sent back (shortened), so we can see whether the key works and what
-// data comes with it. Costs 4 PokemonPriceTracker credits per tap.
+// Asks eBay about one card and PokemonPriceTracker and PokeInvest about two,
+// and shows what each sent back (shortened), so we can see whether the keys
+// work and what data comes with them. Costs 4 PokemonPriceTracker credits and
+// 2 PokeInvest calls (of 1,000 a month on the free key) per tap.
 function CheckSourcesRow() {
   const toast = useToast();
   const [checking, setChecking] = useState(false);
@@ -104,7 +108,7 @@ function CheckSourcesRow() {
 
   return (
     <div>
-      <SettingRow label="Check price sources" description="eBay listings for Psyduck 286/SM-P, then PokemonPriceTracker for Psyduck and Charizard ex 199/165" stack>
+      <SettingRow label="Check price sources" description="eBay listings for Psyduck 286/SM-P, then PokemonPriceTracker and PokeInvest for Psyduck and Charizard ex 199/165" stack>
         <ActionButton onClick={check} disabled={checking} className="w-full sm:w-auto">
           {checking ? "Checking…" : "Check"}
         </ActionButton>
@@ -114,6 +118,11 @@ function CheckSourcesRow() {
           <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-surface-2 p-3 font-mono text-xs text-foreground">
             {result}
           </pre>
+          {/* PokeInvest's free key asks for this credit wherever its prices show */}
+          <a href="https://www.pokeinvest.io" target="_blank" rel="noreferrer"
+            className="mt-2 inline-block text-xs text-muted-foreground underline-offset-2 hover:underline">
+            Prices by PokeInvest
+          </a>
         </div>
       )}
     </div>
