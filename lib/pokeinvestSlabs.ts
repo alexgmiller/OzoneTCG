@@ -338,3 +338,22 @@ export async function refreshPokeInvestCards(
   stats.stopped = budget.stopped;
   return { rows, stats, tableMissing: false };
 }
+
+// ── Raw singles ──
+// A single TCGplayer and TCGdex can't price takes PokeInvest's ungraded
+// median (every condition together, so no condition discount on top) before
+// falling back to eBay asking prices. Same rule as grades: 3+ sales in a year.
+export function rawPokeInvestPrice(row: Pick<PokeInvestCardRow, "pokeinvest_id" | "ungraded"> | null | undefined): number | null {
+  const u = row?.pokeinvest_id ? row.ungraded : null;
+  return u && u.median_usd != null && u.sales >= MIN_SALES && u.window_days <= MAX_WINDOW_DAYS ? u.median_usd : null;
+}
+
+export async function pokeinvestRawFor(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: SupabaseClient<any, any, any>,
+  card: SlabRef,
+  key: string | undefined,
+): Promise<number | null> {
+  const { rows } = await refreshPokeInvestCards(admin, [card], { key, maxCalls: 2 });
+  return rawPokeInvestPrice(rows.get(slabCardKey(card.name, card.set_name, card.card_number)));
+}

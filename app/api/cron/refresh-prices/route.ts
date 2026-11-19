@@ -11,6 +11,7 @@ import { cardLang } from "@/lib/cardArtMatch";
 import { adjustForCondition } from "@/lib/conditionPricing";
 import { loadConditionFactors } from "@/lib/conditionFactors";
 import { hasMarketSourceColumns, marketStamp, type MarketSource } from "@/lib/marketSource";
+import { pokeinvestRawFor } from "@/lib/pokeinvestSlabs";
 
 // ── Nightly refresh (03:00) ──
 // Runs last of the three price jobs (see lib/nightlyPricing.ts for who owns
@@ -70,7 +71,9 @@ export async function GET(req: NextRequest) {
     console.error("[cron/refresh-prices] TCGplayer pricing failed:", e instanceof Error ? e.message : e);
   }
   let fromTcgplayer = 0;
+  let fromPokeInvest = 0;
   let fromEbay = 0;
+  const pokeinvestKey = process.env.POKEINVEST_API_KEY?.trim();
   // Played singles priced from a one-price source get a condition discount
   const condition = await loadConditionFactors(supabase);
   let conditionAdjusted = 0;
@@ -109,11 +112,17 @@ export async function GET(req: NextRequest) {
               market = adjusted;
             }
           }
+          // The fallbacks below only fill a blank or refresh their own earlier
+          // estimate, so a real price is never replaced by one of them
+          const askingOnly = !usablePrice(item.market) || item.market_source === "ebay_asking" || item.market_source === "pokeinvest";
+          // Plan B: PokeInvest's sold median for the card (any condition; one
+          // call per card every 3 days, inside the shared daily limit)
+          if (source === "tcgplayer" && category === "single" && !usablePrice(market) && askingOnly) {
+            const sold = await pokeinvestRawFor(supabase, item, pokeinvestKey).catch(() => null);
+            if (usablePrice(sold)) { market = sold; marketSource = "pokeinvest"; fromPokeInvest++; }
+          }
           // Plan C: a single with no sales price anywhere and no price of its
-          // own gets the low end of current eBay listings. It only fills a
-          // blank (or refreshes an earlier asking estimate), so a real price is
-          // never replaced by an asking price.
-          const askingOnly = !usablePrice(item.market) || item.market_source === "ebay_asking";
+          // own gets the low end of current eBay listings.
           if (source === "tcgplayer" && category === "single" && !usablePrice(market) && askingOnly) {
             const lang = /^ja/i.test(item.language ?? "") || cardLang(item) === "ja" ? "ja" : "en";
             const asking = await lookupEbayAsking({ name: item.name, cardNumber: item.card_number, lang });
@@ -155,7 +164,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, ${fromTcgplayer} from TCGplayer, ${fromEbay} from eBay asking, ${conditionAdjusted} discounted for condition, ${justTcgPriced.size} kept from JustTCG, JustTCG ${justTcgConfigured ? "on" : "off"})`);
+  console.log(`[cron/refresh-prices] updated ${updated} / ${items.length} items (${priced} prices, ${fromTcgplayer} from TCGplayer, ${fromPokeInvest} from PokeInvest sold, ${fromEbay} from eBay asking, ${conditionAdjusted} discounted for condition, ${justTcgPriced.size} kept from JustTCG, JustTCG ${justTcgConfigured ? "on" : "off"})`);
   console.log(`[cron/refresh-prices] condition factors ${JSON.stringify(condition.factors)} from ${JSON.stringify(condition.samples)} cards`);
 
   // ── Daily inventory snapshot ──
@@ -166,7 +175,7 @@ export async function GET(req: NextRequest) {
   const snapshots = await writeInventorySnapshots(supabase);
 
   return NextResponse.json({
-    updated, priced, history, fromTcgplayer, fromEbay, conditionAdjusted, conditionFactors: condition,
+    updated, priced, history, fromTcgplayer, fromPokeInvest, fromEbay, conditionAdjusted, conditionFactors: condition,
     keptFromJustTcg: justTcgPriced.size, total: items.length, justTcgConfigured, snapshots,
   });
 }
