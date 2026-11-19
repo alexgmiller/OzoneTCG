@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { Item, SortKey } from "../types";
 import { statusLabel } from "../utils";
 import { daysInStock, priceDelta } from "../inventoryView";
+import { flipSort, parseSort, sortForField } from "../sort";
 import { CardRow, rowMeta } from "./CardRow";
 
 // ── Inventory list ──
@@ -31,9 +32,9 @@ const COLS: readonly Col[] = [
 
 export function InventoryListView({ items, priceOf, costOf, selecting, selectedIds, sort, setSort, onOpen, onToggle, onContext }: Props) {
   const now = new Date();
-  const [sortField, sortDir] = sort.split("-") as [string, "asc" | "desc"];
-  const clickHeader = (key: Col["key"]) =>
-    setSort(`${key}-${sortField === key && sortDir === "desc" ? "asc" : "desc"}` as SortKey);
+  const { field: sortField, dir: sortDir } = parseSort(sort);
+  // A new column starts at its natural direction (high first); the same column flips
+  const clickHeader = (key: Col["key"]) => setSort(sortField === key ? flipSort(sort) : sortForField(sort, key));
 
   return (
     <>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  filterItems, sortItems, summarize, priceDelta, daysInStock, sortLabel, countActiveFilters, defaultFilters,
+  filterItems, sortItems, summarize, priceDelta, daysInStock, countActiveFilters, defaultFilters,
 } from "./inventoryView";
 import type { Item } from "./types";
 
@@ -112,9 +112,7 @@ describe("helpers", () => {
     expect(daysInStock(item({ created_at: "2026-10-01T00:00:00Z", acquired_date: null }), NOW)).toBe(15);
     expect(daysInStock(item({ created_at: "2026-10-01T00:00:00Z", acquired_date: "2026-10-14" }), NOW)).toBe(2);
   });
-  it("sortLabel and countActiveFilters", () => {
-    expect(sortLabel("date-desc")).toBe("Date ↓");
-    expect(sortLabel("market-asc")).toBe("Value ↑");
+  it("countActiveFilters", () => {
     expect(countActiveFilters(defaultFilters)).toBe(0);
     expect(countActiveFilters({ ...defaultFilters, search: "x", category: "slab" })).toBe(2);
   });

@@ -1,19 +1,21 @@
 import {
-  Search, Layers, TrendingUp, ShoppingBag, UserCircle,
+  Search, Layers, House, ShoppingBag, Menu,
   Zap, CalendarDays, ArrowLeftRight, Receipt, PieChart, Users, Wallet, Settings,
   type LucideIcon,
 } from "lucide-react";
 
 // ── Navigation destinations ──
 // Five tabs, icon-only, Home in the centre. Everything else lives under More.
+// TabBar (phone) and Rail (desktop) both render TABS, so their icons always match.
+// Icons are the conventional ones: a house for Home, the menu lines for More.
 export type NavItem = { href: string; label: string; icon: LucideIcon };
 
 export const TABS: readonly NavItem[] = [
   { href: "/protected/search",    label: "Search",    icon: Search },
   { href: "/protected/inventory", label: "Inventory", icon: Layers },
-  { href: "/protected/dashboard", label: "Home",      icon: TrendingUp },
+  { href: "/protected/dashboard", label: "Home",      icon: House },
   { href: "/protected/pos",       label: "POS",       icon: ShoppingBag },
-  { href: "/protected/more",      label: "More",      icon: UserCircle },
+  { href: "/protected/more",      label: "More",      icon: Menu },
 ];
 
 // Grouped for the More screen. Shows first.

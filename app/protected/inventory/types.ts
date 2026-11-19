@@ -2,13 +2,11 @@ export type Category = "single" | "slab" | "sealed";
 export type Owner = "alex" | "mila" | "shared" | "consigner";
 export type Status = "inventory" | "sold" | "grading";
 export type Condition = "Near Mint" | "Lightly Played" | "Moderately Played" | "Heavily Played" | "Damaged";
-export type SortKey =
-  | "date-desc" | "date-asc"
-  | "name-asc"  | "name-desc"
-  | "market-desc" | "market-asc"
-  | "cost-desc"   | "cost-asc"
-  | "sticker-desc" | "sticker-asc"
-  | "days-desc"    | "days-asc";
+// A sort is a field plus a direction. SortKey ("date-desc", "name-asc", …) is
+// the stored form: Settings' default_sort holds one, so the strings must not change.
+export type SortField = "date" | "name" | "market" | "cost" | "sticker" | "days";
+export type SortDir = "asc" | "desc";
+export type SortKey = `${SortField}-${SortDir}`;
 
 export type ConsignerOption = { id: string; name: string; rate: number };
 

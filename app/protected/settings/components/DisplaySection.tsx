@@ -5,6 +5,8 @@ import { Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import type { UserSettings } from "../actions";
+import type { SortDir, SortField, SortKey } from "@/app/protected/inventory/types";
+import { SORT_FIELDS, parseSort, sortFieldOption, sortForField, toSortKey } from "@/app/protected/inventory/sort";
 import { Section, SettingRow, Segmented, inputClass, type SettingsUpdate } from "./SettingsPrimitives";
 
 const THEMES = [
@@ -52,19 +54,34 @@ export function DisplaySection({
         </select>
       </SettingRow>
       <SettingRow stack label="Default sort" description="How inventory is ordered when you open it">
-        <select
-          value={settings.default_sort}
-          onChange={(e) => onChange("default_sort", e.target.value)}
-          className={cn(inputClass, "w-full sm:w-auto")}
-        >
-          <option value="date-desc">Recently Added</option>
-          <option value="date-asc">Oldest First</option>
-          <option value="name-asc">Name A–Z</option>
-          <option value="name-desc">Name Z–A</option>
-          <option value="market-desc">Price High–Low</option>
-          <option value="market-asc">Price Low–High</option>
-        </select>
+        <DefaultSort value={settings.default_sort} onChange={(k) => onChange("default_sort", k)} />
       </SettingRow>
     </Section>
+  );
+}
+
+// ── Default sort ──
+// Same shape as Inventory's sort: a field, then its direction. Still stored
+// as one SortKey ("date-desc"); picking a field starts at its natural direction.
+function DefaultSort({ value, onChange }: { value: string; onChange: (k: SortKey) => void }) {
+  const { field, dir } = parseSort(value);
+  const option = sortFieldOption(field);
+  const other: SortDir = option.defaultDir === "desc" ? "asc" : "desc";
+  const dirs = [option.defaultDir, other].map((d) => ({ value: d, label: option.dirLabel[d] }));
+
+  return (
+    <div className="flex flex-col gap-2">
+      <select
+        value={field}
+        onChange={(e) => onChange(sortForField(toSortKey(field, dir), e.target.value as SortField))}
+        aria-label="Default sort field"
+        className={cn(inputClass, "w-full")}
+      >
+        {SORT_FIELDS.map((f) => (
+          <option key={f.field} value={f.field}>{f.label}</option>
+        ))}
+      </select>
+      <Segmented value={dir} options={dirs} onChange={(d) => onChange(toSortKey(field, d))} />
+    </div>
   );
 }

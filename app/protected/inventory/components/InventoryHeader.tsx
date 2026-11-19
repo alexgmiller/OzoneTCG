@@ -1,17 +1,18 @@
 "use client";
 
-import { ArrowUpDown, CheckSquare, LayoutGrid, List, MoreHorizontal, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, CheckSquare, ChevronDown, LayoutGrid, List, MoreHorizontal, Plus } from "lucide-react";
 import { HeroValue, IconButton, SearchBar } from "@/components/ui";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { SortKey } from "../types";
+import type { SortField, SortKey } from "../types";
 import type { ViewMode } from "../useViewMode";
-import { SORT_OPTIONS, sortLabel } from "../inventoryView";
+import { SORT_FIELDS, flipSort, parseSort, sortDirLabel, sortFieldOption, sortForField } from "../sort";
 
 // ── Inventory header ──
-// SearchBar row, then grid/list · sort · more. Below: the FMV of the current
-// filter as a left-aligned HeroValue, and "Date ↓ · 42 items" on the right.
+// SearchBar row, then grid/list · more. Below: the FMV of the current filter
+// as a left-aligned HeroValue, and on the right the sort — a field picker
+// ("Date ▾") with a direction toggle beside it — then "· 42 items".
 type Props = {
   search: string;
   setSearch: (v: string) => void;
@@ -37,19 +38,6 @@ export function InventoryHeader({ search, setSearch, onScan, view, setView, sort
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <IconButton label="Sort"><ArrowUpDown size={20} strokeWidth={1.75} /></IconButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuRadioGroup value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-              {SORT_OPTIONS.map((o) => (
-                <DropdownMenuRadioItem key={o.value} value={o.value}>{o.label}</DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
             <IconButton label="More"><MoreHorizontal size={20} strokeWidth={1.75} /></IconButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -61,10 +49,55 @@ export function InventoryHeader({ search, setSearch, onScan, view, setView, sort
 
       <div className="flex items-end justify-between gap-3">
         <HeroValue amount={total} align="left" size="lg" />
-        <span className="shrink-0 pb-1 text-sm tabular-nums text-muted-foreground">
-          {sortLabel(sort)} · {count} item{count === 1 ? "" : "s"}
-        </span>
+        <div className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
+          <SortControls sort={sort} setSort={setSort} />
+          <span className="tabular-nums">· {count} item{count === 1 ? "" : "s"}</span>
+        </div>
       </div>
     </div>
+  );
+}
+
+// ── Sort: field picker + direction toggle ──
+// Both are drawn 32px tall to sit on the HeroValue line; .tap-target gives
+// them 44px tap zones.
+function SortControls({ sort, setSort }: { sort: SortKey; setSort: (k: SortKey) => void }) {
+  const { field, dir } = parseSort(sort);
+  const option = sortFieldOption(field);
+  const dirLabel = sortDirLabel(sort);
+  const nextDirLabel = sortDirLabel(flipSort(sort));
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Sort by ${option.label}`}
+            className="tap-target relative inline-flex h-8 items-center gap-1 transition-colors duration-150 hover:text-foreground"
+          >
+            {option.short}
+            <ChevronDown size={14} aria-hidden />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuRadioGroup value={field} onValueChange={(v) => setSort(sortForField(sort, v as SortField))}>
+            {SORT_FIELDS.map((f) => (
+              <DropdownMenuRadioItem key={f.field} value={f.field}>{f.label}</DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <button
+        type="button"
+        onClick={() => setSort(flipSort(sort))}
+        aria-label={`${dirLabel}. Switch to ${nextDirLabel}`}
+        title={dirLabel}
+        className="tap-target relative flex h-8 w-8 items-center justify-center rounded-full bg-surface text-foreground transition duration-150 ease-out hover:bg-surface-2 motion-safe:active:scale-press"
+      >
+        {dir === "desc" ? <ArrowDown size={16} aria-hidden /> : <ArrowUp size={16} aria-hidden />}
+      </button>
+    </>
   );
 }
