@@ -43,6 +43,7 @@ file is the source of truth for what has been applied.
 | `20261119_pokeinvest_history.sql` | ⬜ | pokeinvest_cards.history + history_at: each card's price per grade since 2022 (lib/pokeinvestHistory.ts), fetched once per card by the 02:30 refresh-stale-slabs cron (max 10 a night), which back-fills slab charts in item_price_history. Until it's applied that step skips itself. |
 | `20261118_pokeinvest_cards.sql` | ✅ | applied 2026-11-19. PokeInvest prices per card for slab values (lib/pokeinvestSlabs.ts): every grade's sold median, matched via TCGplayer product or PokeInvest search. Filled by the 02:30 refresh-stale-slabs cron (one call per card every 3 days, max 30 a night). Until it's applied, slabs keep their eBay values. |
 | `20261117_tcgplayer_cards.sql` | ✅ | applied 2026-11-17. TCGplayer catalog (via TCGCSV) for Search's Japanese tab: English names, rarity, number, image, prices per printing. Filled daily by `/api/cron/sync-tcgplayer`; run that once by hand after applying (Vercel → Cron Jobs → Run) so the tab isn't empty until the next night. |
+| `20261120_card_scans.sql` | ⬜ | One row per card scan (lib/cardScan.ts, app/api/scan-card): free keyless PokeInvest scans first; key scans capped at 10 a day, counted here. Until it's applied scanning still works, keyless only. |
 
 > If a ✅/⬜ above is wrong, fix it — an inaccurate table is worse than none.
 
