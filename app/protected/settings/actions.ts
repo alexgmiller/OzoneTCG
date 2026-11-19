@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { syncTcgplayer } from "@/lib/catalog/syncTcgplayer";
 import { syncProblem } from "@/lib/catalog/tcgplayerSyncStatus";
 import { checkPokemonPriceTracker } from "@/lib/pptCheck";
+import { checkPokeInvest } from "@/lib/pokeinvest";
 import { debugEbayAsking } from "@/lib/ebay";
 
 export type UserSettings = {
@@ -326,22 +327,25 @@ export async function syncJapaneseCatalog(): Promise<JapaneseSyncResult> {
 }
 
 // ── Check price sources ──
-// PokemonPriceTracker for two cards (Psyduck 286/SM-P, a Japanese promo with
-// no TCGplayer price, and Charizard ex 199/165, an English card with plenty of
-// sales, to show the full data) and one eBay search for Psyduck, returned
-// as-is so the data can be compared before building on either. Costs 4
-// PokemonPriceTracker credits per tap.
-const CHECK_CARD = { label: "Psyduck 286/SM-P (Japanese promo)", tcgPlayerId: 598363, name: "Psyduck", cardNumber: "286/SM-P", lang: "ja" as const };
-const CHECK_CARD_EN = { label: "Charizard ex 199/165 (151)", tcgPlayerId: 517045 };
+// PokemonPriceTracker and PokeInvest for two cards (Psyduck 286/SM-P, a
+// Japanese promo with no TCGplayer price, and Charizard ex 199/165, an
+// English card with plenty of sales, to show the full data) and one eBay
+// search for Psyduck, returned as-is so the sources can be compared before
+// building on one. Costs 4 PokemonPriceTracker credits and 2 PokeInvest calls
+// per tap (PokeInvest: 1 more per card whose TCGplayer ID it doesn't know).
+const CHECK_CARD = { label: "Psyduck 286/SM-P (Japanese promo)", tcgPlayerId: 598363, pokeinvestId: "pi_27304", name: "Psyduck", cardNumber: "286/SM-P", lang: "ja" as const };
+const CHECK_CARD_EN = { label: "Charizard ex 199/165 (151)", tcgPlayerId: 517045, pokeinvestId: "pi_45353" };
 
 export async function checkPriceSources() {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not logged in");
-  const [japanese, english, ebayListings] = await Promise.all([
+  const [japanese, english, ebayListings, pokeinvestJapanese, pokeinvestEnglish] = await Promise.all([
     checkPokemonPriceTracker(CHECK_CARD.tcgPlayerId, "ja"),
     checkPokemonPriceTracker(CHECK_CARD_EN.tcgPlayerId, "en"),
     debugEbayAsking({ name: CHECK_CARD.name, cardNumber: CHECK_CARD.cardNumber, lang: CHECK_CARD.lang }),
+    checkPokeInvest(CHECK_CARD),
+    checkPokeInvest(CHECK_CARD_EN),
   ]);
   return {
     checkedAt: new Date().toISOString(),
@@ -349,6 +353,10 @@ export async function checkPriceSources() {
     pokemonPriceTracker: {
       japanese: { card: CHECK_CARD.label, ...japanese },
       english: { card: CHECK_CARD_EN.label, ...english },
+    },
+    pokeInvest: {
+      japanese: { card: CHECK_CARD.label, ...pokeinvestJapanese },
+      english: { card: CHECK_CARD_EN.label, ...pokeinvestEnglish },
     },
   };
 }

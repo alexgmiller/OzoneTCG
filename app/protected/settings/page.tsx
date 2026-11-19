@@ -24,6 +24,7 @@ async function SettingsLoader() {
     justtcg: !!process.env.JUSTTCG_API_KEY,
     psa: !!process.env.PSA_API_KEY,
     ppt: !!process.env.POKEMON_PRICE_TRACKER_API_KEY,
+    pokeinvest: !!process.env.POKEINVEST_API_KEY,
   };
 
   return (
