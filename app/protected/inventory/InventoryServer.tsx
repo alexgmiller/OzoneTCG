@@ -1,6 +1,5 @@
 import type { AddPrefill } from "./addPrefill";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaceId } from "@/lib/getWorkspaceId";
 import { makeSlabPriceKey, type SlabSale } from "@/lib/ebay";
 import { makeRawCardPriceKey } from "@/lib/justtcg";
@@ -118,7 +117,11 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
   let pokeinvestPriceMap: Record<string, PokeInvestSlabPrice> = {};
 
   try {
-    const admin = createAdminClient();
+    // The price caches (slab_prices, pokeinvest_cards, raw_card_prices) are
+    // readable with the signed-in session, so reads don't need the service
+    // key. Without it (local dev) they used to come back empty: View comps
+    // showed no listings and slabs no PokeInvest price.
+    const reader = supabase;
 
     // ── Cached slab prices ──
     const slabs = (data ?? []).filter((it) => it.category === "slab" && it.grade);
@@ -129,7 +132,7 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
     }).filter(Boolean) as string[];
 
     if (slabLookupKeys.length > 0) {
-      const { data: priceRows } = await admin
+      const { data: priceRows } = await reader
         .from("slab_prices")
         .select("lookup_key,median_price,avg_price,low_price,high_price,comp_count,previous_median,sold_median,sold_avg,sold_low,sold_high,sold_count,fair_market_value,last_updated,active_items,sold_items")
         .in("lookup_key", slabLookupKeys);
@@ -141,7 +144,7 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
     // slabs simply keep their eBay values
     const cardKeys = [...new Set(slabs.map((it) => slabCardKey(it.name, it.set_name, it.card_number)))];
     if (cardKeys.length > 0) {
-      const { data: piRows } = await admin.from("pokeinvest_cards").select(CARD_COLUMNS).in("card_key", cardKeys);
+      const { data: piRows } = await reader.from("pokeinvest_cards").select(CARD_COLUMNS).in("card_key", cardKeys);
       const byKey = new Map(((piRows ?? []) as PokeInvestCardRow[]).map((r) => [r.card_key, r]));
       pokeinvestPriceMap = Object.fromEntries(slabs.flatMap((it) => {
         const price = slabPokeInvestPrice(byKey.get(slabCardKey(it.name, it.set_name, it.card_number)), it.grade);
@@ -155,14 +158,14 @@ export default async function InventoryServer({ focusId = null, addPrefill = nul
     const uniqueRawKeys = [...new Set(rawCardKeys)];
 
     if (uniqueRawKeys.length > 0) {
-      const { data: rawPriceRows } = await admin
+      const { data: rawPriceRows } = await reader
         .from("raw_card_prices")
         .select("lookup_key,justtcg_card_id,nm_price,lp_price,mp_price,hp_price,dmg_price,printing,price_source,last_updated,price_history")
         .in("lookup_key", uniqueRawKeys);
       rawCardPriceMap = Object.fromEntries((rawPriceRows ?? []).map((r) => [r.lookup_key, r as RawCardPrice]));
     }
   } catch (e) {
-    console.warn("[InventoryServer] Admin client unavailable (build time?), skipping price fetch:", e instanceof Error ? e.message : e);
+    console.warn("[InventoryServer] price caches unavailable, skipping:", e instanceof Error ? e.message : e);
   }
 
   return (
