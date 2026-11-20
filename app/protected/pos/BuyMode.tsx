@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ScanLine, X } from "lucide-react";
+import { X } from "lucide-react";
 import CardAutocomplete from "@/components/CardAutocomplete";
 import CertLookupWidget from "@/components/CertLookupWidget";
-import { CardScanner, type CardScanMatch } from "@/components/scan/CardScanner";
-import { getCardDetail } from "@/app/protected/search/actions";
-import { Chip, EmptyState, IconButton, MoneyDisplay, Sheet, useToast } from "@/components/ui";
+import { Chip, EmptyState, MoneyDisplay } from "@/components/ui";
 import { offlineRecordBuy } from "@/lib/offlineAwareActions";
 import { playedCondition, type ConditionFactors } from "@/lib/conditionPricing";
 import { cn } from "@/lib/utils";
@@ -17,63 +15,25 @@ import DealColumns from "./DealColumns";
 
 const CATEGORIES = ["single", "slab", "sealed"] as const;
 
-// A scanned card as a deal line: the catalog card's near-mint price (TCGplayer,
-// else TCGdex, else eBay asking), or PokeInvest's raw sold median when the
-// card isn't in our catalog. Japanese cards carry "(JP)" like Inventory's.
-async function scannedCard(m: CardScanMatch): Promise<NewCard> {
-  const c = m.card;
-  let market: number | null = null;
-  if (c) {
-    const detail = await getCardDetail(c).catch(() => null);
-    market = detail?.market ?? detail?.asking?.price ?? null;
-  }
-  const name = c?.name ?? m.name;
-  return {
-    name: m.lang === "ja" ? `${name} (JP)` : name,
-    category: "single",
-    market: market ?? m.raw,
-    set_name: c?.setName ?? m.set,
-    card_number: c?.cardNumber ?? m.number,
-    image_url: c?.imageUrl ?? m.image,
-  };
-}
-
-// Adds a customer's card: search by name, scan the card, or scan a slab's cert
+// Adds a customer's card: search by name, or scan a slab's cert
 export function CardEntry({ onAdd }: { onAdd: (c: NewCard) => void }) {
-  const toast = useToast();
   const [category, setCategory] = useState<NewCard["category"]>("single");
   const [name, setName] = useState("");
   const [market, setMarket] = useState("");
   const [card, setCard] = useState<Partial<NewCard>>({});
-  // The scanner stays open for card after card
-  const [scanning, setScanning] = useState(false);
 
   function add(c: NewCard) {
     onAdd(c);
     setName(""); setMarket(""); setCard({});
   }
 
-  async function addScanned(m: CardScanMatch) {
-    const c = await scannedCard(m);
-    onAdd(c);
-    toast.success(c.market != null ? `Added ${c.name} · $${c.market.toFixed(2)}` : `Added ${c.name} (no price: set one in the cart)`);
-  }
-
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="flex gap-2" role="radiogroup" aria-label="Category">
-          {CATEGORIES.map((c) => (
-            <Chip key={c} selected={category === c} onClick={() => setCategory(c)} className="capitalize">{c}</Chip>
-          ))}
-        </div>
-        <IconButton label="Scan a card" onClick={() => setScanning(true)} className="ml-auto">
-          <ScanLine size={20} strokeWidth={1.75} />
-        </IconButton>
+      <div className="flex gap-2" role="radiogroup" aria-label="Category">
+        {CATEGORIES.map((c) => (
+          <Chip key={c} selected={category === c} onClick={() => setCategory(c)} className="capitalize">{c}</Chip>
+        ))}
       </div>
-      <Sheet open={scanning} onClose={() => setScanning(false)} title="Scan cards">
-        <CardScanner pickLabel="Add" onPick={(m) => { void addScanned(m); }} />
-      </Sheet>
       {category === "slab" && (
         <CertLookupWidget label="Scan cert" onResult={(r) => add({
           name: r.name, category: "slab", market: r.market, cert_number: r.certNumber,

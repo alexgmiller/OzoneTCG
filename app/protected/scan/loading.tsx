@@ -4,9 +4,6 @@ import { Skeleton } from "@/components/ui";
 export default function ScanLoading() {
   return (
     <div className="w-full max-w-lg mx-auto space-y-4 pb-24 overflow-x-hidden">
-      {/* Cert | Card */}
-      <Skeleton className="mt-2 h-11 w-full rounded-full" />
-
       {/* Header */}
       <div className="flex items-center justify-between pt-2">
         <Skeleton className="h-6 w-28 rounded-lg" />

@@ -132,7 +132,7 @@ export function splitName(piName: string): { name: string; number: string | null
   return m ? { name: m[1], number: m[2] } : { name: piName, number: null };
 }
 
-export const firstWord = (s: string) =>
+const firstWord = (s: string) =>
   stripParens(s).toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().split(/\s+/)[0] ?? "";
 
 type SlabCard = { name: string; set_name: string | null; card_number: string | null };
